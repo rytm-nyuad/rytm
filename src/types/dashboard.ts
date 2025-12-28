@@ -1,0 +1,63 @@
+export interface DailyOverall {
+  uid: string;
+  date: string;
+  overall_score: number;
+  created_at: string;
+}
+
+export interface Meal {
+  id: string;
+  user_id: string;
+  meal_category: "Breakfast" | "Lunch" | "Dinner" | "Snack";
+  description?: string;
+  image_url?: string;
+  logged_at: string;
+}
+
+export interface WaterLog {
+  id: string;
+  user_id: string;
+  water_ml?: number;
+  coffee_cups?: number;
+  tea_cups?: number;
+  soda_ml?: number;
+  energy_drink_ml?: number;
+  logged_at: string;
+}
+
+export interface DailyCheckIn {
+  id: string;
+  user_id: string;
+  date: string;
+  mood: number;
+  stress: number;
+  energy: number;
+  focus: number;
+  workload: number;
+  sleep_restfulness: number;
+  social_connectedness: number;
+  emotions: string[];
+  created_at: string;
+}
+
+export interface StreakData {
+  user_id: string;
+  current_streak: number;
+  longest_streak: number;
+  last_activity_date: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: Date;
+}
+
+export interface TodayProgress {
+  overallQuestion: boolean;
+  mealLogged: boolean;
+  waterLogged: boolean;
+  checkInCompleted: boolean;
+  journalCompleted: boolean;
+}
