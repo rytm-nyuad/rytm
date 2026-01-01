@@ -241,11 +241,16 @@ export async function getStreakData(userId: string): Promise<number> {
         .lt("intake_datetime", `${checkDate}T23:59:59`)
         .limit(1);
 
-      // TODO: Check journal (at least 1 message) - need to create journal_messages table
-      // For now, skip journal check
-      const hasJournal = true; // Placeholder
+      // Check journal (at least 1 message, free or guided)
+      const { data: journal } = await supabase
+        .from("journal_messages")
+        .select("id")
+        .eq("user_id", userId)
+        .gte("created_at", `${checkDate}T00:00:00`)
+        .lt("created_at", `${checkDate}T23:59:59`)
+        .limit(1);
 
-      if (hasOverall && meals && meals.length > 0 && water && water.length > 0 && hasJournal) {
+      if (hasOverall && meals && meals.length > 0 && water && water.length > 0 && journal && journal.length > 0) {
         streak++;
         currentDate.setDate(currentDate.getDate() - 1);
       } else {

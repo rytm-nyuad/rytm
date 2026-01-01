@@ -159,6 +159,9 @@ export class JournalAgent {
     const response = await llm.invoke(messages);
     const aiContent = response.content.toString();
 
+    console.log("💬 AI Response:", aiContent.substring(0, 100));
+    console.log("🔖 Saving to threadId:", threadId);
+
     // Step 6: Save AI response
     const aiMessage = await JournalDatabaseTool.saveMessage(
       context.supabase,
@@ -168,6 +171,9 @@ export class JournalAgent {
       "assistant",
       threadId
     );
+
+    console.log("✅ AI message saved:", !!aiMessage);
+    console.log("📝 Saved message ID:", aiMessage?.id);
 
     if (!aiMessage) {
       return {

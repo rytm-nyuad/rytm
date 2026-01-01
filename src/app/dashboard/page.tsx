@@ -92,13 +92,16 @@ export default function DashboardPage() {
     const mealsCount = await getTodayMealsCount(userId);
     const waterLogged = await hasWaterLoggedToday(userId);
     const checkInDone = await hasCheckInToday(userId);
+    const journalDone = await import("@/lib/db/journal-check").then((m) =>
+      m.hasJournaledToday(userId)
+    );
 
     setProgress({
       overallQuestion: !!todayOverall,
       mealLogged: mealsCount > 0,
       waterLogged,
       checkInCompleted: checkInDone,
-      journalCompleted: false, // Will be updated when user sends first message
+      journalCompleted: journalDone,
     });
 
     // Load streak data
