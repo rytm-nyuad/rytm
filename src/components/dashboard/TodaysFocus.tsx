@@ -26,7 +26,7 @@ export function TodaysFocus() {
 
   return (
     <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-full">
-      <span className="text-xs text-zinc-500 font-medium">Today's focus:</span>
+      <span className="text-xs text-zinc-500 font-medium"></span>
       <span className="text-xs text-zinc-400">{tip}</span>
     </div>
   );
