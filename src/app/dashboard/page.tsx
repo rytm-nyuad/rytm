@@ -1,20 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { createBrowserClient } from "@supabase/ssr";
+
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { OverallSliderCard } from "@/components/dashboard/OverallSliderCard";
 import { StreakRing } from "@/components/dashboard/StreakRing";
+import { WeeklyStreak } from "@/components/dashboard/WeeklyStreak";
 import { ProgressList } from "@/components/dashboard/ProgressList";
 import { LogMealModal } from "@/components/dashboard/LogMealModal";
 import { LogWaterModal } from "@/components/dashboard/LogWaterModal";
 import { DailyCheckInModal } from "@/components/dashboard/DailyCheckInModal";
 import { JournalChat } from "@/components/dashboard/JournalChat";
-import { CoachChat } from "@/components/dashboard/CoachChat";
+import { CoachPromptBar } from "@/components/dashboard/CoachPromptBar";
+import { FullScreenCoach } from "@/components/dashboard/FullScreenCoach";
+//import { CoachChat } from "@/components/dashboard/CoachChat";
 import { TopNav } from "@/components/dashboard/TopNav";
 import { TodaysFocus } from "@/components/dashboard/TodaysFocus";
 import { NudgeToast } from "@/components/dashboard/NudgeToast";
 import { DashboardBackground } from "@/components/dashboard/DashboardBackground";
+
 import {
   getTodayOverall,
   submitDailyOverall,
@@ -24,15 +31,26 @@ import {
   logMeal,
   logWater,
   submitDailyCheckIn,
+  getWeeklyActivity,
 } from "@/lib/db/dashboard";
+
 import type { TodayProgress } from "@/types/dashboard";
 
 export default function DashboardPage() {
+  return (
+    <ThemeProvider>
+      <DashboardContent />
+    </ThemeProvider>
+  );
+}
+
+function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [firstName, setFirstName] = useState<string>("there");
   const [streak, setStreak] = useState(0);
+  const [weeklyData, setWeeklyData] = useState<boolean[]>([false, false, false, false, false, false, false]);
   const [progress, setProgress] = useState<TodayProgress>({
     overallQuestion: false,
     mealLogged: false,
@@ -45,8 +63,12 @@ export default function DashboardPage() {
   const [showMealModal, setShowMealModal] = useState(false);
   const [showWaterModal, setShowWaterModal] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
-
+  const [showCoachModal, setShowCoachModal] = useState(false);
+  const [initialCoachMessage, setInitialCoachMessage] = useState<string>("");
+  const actionScreenRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
+  const [showScrollArrow, setShowScrollArrow] = useState(true);
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -57,6 +79,7 @@ export default function DashboardPage() {
   }, []);
 
   const checkAuth = async () => {
+
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -110,8 +133,13 @@ export default function DashboardPage() {
     );
     setStreak(streakCount);
 
+    // Load weekly activity data
+    const weekly = await getWeeklyActivity(userId);
+    setWeeklyData(weekly);
+
     setLoading(false);
   };
+
 
   const handleMorningGateSubmit = async (score: number) => {
     console.log("Submitting overall score:", { userId, score });
@@ -130,6 +158,7 @@ export default function DashboardPage() {
     description?: string,
     photoUrl?: string
   ) => {
+    
     console.log("handleMealSubmit called", { mealType, description });
     const success = await logMeal(userId, mealType, description, photoUrl);
     console.log("logMeal returned:", success);
@@ -184,24 +213,145 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-black dark:bg-black light:bg-cyan-500 flex items-center justify-center">
         <div className="text-white">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-black text-white flex flex-col overflow-hidden">
-      {/* Background - z-0 */}
-      <DashboardBackground />
+    <div
+      className="h-screen overflow-y-scroll scroll-snap-y scroll-snap-mandatory"
+      onScroll={(e) => {
+      const el = e.currentTarget;
+      setShowScrollArrow(el.scrollTop < el.clientHeight * 0.5);
+    }}
+    >
+      
+      {/* ======================================================= */}
+      {/* SCREEN 1 — ORIENTATION */}
+      {/* ======================================================= */}
+      <section className="h-screen dark:bg-gradient-to-b dark:from-black dark:via-zinc-950 dark:to-black light:bg-gradient-to-b light:from-cyan-500 light:via-cyan-500 light:to-cyan-600 text-white scroll-snap-start relative overflow-hidden">
+        <DashboardBackground />
 
-      {/* Top Navigation - z-10 */}
-      <div className="relative z-10">
-        <TopNav />
-      </div>
+        <div className="relative z-10 h-full flex flex-col">
+          {/* NAV */}
+          <TopNav />
 
-      {/* Nudge Toast - z-50 with safe top offset */}
-      <NudgeToast 
+          {/* CONTENT */}
+          <div className="flex-1 flex flex-col justify-center px-4 sm:px-6">
+            {/* GREETING - top */}
+            <div className="absolute top-16 left-4 sm:left-6">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+                Welcome Back, {firstName}.
+              </h1>
+            </div>
+
+            {/* STREAK - dead center, slightly up */}
+            <div className="flex justify-center -mt-20">
+              <div className="scale-[1.0] sm:scale-[1.1] md:scale-[1.3]">
+                <StreakRing
+                  streak={streak}
+                  tasksCompleted={completedTasks}
+                  totalTasks={totalTasks}
+                />
+              </div>
+            </div>
+
+            {/* WEEKLY STREAK - separate below */}
+            <div className="mt-8">
+              <WeeklyStreak weeklyData={weeklyData} streak={streak} />
+            </div>
+
+            {/* BOTTOM SECTION - coach and tagline */}
+            <div className="absolute bottom-16 left-0 right-0 px-4 sm:px-6">
+              {/* ELITE COACH MESSAGE */}
+              <div className="text-center mb-3">
+                <p className="text-xs font-medium dark:text-zinc-500 light:text-cyan-200/80 tracking-widest uppercase">
+                  Your Elite Coach
+                </p>
+              </div>
+
+              {/* COACH PROMPT BAR */}
+              <div className="flex justify-center mb-6">
+                <CoachPromptBar 
+                  onSendMessage={(message) => {
+                    setInitialCoachMessage(message);
+                    setShowCoachModal(true);
+                  }} 
+                />
+              </div>
+
+              {/* FOCUS - at bottom */}
+              <div className="text-center text-xs dark:text-zinc-600 light:text-cyan-200/60">
+                <TodaysFocus />
+              </div>
+            </div>
+          </div>
+
+          {showScrollArrow && (
+          <button
+            onClick={() =>
+              actionScreenRef.current?.scrollIntoView({ behavior: "smooth" })
+            }
+            className="
+              absolute
+              bottom-6
+              left-1/2
+              -translate-x-1/2
+              dark:text-zinc-400 light:text-cyan-200
+              dark:hover:text-white light:hover:text-white
+              transition
+            "
+            aria-label="Scroll down"
+          >
+            <div className="text-3xl animate-bounce">↓</div>
+          </button>
+        )}
+
+        </div>
+      </section>
+
+      {/* ======================================================= */}
+      {/* SCREEN 2 — ACTION */}
+      {/* ======================================================= */}
+      <section className="h-screen dark:bg-white light:bg-cyan-500 scroll-snap-start">
+        <div className="h-full px-6 py-8 flex gap-6 max-w-7xl mx-auto
+                        flex-col md:flex-row">
+          {/* =================================================== */}
+          {/* LEFT: CHECKLIST */}
+          {/* =================================================== */}
+          <div className="md:w-[360px] dark:bg-black light:bg-cyan-600 dark:text-white light:text-white rounded-xl p-6">
+            <h2 className="font-semibold mb-4">Today’s Checklist</h2>
+
+            {/* KEEP: real ProgressList with routing/modals */}
+            <ProgressList
+              progress={progress}
+              onAction={(action) => {
+                if (action === "meal") setShowMealModal(true);
+                if (action === "water") setShowWaterModal(true);
+                if (action === "checkin") setShowCheckInModal(true);
+                if (action === "journal") {
+                  //to do
+                }
+              }}
+            />
+          </div>
+
+          {/* =================================================== */}
+          {/* RIGHT: JOURNAL */}
+          {/* =================================================== */}
+          <div className="flex-1 dark:bg-black light:bg-cyan-600 dark:text-white light:text-white rounded-xl p-6">
+            <JournalChat />
+          </div>
+          
+        </div>
+      </section>
+
+      {/* ======================================================= */}
+      {/* KEEP: NUDGE TOAST */}
+      {/* ======================================================= */}
+      <NudgeToast
         tasks={{
           overallQuestion: progress.overallQuestion,
           mealLogged: progress.mealLogged,
@@ -210,113 +360,30 @@ export default function DashboardPage() {
           journalCompleted: progress.journalCompleted,
         }}
         onAction={(action) => {
-          if (action === 'meal') setShowMealModal(true);
-          if (action === 'water') setShowWaterModal(true);
-          if (action === 'checkin') setShowCheckInModal(true);
-          if (action === 'journal') {
-            // Scroll to journal and focus input
-            const journalInput = document.querySelector('#journal-input') as HTMLInputElement;
-            journalInput?.focus();
-            journalInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          if (action === "meal") setShowMealModal(true);
+          if (action === "water") setShowWaterModal(true);
+          if (action === "checkin") setShowCheckInModal(true);
+          if (action === "journal") {
+                  //to do
           }
         }}
       />
 
-      {/* Lock Overlay + Slider Card (when locked) - z-40/z-50 */}
+      {/* ======================================================= */}
+      {/* KEEP: MORNING GATE (disabled in DEV_MODE) */}
+      {/* ======================================================= */}
       {isLocked && (
         <>
-          {/* Overlay - z-40 */}
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
-          
-          {/* Overall Slider Card (centered, above blur) - z-50 */}
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
             <OverallSliderCard onSubmit={handleMorningGateSubmit} />
           </div>
         </>
       )}
-
-      {/* Main Content Container - Normal document flow */}
-      <main
-        className={`relative flex-1 flex flex-col overflow-hidden transition-all duration-300 ${
-          isLocked ? "blur-lg opacity-35 pointer-events-none" : ""
-        }`}
-      >
-        {/* Section 1: Header - z-10 */}
-        <header className="relative z-10 px-6 pt-5 pb-4">
-          <h1 className="text-3xl font-bold mb-0.5 tracking-tight">
-            Welcome back, {firstName}.
-          </h1>
-          <p className="text-zinc-500 text-sm mb-2">Let's track your day.</p>
-          <TodaysFocus />
-        </header>
-
-        {/* Content Sections Container - Strict vertical layout */}
-        <div className="relative flex-1 px-6 pb-6 flex flex-col gap-y-4 overflow-hidden">
-          {/* Section 2: Metrics Row - Fixed height, no overlap */}
-          <section className="grid grid-cols-2 gap-3 h-[260px] flex-shrink-0">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl p-8 flex items-center justify-center overflow-hidden">
-              <StreakRing 
-                streak={streak} 
-                tasksCompleted={completedTasks}
-                totalTasks={totalTasks}
-              />
-            </div>
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl p-8 overflow-hidden">
-              <ProgressList 
-                progress={progress}
-                onAction={(action) => {
-                  if (action === 'meal') setShowMealModal(true);
-                  if (action === 'water') setShowWaterModal(true);
-                  if (action === 'checkin') setShowCheckInModal(true);
-                  if (action === 'journal') {
-                    const journalInput = document.querySelector('#journal-input') as HTMLInputElement;
-                    journalInput?.focus();
-                    journalInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }
-                }}
-              />
-            </div>
-          </section>
-
-          {/* Section 3: Quick Actions Row - Fixed height, no overlap */}
-          <section className="flex gap-3 h-[56px] flex-shrink-0">
-            <button
-              onClick={() => setShowMealModal(true)}
-              className="flex-1 bg-white text-black font-semibold rounded-xl hover:bg-zinc-100 transition-all duration-200 hover:shadow-lg text-sm"
-            >
-              Log Meal
-            </button>
-            <button
-              onClick={() => setShowWaterModal(true)}
-              className="flex-1 bg-transparent border border-zinc-700 text-white font-semibold rounded-xl hover:border-zinc-600 hover:bg-zinc-900 transition-all duration-200 hover:shadow-md text-sm"
-            >
-              Log Water
-            </button>
-            <button
-              onClick={() => setShowCheckInModal(true)}
-              className="flex-1 bg-transparent border border-zinc-700 text-white font-semibold rounded-xl hover:border-zinc-600 hover:bg-zinc-900 transition-all duration-200 hover:shadow-md text-sm"
-            >
-              Daily Check-in
-            </button>
-          </section>
-
-          {/* Section 4: Content Row (Journal + Coach) - Constrained height */}
-          <section className="grid grid-cols-2 gap-3 flex-1 min-h-0 max-h-[400px]">
-            <div className="overflow-hidden">
-              <JournalChat
-                onMessageSent={() =>
-                  setProgress((prev) => ({ ...prev, journalCompleted: true }))
-                }
-              />
-            </div>
-            <div className="overflow-hidden">
-              <CoachChat />
-            </div>
-          </section>
-        </div>
-      </main>
-
-      {/* Modals - z-100 */}
+      
+      {/* ======================================================= */}
+      {/* KEEP: MODALS */}
+      {/* ======================================================= */}
       <LogMealModal
         isOpen={showMealModal}
         onClose={() => setShowMealModal(false)}
@@ -332,6 +399,20 @@ export default function DashboardPage() {
         isOpen={showCheckInModal}
         onClose={() => setShowCheckInModal(false)}
         onSubmit={handleCheckInSubmit}
+      />
+
+      {/* ======================================================= */}
+      {/* FULL-SCREEN COACH */}
+      {/* ======================================================= */}
+      <FullScreenCoach
+        isOpen={showCoachModal}
+        onClose={() => {
+          setShowCoachModal(false);
+          setInitialCoachMessage("");
+        }}
+        userId={userId}
+        firstName={firstName}
+        initialMessage={initialCoachMessage}
       />
     </div>
   );
