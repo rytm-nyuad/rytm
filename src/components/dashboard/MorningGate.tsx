@@ -13,7 +13,7 @@ export function MorningGate({ onSubmit }: MorningGateProps) {
 
   const handleSubmit = async () => {
     setSubmitting(true);
-    await onSubmit(score);
+    await onSubmit(Math.round(score));
     setSubmitting(false);
   };
 
@@ -34,12 +34,12 @@ export function MorningGate({ onSubmit }: MorningGateProps) {
             {/* Track */}
             <div className="h-2 bg-zinc-800 rounded-full mb-4 relative">
               <div
-                className="h-full bg-white rounded-full transition-all duration-200"
+                className="h-full bg-white rounded-full"
                 style={{ width: `${score}%` }}
               />
               {/* Slider Handle (Circle) */}
               <div
-                className="absolute top-1/2 -translate-y-1/2 w-6 h-6 bg-white rounded-full border-2 border-white shadow-lg transition-all duration-200"
+                className="absolute top-1/2 -translate-y-1/2 w-6 h-6 bg-white rounded-full border-2 border-white shadow-lg"
                 style={{ left: `${score}%`, transform: `translate(-50%, -50%)` }}
               />
             </div>
@@ -49,8 +49,9 @@ export function MorningGate({ onSubmit }: MorningGateProps) {
               type="range"
               min="0"
               max="100"
+              step="any"
               value={score}
-              onChange={(e) => setScore(parseInt(e.target.value))}
+              onChange={(e) => setScore(parseFloat(e.target.value))}
               className="absolute inset-0 w-full opacity-0 cursor-pointer"
               disabled={submitting}
               style={{ top: 0, left: 0, right: 0 }}

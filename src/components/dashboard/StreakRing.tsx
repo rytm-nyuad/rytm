@@ -91,7 +91,7 @@ export function StreakRing({
                   className={`w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
                     tasksCompleted === totalTasks
                       ? "bg-gradient-to-t from-blue-400 via-green-400 to-yellow-300"
-                      : "border border-zinc-600 opacity-60"
+                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:border light:border-purple-300 light:opacity-60"
                   }`}
                   style={{ height }}
                 />
@@ -122,11 +122,11 @@ export function StreakRing({
 
               return (
                 <div
-                  key={`left-${i}`}
+                  key={`right-${i}`}
                   className={`w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
                     tasksCompleted === totalTasks
                       ? "bg-gradient-to-t from-blue-400 via-green-400 to-yellow-300"
-                      : "border border-zinc-600 opacity-60"
+                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:border light:border-purple-300 light:opacity-60"
                   }`}
                   style={{ height }}
                 />
@@ -149,7 +149,7 @@ export function StreakRing({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke="#27272a"
+            className="dark:stroke-zinc-800 light:stroke-cyan-300"
             strokeWidth={strokeWidth}
             fill="none"
           />
@@ -157,13 +157,12 @@ export function StreakRing({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke="#ffffff"
+            className="dark:stroke-white light:stroke-white transition-all duration-1000 ease-out"
             strokeWidth={strokeWidth}
             fill="none"
             strokeDasharray={circumference}
             strokeDashoffset={animated ? offset : circumference}
             strokeLinecap="round"
-            className="transition-all duration-1000 ease-out"
           />
         </svg>
 
@@ -172,17 +171,17 @@ export function StreakRing({
           style={{ height: size, width: size }}
         >
           <div className="text-4xl font-bold text-white">{streak}</div>
-          <div className="text-xs font-medium text-zinc-500">days</div>
+          <div className="text-xs font-medium dark:text-zinc-500 light:text-cyan-100">days</div>
         </div>
       </div>
 
       {/* KEEP */}
-      <p className="mt-2 text-xs text-zinc-500">Keep your rytm alive.</p>
+      <p className="mt-2 text-xs dark:text-zinc-500 light:text-cyan-100">Keep your rytm alive.</p>
 
       {/* KEEP */}
       {showNudge && (
-        <div className="mt-2 px-2.5 py-1 bg-zinc-800 border border-zinc-700 rounded-full">
-          <p className="text-[10px] text-zinc-400">
+        <div className="mt-4 px-2.5 py-1 dark:bg-zinc-800 dark:border-zinc-700 light:bg-cyan-400 light:border-cyan-300 border rounded-full">
+          <p className="text-[10px] dark:text-zinc-400 light:text-white">
             {tasksRemaining} away
           </p>
         </div>

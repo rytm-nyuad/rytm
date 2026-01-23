@@ -14,7 +14,10 @@ import {
   LogOut,
   Menu,      
   X,
+  Moon,
+  Sun,
 } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
 
 // CHANGE: DEV flag (temporary, for UI work)
 const DEV_MODE = true;
@@ -23,6 +26,7 @@ const DEV_MODE = true;
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
 
  const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -51,7 +55,7 @@ export function TopNav() {
   };
 
   return (
-    <nav className="relative h-14 bg-zinc-950 border-b border-zinc-800 flex items-center px-4 sm:px-6">
+    <nav className="relative h-14 dark:bg-zinc-950 light:bg-cyan-600 dark:border-b dark:border-zinc-800 flex items-center px-4 sm:px-6">
       {/* ================================================= */}
       {/* LEFT: Brand */}
       {/* ================================================= */}
@@ -73,8 +77,8 @@ export function TopNav() {
               href={item.href}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 isActive
-                  ? "bg-white text-black"
-                  : "text-zinc-400 hover:text-white hover:bg-zinc-900"
+                  ? "bg-white text-black dark:text-black light:text-cyan-600"
+                  : "text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-white dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -83,10 +87,19 @@ export function TopNav() {
           );
         })}
 
+        {/* Theme toggle button */}
+        <button
+          onClick={toggleTheme}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-white dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition-all ml-2"
+          aria-label="Toggle theme"
+        >
+          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
+
         {/* KEEP: Sign out (desktop) */}
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 hover:text-red-400 hover:bg-zinc-900 transition-all ml-2"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition-all"
         >
           <LogOut className="w-4 h-4" />
           <span>Sign Out</span>
@@ -98,7 +111,7 @@ export function TopNav() {
       {/* ================================================= */}
       <button
         onClick={() => setMobileOpen((v) => !v)}
-        className="ml-auto md:hidden text-zinc-400 hover:text-white transition"
+        className="ml-auto md:hidden dark:text-zinc-400 light:text-white/80 dark:hover:text-white light:hover:text-white transition"
         aria-label="Toggle menu"
       >
         {mobileOpen ? <X size={22} /> : <Menu size={22} />}
@@ -108,7 +121,7 @@ export function TopNav() {
       {/* MOBILE DROPDOWN */}
       {/* ================================================= */}
       {mobileOpen && (
-        <div className="absolute top-14 left-0 w-full bg-zinc-950 border-t border-zinc-800 md:hidden z-50">
+        <div className="absolute top-14 left-0 w-full dark:bg-zinc-950 light:bg-cyan-600 dark:border-t dark:border-zinc-800 md:hidden z-50">
           <div className="flex flex-col px-4 py-3 gap-1">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -121,8 +134,8 @@ export function TopNav() {
                   onClick={() => setMobileOpen(false)} // ADD
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                     isActive
-                      ? "bg-white text-black"
-                      : "text-zinc-400 hover:text-white hover:bg-zinc-900"
+                      ? "bg-white text-black dark:text-black light:text-cyan-600"
+                      : "text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-white dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -131,10 +144,19 @@ export function TopNav() {
               );
             })}
 
+            {/* MOBILE THEME TOGGLE */}
+            <button
+              onClick={toggleTheme}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-white dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+            </button>
+
             {/* MOBILE SIGN OUT */}
             <button
               onClick={handleSignOut}
-              className="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-red-400 hover:bg-zinc-900 transition"
+              className="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition"
             >
               <LogOut className="w-4 h-4" />
               <span>Sign Out</span>

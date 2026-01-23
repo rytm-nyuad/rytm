@@ -264,3 +264,63 @@ export async function getStreakData(userId: string): Promise<number> {
     return 0;
   }
 }
+
+// Get last 7 days of activity (for weekly view)
+export async function getWeeklyActivity(userId: string): Promise<boolean[]> {
+  try {
+    const today = new Date();
+    const weeklyData: boolean[] = [];
+
+    // Get last 7 days (starting from today going back)
+    for (let i = 6; i >= 0; i--) {
+      const checkDate = new Date(today);
+      checkDate.setDate(today.getDate() - i);
+      const dateStr = checkDate.toISOString().split("T")[0];
+
+      // Check if this date has all requirements
+      const { data: overall } = await supabase
+        .from("daily_overall")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("date", dateStr)
+        .limit(1);
+
+      const { data: meals } = await supabase
+        .from("meal_logs")
+        .select("id")
+        .eq("user_id", userId)
+        .gte("meal_datetime", `${dateStr}T00:00:00`)
+        .lt("meal_datetime", `${dateStr}T23:59:59`)
+        .limit(1);
+
+      const { data: water } = await supabase
+        .from("water_intake_logs")
+        .select("id")
+        .eq("user_id", userId)
+        .gte("intake_datetime", `${dateStr}T00:00:00`)
+        .lt("intake_datetime", `${dateStr}T23:59:59`)
+        .limit(1);
+
+      const { data: journal } = await supabase
+        .from("journal_messages")
+        .select("id")
+        .eq("user_id", userId)
+        .gte("created_at", `${dateStr}T00:00:00`)
+        .lt("created_at", `${dateStr}T23:59:59`)
+        .limit(1);
+
+      const isCompleted = 
+        overall && overall.length > 0 &&
+        meals && meals.length > 0 &&
+        water && water.length > 0 &&
+        journal && journal.length > 0;
+
+      weeklyData.push(isCompleted);
+    }
+
+    return weeklyData;
+  } catch (error) {
+    console.error("Error getting weekly activity:", error);
+    return [false, false, false, false, false, false, false];
+  }
+}
