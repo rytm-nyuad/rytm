@@ -1,5 +1,7 @@
 "use client";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
 interface ProgressListProps {
   progress: {
     overallQuestion: boolean;
@@ -8,10 +10,45 @@ interface ProgressListProps {
     checkInCompleted: boolean;
     journalCompleted: boolean;
   };
+  currentDate: Date;
+  onDateChange: (date: Date) => void;
   onAction?: (action: 'meal' | 'water' | 'checkin' | 'journal') => void;
 }
 
-export function ProgressList({ progress, onAction }: ProgressListProps) {
+export function ProgressList({ progress, currentDate, onDateChange, onAction }: ProgressListProps) {
+  const formatDate = (date: Date) => {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const handlePreviousDay = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(newDate.getDate() - 1);
+    onDateChange(newDate);
+  };
+
+  const handleNextDay = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(newDate.getDate() + 1);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    newDate.setHours(0, 0, 0, 0);
+    // Only allow navigation if the new date is not beyond today
+    if (newDate <= today) {
+      onDateChange(newDate);
+    }
+  };
+
+  const isToday = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const current = new Date(currentDate);
+    current.setHours(0, 0, 0, 0);
+    return current.getTime() === today.getTime();
+  };
+
   const tasks = [
     { label: "Overall mood", completed: progress.overallQuestion, action: null },
     { label: "Log a meal", completed: progress.mealLogged, action: 'meal' as const },
@@ -24,9 +61,28 @@ export function ProgressList({ progress, onAction }: ProgressListProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
+      {/* Header with Date Navigation */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-semibold dark:text-white light:text-slate-900">Today</h3>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handlePreviousDay}
+            className="p-1 rounded-lg dark:text-zinc-400 light:text-slate-600 dark:hover:bg-zinc-800 light:hover:bg-gray-200 transition"
+            aria-label="Previous day"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <h3 className="text-base font-semibold dark:text-white light:text-slate-900 min-w-[100px] text-center">
+            {formatDate(currentDate)}
+          </h3>
+          <button
+            onClick={handleNextDay}
+            disabled={isToday()}
+            className="p-1 rounded-lg dark:text-zinc-400 light:text-slate-600 dark:hover:bg-zinc-800 light:hover:bg-gray-200 transition disabled:opacity-30 disabled:cursor-not-allowed"
+            aria-label="Next day"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
         <span className="text-xs font-medium dark:text-zinc-400 light:text-slate-600">
           {completedCount}/5 complete
         </span>
@@ -84,6 +140,20 @@ export function ProgressList({ progress, onAction }: ProgressListProps) {
                   className="px-2 py-0.5 rounded-full text-[10px] font-medium dark:bg-purple-600 light:bg-purple-600 dark:text-white light:text-white dark:hover:bg-purple-700 light:hover:bg-purple-700 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   + NUTRITION
+                </button>
+              </div>
+            ) : task.action === 'journal' && onAction ? (
+              <div className="flex gap-1.5">
+                {task.completed && (
+                  <div className="px-2 py-0.5 rounded-full text-[10px] font-medium dark:bg-white light:bg-green-50 dark:text-black light:text-green-700 border light:border-green-200">
+                    DONE
+                  </div>
+                )}
+                <button
+                  onClick={() => onAction(task.action!)}
+                  className="px-2 py-0.5 rounded-full text-[10px] font-medium dark:bg-purple-600 light:bg-purple-600 dark:text-white light:text-white dark:hover:bg-purple-700 light:hover:bg-purple-700 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  + JOURNAL
                 </button>
               </div>
             ) : task.completed ? (

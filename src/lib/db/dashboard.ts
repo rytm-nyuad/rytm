@@ -6,15 +6,24 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// Helper function to get local date string in YYYY-MM-DD format
+function getLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // Check if user has answered daily overall question today
-export async function getTodayOverall(userId: string): Promise<DailyOverall | null> {
-  const today = new Date().toISOString().split("T")[0];
+export async function getTodayOverall(userId: string, date?: Date): Promise<DailyOverall | null> {
+  const targetDate = date || new Date();
+  const dateStr = getLocalDateString(targetDate);
   
   const { data, error } = await supabase
     .from("daily_overall")
     .select("*")
     .eq("user_id", userId)
-    .eq("date", today)
+    .eq("date", dateStr)
     .single();
 
   if (error) {
@@ -26,16 +35,17 @@ export async function getTodayOverall(userId: string): Promise<DailyOverall | nu
 }
 
 // Submit daily overall score
-export async function submitDailyOverall(userId: string, score: number): Promise<boolean> {
-  const today = new Date().toISOString().split("T")[0];
+export async function submitDailyOverall(userId: string, score: number, date?: Date): Promise<boolean> {
+  const targetDate = date || new Date();
+  const dateStr = getLocalDateString(targetDate);
   
-  console.log("Attempting to insert:", { userId, date: today, score });
+  console.log("Attempting to insert:", { userId, date: dateStr, score });
   
   const { data, error } = await supabase
     .from("daily_overall")
     .insert({
       user_id: userId,
-      date: today,
+      date: dateStr,
       overall_score: score,
     })
     .select();
@@ -50,15 +60,16 @@ export async function submitDailyOverall(userId: string, score: number): Promise
 }
 
 // Get today's meals count
-export async function getTodayMealsCount(userId: string): Promise<number> {
-  const today = new Date().toISOString().split("T")[0];
+export async function getTodayMealsCount(userId: string, date?: Date): Promise<number> {
+  const targetDate = date || new Date();
+  const dateStr = getLocalDateString(targetDate);
   
   const { data, error } = await supabase
     .from("meal_logs")
     .select("id")
     .eq("user_id", userId)
-    .gte("meal_datetime", `${today}T00:00:00`)
-    .lt("meal_datetime", `${today}T23:59:59`);
+    .gte("meal_datetime", `${dateStr}T00:00:00`)
+    .lt("meal_datetime", `${dateStr}T23:59:59`);
 
   if (error) {
     console.error("Error fetching meals:", error);
@@ -73,9 +84,12 @@ export async function logMeal(
   userId: string,
   mealType: string,
   description?: string,
-  photoUrl?: string
+  photoUrl?: string,
+  date?: Date
 ): Promise<boolean> {
   console.log("logMeal called with:", { userId, mealType, description });
+  
+  const targetDate = date || new Date();
   
   const { data, error } = await supabase
     .from("meal_logs")
@@ -84,7 +98,7 @@ export async function logMeal(
       meal_type: mealType,
       description,
       photo_url: photoUrl,
-      meal_datetime: new Date().toISOString(),
+      meal_datetime: targetDate.toISOString(),
     })
     .select();
 
@@ -98,15 +112,16 @@ export async function logMeal(
 }
 
 // Check if water logged today
-export async function hasWaterLoggedToday(userId: string): Promise<boolean> {
-  const today = new Date().toISOString().split("T")[0];
+export async function hasWaterLoggedToday(userId: string, date?: Date): Promise<boolean> {
+  const targetDate = date || new Date();
+  const dateStr = getLocalDateString(targetDate);
   
   const { data, error } = await supabase
     .from("water_intake_logs")
     .select("id")
     .eq("user_id", userId)
-    .gte("intake_datetime", `${today}T00:00:00`)
-    .lt("intake_datetime", `${today}T23:59:59`)
+    .gte("intake_datetime", `${dateStr}T00:00:00`)
+    .lt("intake_datetime", `${dateStr}T23:59:59`)
     .limit(1);
 
   if (error) {
@@ -121,9 +136,12 @@ export async function hasWaterLoggedToday(userId: string): Promise<boolean> {
 export async function logWater(
   userId: string,
   amountMl: number,
-  source: string
+  source: string,
+  date?: Date
 ): Promise<boolean> {
   console.log("logWater called with:", { userId, amountMl, source });
+  
+  const targetDate = date || new Date();
   
   const { data, error } = await supabase
     .from("water_intake_logs")
@@ -131,7 +149,7 @@ export async function logWater(
       user_id: userId,
       amount_ml: amountMl,
       source,
-      intake_datetime: new Date().toISOString(),
+      intake_datetime: targetDate.toISOString(),
     })
     .select();
 
@@ -145,15 +163,16 @@ export async function logWater(
 }
 
 // Check if daily check-in completed today
-export async function hasCheckInToday(userId: string): Promise<boolean> {
-  const today = new Date().toISOString().split("T")[0];
+export async function hasCheckInToday(userId: string, date?: Date): Promise<boolean> {
+  const targetDate = date || new Date();
+  const dateStr = getLocalDateString(targetDate);
   
   const { data, error } = await supabase
     .from("daily_checkins")
     .select("sleep_quality, energy_score, focus_score, workload_score, coping_capacity_score, stress_score, stress_unexpected_score, social_score, mood_score, mood_stability_score, mood_emotions")
     .eq("user_id", userId)
-    .gte("created_at", `${today}T00:00:00`)
-    .lt("created_at", `${today}T23:59:59`)
+    .gte("created_at", `${dateStr}T00:00:00`)
+    .lt("created_at", `${dateStr}T23:59:59`)
     .limit(1);
 
   if (error) {
@@ -197,8 +216,11 @@ export async function submitDailyCheckIn(
   social: number,
   mood: number,
   moodStability: number,
-  emotions: string[]
+  emotions: string[],
+  date?: Date
 ): Promise<boolean> {
+  const targetDate = date || new Date();
+  
   const { data, error } = await supabase
     .from("daily_checkins")
     .insert({
@@ -214,6 +236,7 @@ export async function submitDailyCheckIn(
       mood_score: mood,
       mood_stability_score: moodStability,
       mood_emotions: emotions,
+      created_at: targetDate.toISOString(),
     })
     .select();
 
@@ -239,17 +262,12 @@ export async function getStreakData(userId: string): Promise<number> {
     if (!overallData || overallData.length === 0) return 0;
 
     let streak = 0;
-    const today = new Date().toISOString().split("T")[0];
-    let currentDate = new Date(today);
-
-    // Check each day going backwards
-    for (let i = 0; i < overallData.length; i++) {
-      const checkDate = currentDate.toISOString().split("T")[0];
-      
-      // Check if this date has all requirements
+    let currentDate = new Date();
+    
+    // Helper function to check if a day is complete
+    const isDayComplete = async (checkDate: string) => {
       const hasOverall = overallData.some((d) => d.date === checkDate);
       
-      // Check meals (at least 1)
       const { data: meals } = await supabase
         .from("meal_logs")
         .select("id")
@@ -258,7 +276,6 @@ export async function getStreakData(userId: string): Promise<number> {
         .lt("meal_datetime", `${checkDate}T23:59:59`)
         .limit(1);
 
-      // Check water/drinks (at least 1)
       const { data: water } = await supabase
         .from("water_intake_logs")
         .select("id")
@@ -267,7 +284,6 @@ export async function getStreakData(userId: string): Promise<number> {
         .lt("intake_datetime", `${checkDate}T23:59:59`)
         .limit(1);
 
-      // Check journal (at least 1 message, free or guided)
       const { data: journal } = await supabase
         .from("journal_messages")
         .select("id")
@@ -276,7 +292,6 @@ export async function getStreakData(userId: string): Promise<number> {
         .lt("created_at", `${checkDate}T23:59:59`)
         .limit(1);
 
-      // Check daily check-in (10 VAS questions)
       const { data: checkin } = await supabase
         .from("daily_checkins")
         .select("id")
@@ -285,7 +300,23 @@ export async function getStreakData(userId: string): Promise<number> {
         .lt("created_at", `${checkDate}T23:59:59`)
         .limit(1);
 
-      if (hasOverall && meals && meals.length > 0 && water && water.length > 0 && journal && journal.length > 0 && checkin && checkin.length > 0) {
+      return hasOverall && meals && meals.length > 0 && water && water.length > 0 && journal && journal.length > 0 && checkin && checkin.length > 0;
+    };
+    
+    // Check if today is complete
+    const todayStr = getLocalDateString(currentDate);
+    const isTodayComplete = await isDayComplete(todayStr);
+    
+    // If today is not complete, start from yesterday
+    if (!isTodayComplete) {
+      currentDate.setDate(currentDate.getDate() - 1);
+    }
+
+    // Count consecutive completed days going backwards
+    for (let i = 0; i < overallData.length + 1; i++) {
+      const checkDate = getLocalDateString(currentDate);
+      
+      if (await isDayComplete(checkDate)) {
         streak++;
         currentDate.setDate(currentDate.getDate() - 1);
       } else {
@@ -316,7 +347,7 @@ export async function getWeeklyActivity(userId: string): Promise<boolean[]> {
       const checkDate = new Date(today);
       // Calculate offset from Monday
       checkDate.setDate(today.getDate() - daysSinceMonday + i);
-      const dateStr = checkDate.toISOString().split("T")[0];
+      const dateStr = getLocalDateString(checkDate);
 
       // Check if this date has all requirements
       const { data: overall } = await supabase
@@ -365,7 +396,7 @@ export async function getWeeklyActivity(userId: string): Promise<boolean[]> {
         journal && journal.length > 0 &&
         checkin && checkin.length > 0;
 
-      weeklyData.push(isCompleted);
+      weeklyData.push(!!isCompleted);
     }
 
     return weeklyData;

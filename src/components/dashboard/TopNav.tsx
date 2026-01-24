@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   LayoutDashboard,
+  Activity,
   Calendar,
   Dumbbell,
   BarChart3,
@@ -21,7 +22,6 @@ import { useTheme } from "@/contexts/ThemeContext";
 
 // CHANGE: DEV flag (temporary, for UI work)
 const DEV_MODE = false;
-
 
 export function TopNav() {
   const pathname = usePathname();
@@ -40,11 +40,11 @@ export function TopNav() {
 
   const navItems = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-    { href: "/calendar", icon: Calendar, label: "Calendar" },
-    { href: "/exercise", icon: Dumbbell, label: "Exercise" },
+    // { href: "/calendar", icon: Calendar, label: "Calendar" },
+    // { href: "/exercise", icon: Dumbbell, label: "Exercise" },
     { href: "/analytics", icon: BarChart3, label: "Analytics" },
     { href: "/leaderboard", icon: Trophy, label: "Leaderboard" },
-    { href: "/settings", icon: Settings, label: "Settings" },
+    // { href: "/settings", icon: Settings, label: "Settings" },
   ];
 
   const handleSignOut = async () => {
@@ -52,6 +52,12 @@ export function TopNav() {
 
     await supabase.auth.signOut();
     router.push("/sign-in");
+  };
+
+  const handleConnectFitbit = () => {
+    // Start the Fitbit OAuth flow:
+    // This hits /api/fitbit/connect, which redirects to Fitbit
+    window.location.href = "/api/fitbit/connect";
   };
 
   return (
@@ -87,6 +93,16 @@ export function TopNav() {
           );
         })}
 
+        {/* Connect Fitbit button (desktop) */}
+        <button
+          onClick={handleConnectFitbit}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition-all"
+          title="Connect Fitbit"
+        >
+          <Activity className="w-4 h-4" />
+          <span>Fitbit</span>
+        </button>
+
         {/* Theme toggle button */}
         <button
           onClick={toggleTheme}
@@ -95,6 +111,8 @@ export function TopNav() {
         >
           {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
+
+        
 
         {/* KEEP: Sign out (desktop) */}
         <button

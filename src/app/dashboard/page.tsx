@@ -49,6 +49,7 @@ function DashboardContent() {
   const [isLocked, setIsLocked] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [firstName, setFirstName] = useState<string>("there");
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [streak, setStreak] = useState(0);
   const [weeklyData, setWeeklyData] = useState<boolean[]>([false, false, false, false, false, false, false]);
   const [progress, setProgress] = useState<TodayProgress>({
@@ -64,6 +65,7 @@ function DashboardContent() {
   const [showWaterModal, setShowWaterModal] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showCoachModal, setShowCoachModal] = useState(false);
+  const [journalAutoFocus, setJournalAutoFocus] = useState(false);
   const [initialCoachMessage, setInitialCoachMessage] = useState<string>("");
   const actionScreenRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
@@ -77,6 +79,26 @@ function DashboardContent() {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    if (userId) {
+      loadDashboardData(userId, selectedDate);
+    }
+  }, [selectedDate, userId]);
+
+  // Reload data when page becomes visible (user returns to tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && userId) {
+        loadDashboardData(userId, selectedDate);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [userId, selectedDate]);
 
   const checkAuth = async () => {
 
@@ -103,20 +125,26 @@ function DashboardContent() {
     }
     setFirstName(name || "there");
 
-    await loadDashboardData(session.user.id);
+    await loadDashboardData(session.user.id, new Date());
   };
 
-  const loadDashboardData = async (userId: string) => {
+  const loadDashboardData = async (userId: string, date: Date) => {
     // Check if morning gate needed
-    const todayOverall = await getTodayOverall(userId);
+    // If it's before 5am, check for previous day's entry
+    // If it's after 5am, check for current day's entry
+    const now = new Date();
+    const currentHour = now.getHours();
+    const checkDate = currentHour < 5 ? new Date(now.getTime() - 24 * 60 * 60 * 1000) : now;
+    
+    const todayOverall = await getTodayOverall(userId, checkDate);
     setIsLocked(!todayOverall);
 
     // Load progress data
-    const mealsCount = await getTodayMealsCount(userId);
-    const waterLogged = await hasWaterLoggedToday(userId);
-    const checkInDone = await hasCheckInToday(userId);
+    const mealsCount = await getTodayMealsCount(userId, date);
+    const waterLogged = await hasWaterLoggedToday(userId, date);
+    const checkInDone = await hasCheckInToday(userId, date);
     const journalDone = await import("@/lib/db/journal-check").then((m) =>
-      m.hasJournaledToday(userId)
+      m.hasJournaledToday(userId, date)
     );
 
     setProgress({
@@ -127,15 +155,19 @@ function DashboardContent() {
       journalCompleted: journalDone,
     });
 
-    // Load streak data
-    const streakCount = await import("@/lib/db/dashboard").then((m) =>
-      m.getStreakData(userId)
-    );
-    setStreak(streakCount);
+    // Load streak data - always based on current date, not selectedDate
+    // Only load if we're looking at today (to avoid unnecessary API calls)
+    const isToday = date.toDateString() === new Date().toDateString();
+    if (isToday) {
+      const streakCount = await import("@/lib/db/dashboard").then((m) =>
+        m.getStreakData(userId)
+      );
+      setStreak(streakCount);
 
-    // Load weekly activity data
-    const weekly = await getWeeklyActivity(userId);
-    setWeeklyData(weekly);
+      // Load weekly activity data
+      const weekly = await getWeeklyActivity(userId);
+      setWeeklyData(weekly);
+    }
 
     setLoading(false);
   };
@@ -143,7 +175,8 @@ function DashboardContent() {
 
   const handleMorningGateSubmit = async (score: number) => {
     console.log("Submitting overall score:", { userId, score });
-    const success = await submitDailyOverall(userId, score);
+    // Submit for the current date (after 5am, this is today; before 5am, user shouldn't see gate)
+    const success = await submitDailyOverall(userId, score, new Date());
     console.log("Submit result:", success);
     if (success) {
       setIsLocked(false);
@@ -160,22 +193,22 @@ function DashboardContent() {
   ) => {
     
     console.log("handleMealSubmit called", { mealType, description });
-    const success = await logMeal(userId, mealType, description, photoUrl);
+    const success = await logMeal(userId, mealType, description, photoUrl, selectedDate);
     console.log("logMeal returned:", success);
     if (success) {
       setProgress((prev) => ({ ...prev, mealLogged: true }));
       // Reload progress to reflect the new meal count
-      await loadDashboardData(userId);
+      await loadDashboardData(userId, selectedDate);
     }
   };
 
   const handleWaterSubmit = async (amountMl: number, source: string) => {
     console.log("handleWaterSubmit called", { amountMl, source });
-    const success = await logWater(userId, amountMl, source);
+    const success = await logWater(userId, amountMl, source, selectedDate);
     console.log("logWater returned:", success);
     if (success) {
       setProgress((prev) => ({ ...prev, waterLogged: true }));
-      await loadDashboardData(userId);
+      await loadDashboardData(userId, selectedDate);
     }
   };
 
@@ -205,12 +238,13 @@ function DashboardContent() {
       data.social,
       data.mood,
       data.moodStability,
-      data.emotions
+      data.emotions,
+      selectedDate
     );
     console.log("submitDailyCheckIn returned:", success);
     if (success) {
       setProgress((prev) => ({ ...prev, checkInCompleted: true }));
-      await loadDashboardData(userId);
+      await loadDashboardData(userId, selectedDate);
     }
   };
 
@@ -345,12 +379,15 @@ function DashboardContent() {
             {/* KEEP: real ProgressList with routing/modals */}
             <ProgressList
               progress={progress}
+              currentDate={selectedDate}
+              onDateChange={setSelectedDate}
               onAction={(action) => {
                 if (action === "meal") setShowMealModal(true);
                 if (action === "water") setShowWaterModal(true);
                 if (action === "checkin") setShowCheckInModal(true);
                 if (action === "journal") {
-                  //to do
+                  setJournalAutoFocus(true);
+                  setTimeout(() => setJournalAutoFocus(false), 100);
                 }
               }}
             />
@@ -360,7 +397,7 @@ function DashboardContent() {
           {/* RIGHT: JOURNAL */}
           {/* =================================================== */}
           <div className="flex-1 dark:bg-black light:bg-white dark:text-white light:text-slate-900 rounded-xl p-6 light:border light:border-gray-200 light:shadow-md">
-            <JournalChat />
+            <JournalChat autoFocus={journalAutoFocus} />
           </div>
           
         </div>
@@ -382,7 +419,8 @@ function DashboardContent() {
           if (action === "water") setShowWaterModal(true);
           if (action === "checkin") setShowCheckInModal(true);
           if (action === "journal") {
-                  //to do
+            setJournalAutoFocus(true);
+            setTimeout(() => setJournalAutoFocus(false), 100);
           }
         }}
       />

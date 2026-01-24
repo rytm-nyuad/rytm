@@ -2,11 +2,56 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 export default function ConsentPage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      // Not logged in, redirect to sign-in
+      router.push("/sign-in");
+      return;
+    }
+
+    // Check if user has already signed consent
+    const { data: existingSignature } = await supabase
+      .from("consent_signatures")
+      .select("id")
+      .eq("user_id", session.user.id)
+      .single();
+
+    if (existingSignature) {
+      // Already signed, redirect to dashboard
+      router.push("/dashboard");
+      return;
+    }
+
+    setLoading(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white">

@@ -32,20 +32,22 @@ export async function POST(req: NextRequest) {
 
     const userId = user.id;
 
-    // Close current active thread if exists
+    // Close current active GUIDED thread if exists
     await supabase
       .from("journal_threads")
       .update({ status: "closed" })
       .eq("user_id", userId)
-      .eq("status", "active");
+      .eq("status", "active")
+      .eq("journal_type", "guided");
 
-    // Create new thread
+    // Create new guided thread
     const { data: newThread, error: createError } = await supabase
       .from("journal_threads")
       .insert({
         user_id: userId,
-        title: `Journal ${new Date().toLocaleDateString()}`,
+        title: `Guided Session`,
         status: "active",
+        journal_type: "guided",
       })
       .select()
       .single();

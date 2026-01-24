@@ -45,37 +45,21 @@ export class JournalDatabaseTool {
    */
   static async getOrCreateThread(
     supabase: SupabaseClient,
-    userId: string
+    userId: string,
+    journalType: 'free' | 'guided' = 'guided'
   ): Promise<string | null> {
-    // Check for existing active thread
-    const { data: existingThread } = await supabase
-      .from("journal_threads")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("status", "active")
-      .single();
-
-    if (existingThread) {
-      return existingThread.id;
-    }
-
-    // Create new thread
-    const { data: newThread, error } = await supabase
-      .from("journal_threads")
-      .insert({
-        user_id: userId,
-        title: `Journal ${new Date().toLocaleDateString()}`,
-        status: "active",
-      })
-      .select()
-      .single();
+    // Use the RPC function to get or create thread with proper type isolation
+    const { data: threadId, error } = await supabase.rpc('get_or_create_active_thread', {
+      p_user_id: userId,
+      p_journal_type: journalType
+    });
 
     if (error) {
-      console.error("Error creating thread:", error);
+      console.error("Error getting/creating thread:", error);
       return null;
     }
 
-    return newThread.id;
+    return threadId;
   }
 
   /**

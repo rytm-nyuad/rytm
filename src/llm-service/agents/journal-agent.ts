@@ -113,10 +113,11 @@ export class JournalAgent {
     input: JournalAgentInput,
     context: AgentContext
   ): Promise<JournalAgentOutput> {
-    // Step 1: Get or create thread
+    // Step 1: Get or create thread for guided mode
     const threadId = await JournalDatabaseTool.getOrCreateThread(
       context.supabase,
-      context.userId
+      context.userId,
+      "guided"
     );
 
     if (!threadId) {
