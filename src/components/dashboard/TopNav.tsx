@@ -20,7 +20,7 @@ import {
 import { useTheme } from "@/contexts/ThemeContext";
 
 // CHANGE: DEV flag (temporary, for UI work)
-const DEV_MODE = true;
+const DEV_MODE = false;
 
 
 export function TopNav() {
@@ -55,11 +55,11 @@ export function TopNav() {
   };
 
   return (
-    <nav className="relative h-14 dark:bg-zinc-950 light:bg-cyan-600 dark:border-b dark:border-zinc-800 flex items-center px-4 sm:px-6">
+    <nav className="relative h-14 dark:bg-zinc-950 light:bg-gradient-to-r light:from-blue-600 light:to-blue-700 dark:border-b dark:border-zinc-800 light:border-none flex items-center px-4 sm:px-6 light:shadow-md">
       {/* ================================================= */}
       {/* LEFT: Brand */}
       {/* ================================================= */}
-      <div className="text-white font-bold text-lg tracking-wide">
+      <div className="dark:text-white light:text-white font-bold text-lg tracking-wide">
         RYTM
       </div>
 
@@ -77,8 +77,8 @@ export function TopNav() {
               href={item.href}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 isActive
-                  ? "bg-white text-black dark:text-black light:text-cyan-600"
-                  : "text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-white dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                  ? "dark:bg-white dark:text-black light:bg-white light:text-blue-600"
+                  : "dark:text-zinc-400 light:text-white/90 dark:hover:text-white light:hover:text-white dark:hover:bg-zinc-900 light:hover:bg-blue-500"
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -90,7 +90,7 @@ export function TopNav() {
         {/* Theme toggle button */}
         <button
           onClick={toggleTheme}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-white dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition-all ml-2"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium dark:text-zinc-400 light:text-white/90 dark:hover:text-white light:hover:text-white dark:hover:bg-zinc-900 light:hover:bg-blue-500 transition-all ml-2"
           aria-label="Toggle theme"
         >
           {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

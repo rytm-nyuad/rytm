@@ -18,7 +18,7 @@ export function WeeklyStreak({ weeklyData, streak }: WeeklyStreakProps) {
                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
                   isCompleted
                     ? 'dark:bg-green-600 light:bg-green-500 text-white'
-                    : 'dark:bg-zinc-800 light:bg-cyan-400/30 dark:text-zinc-600 light:text-cyan-300'
+                    : 'dark:bg-zinc-800 light:bg-white light:border light:border-gray-200 dark:text-zinc-600 light:text-gray-400'
                 }`}
               >
                 {isCompleted && (
@@ -37,7 +37,7 @@ export function WeeklyStreak({ weeklyData, streak }: WeeklyStreakProps) {
                   </svg>
                 )}
               </div>
-              <span className="text-[9px] font-medium dark:text-zinc-600 light:text-cyan-200">
+              <span className="text-[9px] font-medium dark:text-zinc-600 light:text-slate-500">
                 {day}
               </span>
             </div>
@@ -45,11 +45,11 @@ export function WeeklyStreak({ weeklyData, streak }: WeeklyStreakProps) {
         })}
       </div>
 
-      {/* Current Streak */}
-      <div className="flex items-center justify-center gap-2 dark:text-zinc-400 light:text-white">
-        <span className="text-base">⚡</span>
-        <span className="text-xs font-medium">Current Streak</span>
-        <span className="text-xs font-bold">{streak} days</span>
+      {/* Motivational Text */}
+      <div className="flex flex-col items-center justify-center gap-1">
+        <p className="text-xs font-medium dark:text-zinc-400 light:text-slate-700">
+          One good day builds momentum
+        </p>
       </div>
     </div>
   );

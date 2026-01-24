@@ -76,12 +76,14 @@ export async function getCoachMessages(conversationId: string): Promise<CoachMes
 export async function addCoachMessage(
   conversationId: string,
   role: "user" | "assistant",
-  content: string
+  content: string,
+  userId: string
 ): Promise<boolean> {
   const { error } = await supabase
     .from("coach_messages")
     .insert({
       thread_id: conversationId,
+      user_id: userId,
       role,
       content,
     });

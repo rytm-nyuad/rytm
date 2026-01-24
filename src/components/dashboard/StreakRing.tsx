@@ -77,7 +77,7 @@ export function StreakRing({
               const staticHeight =
               base + Math.abs(Math.sin(i * 0.6)) * (maxBarHeight - base);
 
-            const isComplete = tasksCompleted === totalTasks;
+            const isComplete = tasksCompleted === totalTasks && totalTasks > 0;
 
             const animatedHeight =
               base +
@@ -89,9 +89,9 @@ export function StreakRing({
                 <div
                   key={`left-${i}`}
                   className={`w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
-                    tasksCompleted === totalTasks
+                    isComplete
                       ? "bg-gradient-to-t from-blue-400 via-green-400 to-yellow-300"
-                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:border light:border-purple-300 light:opacity-60"
+                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:bg-gray-400"
                   }`}
                   style={{ height }}
                 />
@@ -112,7 +112,7 @@ export function StreakRing({
               const staticHeight =
               base + Math.abs(Math.sin(i * 0.6)) * (maxBarHeight - base);
 
-              const isComplete = tasksCompleted === totalTasks;
+              const isComplete = tasksCompleted === totalTasks && totalTasks > 0;
 
               const animatedHeight =
                 base +
@@ -124,9 +124,9 @@ export function StreakRing({
                 <div
                   key={`right-${i}`}
                   className={`w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
-                    tasksCompleted === totalTasks
+                    isComplete
                       ? "bg-gradient-to-t from-blue-400 via-green-400 to-yellow-300"
-                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:border light:border-purple-300 light:opacity-60"
+                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:bg-gray-400"
                   }`}
                   style={{ height }}
                 />
@@ -140,16 +140,19 @@ export function StreakRing({
          KEEP: STREAK RING
       ========================== */}
       <div className="relative z-10">
+        {/* Add gradient glow for light mode hero element */}
+        <div className="absolute inset-0 light:bg-gradient-to-br light:from-blue-500/10 light:via-purple-500/10 light:to-blue-500/10 light:blur-3xl light:rounded-full" />
+        
         <svg
           width={size}
           height={size}
-          className="transform -rotate-90 mb-2"
+          className="transform -rotate-90 mb-2 relative z-10"
         >
           <circle
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            className="dark:stroke-zinc-800 light:stroke-cyan-300"
+            className="dark:stroke-zinc-800 light:stroke-gray-200"
             strokeWidth={strokeWidth}
             fill="none"
           />
@@ -157,35 +160,35 @@ export function StreakRing({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            className="dark:stroke-white light:stroke-white transition-all duration-1000 ease-out"
+            className="transition-all duration-1000 ease-out"
+            stroke="url(#streakGradient)"
             strokeWidth={strokeWidth}
             fill="none"
             strokeDasharray={circumference}
             strokeDashoffset={animated ? offset : circumference}
             strokeLinecap="round"
           />
+          {/* Define gradient for streak progress */}
+          <defs>
+            <linearGradient id="streakGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" className="dark:[stop-color:white] light:[stop-color:#3b82f6]" />
+              <stop offset="50%" className="dark:[stop-color:white] light:[stop-color:#8b5cf6]" />
+              <stop offset="100%" className="dark:[stop-color:white] light:[stop-color:#3b82f6]" />
+            </linearGradient>
+          </defs>
         </svg>
 
         <div
-          className="absolute top-0 flex flex-col items-center justify-center"
+          className="absolute top-0 flex flex-col items-center justify-center z-20"
           style={{ height: size, width: size }}
         >
-          <div className="text-4xl font-bold text-white">{streak}</div>
-          <div className="text-xs font-medium dark:text-zinc-500 light:text-cyan-100">days</div>
+          <div className="text-4xl font-bold dark:text-white light:text-slate-900">{streak}</div>
+          <div className="text-xs font-medium dark:text-zinc-500 light:text-slate-600">days</div>
         </div>
       </div>
 
       {/* KEEP */}
-      <p className="mt-2 text-xs dark:text-zinc-500 light:text-cyan-100">Keep your rytm alive.</p>
-
-      {/* KEEP */}
-      {showNudge && (
-        <div className="mt-4 px-2.5 py-1 dark:bg-zinc-800 dark:border-zinc-700 light:bg-cyan-400 light:border-cyan-300 border rounded-full">
-          <p className="text-[10px] dark:text-zinc-400 light:text-white">
-            {tasksRemaining} away
-          </p>
-        </div>
-      )}
+      <p className="mt-2 text-xs dark:text-zinc-500 light:text-slate-600">Keep your rytm alive.</p>
     </div>
   );
 }

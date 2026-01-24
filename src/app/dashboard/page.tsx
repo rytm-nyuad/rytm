@@ -179,27 +179,33 @@ function DashboardContent() {
     }
   };
 
-  const handleCheckInSubmit = async (
-    mood: number,
-    stress: number,
-    energy: number,
-    focus: number,
-    workload: number,
-    sleepRestfulness: number,
-    socialConnectedness: number,
-    emotions: string[]
-  ) => {
+  const handleCheckInSubmit = async (data: {
+    sleepQuality: number;
+    energy: number;
+    focus: number;
+    workload: number;
+    copingCapacity: number;
+    stress: number;
+    stressUnexpected: number;
+    social: number;
+    mood: number;
+    moodStability: number;
+    emotions: string[];
+  }) => {
     console.log("handleCheckInSubmit called");
     const success = await submitDailyCheckIn(
       userId,
-      mood,
-      stress,
-      energy,
-      focus,
-      workload,
-      sleepRestfulness,
-      socialConnectedness,
-      emotions
+      data.sleepQuality,
+      data.energy,
+      data.focus,
+      data.workload,
+      data.copingCapacity,
+      data.stress,
+      data.stressUnexpected,
+      data.social,
+      data.mood,
+      data.moodStability,
+      data.emotions
     );
     console.log("submitDailyCheckIn returned:", success);
     if (success) {
@@ -231,7 +237,12 @@ function DashboardContent() {
       {/* ======================================================= */}
       {/* SCREEN 1 — ORIENTATION */}
       {/* ======================================================= */}
-      <section className="h-screen dark:bg-gradient-to-b dark:from-black dark:via-zinc-950 dark:to-black light:bg-gradient-to-b light:from-cyan-500 light:via-cyan-500 light:to-cyan-600 text-white scroll-snap-start relative overflow-hidden">
+      <section 
+        className="h-screen dark:text-white light:text-slate-900 scroll-snap-start relative overflow-hidden"
+        style={{ 
+          background: 'var(--screen-bg-gradient, #F5F9FF)'
+        }}
+      >
         <DashboardBackground />
 
         <div className="relative z-10 h-full flex flex-col">
@@ -241,8 +252,8 @@ function DashboardContent() {
           {/* CONTENT */}
           <div className="flex-1 flex flex-col justify-center px-4 sm:px-6">
             {/* GREETING - top */}
-            <div className="absolute top-16 left-4 sm:left-6">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+            <div className="absolute top-20 left-4 sm:left-6">
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
                 Welcome Back, {firstName}.
               </h1>
             </div>
@@ -264,11 +275,11 @@ function DashboardContent() {
             </div>
 
             {/* BOTTOM SECTION - coach and tagline */}
-            <div className="absolute bottom-16 left-0 right-0 px-4 sm:px-6">
-              {/* ELITE COACH MESSAGE */}
+            <div className="absolute bottom-24 left-0 right-0 px-4 sm:px-6">
+              {/* RYTM COACH MESSAGE */}
               <div className="text-center mb-3">
-                <p className="text-xs font-medium dark:text-zinc-500 light:text-cyan-200/80 tracking-widest uppercase">
-                  Your Elite Coach
+                <p className="text-xs font-medium dark:text-zinc-500 light:text-slate-600 tracking-widest uppercase">
+                  RYTM Coach
                 </p>
               </div>
 
@@ -278,36 +289,40 @@ function DashboardContent() {
                   onSendMessage={(message) => {
                     setInitialCoachMessage(message);
                     setShowCoachModal(true);
-                  }} 
+                  }}
+                  onOpenChats={() => setShowCoachModal(true)}
                 />
-              </div>
-
-              {/* FOCUS - at bottom */}
-              <div className="text-center text-xs dark:text-zinc-600 light:text-cyan-200/60">
-                <TodaysFocus />
               </div>
             </div>
           </div>
 
           {showScrollArrow && (
-          <button
-            onClick={() =>
-              actionScreenRef.current?.scrollIntoView({ behavior: "smooth" })
-            }
-            className="
-              absolute
-              bottom-6
-              left-1/2
-              -translate-x-1/2
-              dark:text-zinc-400 light:text-cyan-200
-              dark:hover:text-white light:hover:text-white
-              transition
-            "
-            aria-label="Scroll down"
-          >
-            <div className="text-3xl animate-bounce">↓</div>
-          </button>
-        )}
+            <button
+              onClick={() => {
+                const element = actionScreenRef.current;
+                if (element) {
+                  element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+              className="
+                absolute
+                bottom-6
+                left-1/2
+                -translate-x-1/2
+                flex flex-col items-center gap-2
+                dark:text-zinc-400 light:text-slate-600
+                dark:hover:text-white light:hover:text-purple-600
+                transition-all duration-300
+                group
+                cursor-pointer
+              "
+              style={{ zIndex: 100 }}
+              aria-label="Start Logging"
+            >
+              <div className="text-sm font-semibold tracking-wide uppercase opacity-80 group-hover:opacity-100">Start Logging</div>
+              <div className="text-3xl animate-bounce">↓</div>
+            </button>
+          )}
 
         </div>
       </section>
@@ -315,13 +330,16 @@ function DashboardContent() {
       {/* ======================================================= */}
       {/* SCREEN 2 — ACTION */}
       {/* ======================================================= */}
-      <section className="h-screen dark:bg-white light:bg-cyan-500 scroll-snap-start">
+      <section 
+        ref={actionScreenRef} 
+        className="h-screen dark:bg-white light:bg-[#F5F9FF] scroll-snap-start"
+      >
         <div className="h-full px-6 py-8 flex gap-6 max-w-7xl mx-auto
                         flex-col md:flex-row">
           {/* =================================================== */}
           {/* LEFT: CHECKLIST */}
           {/* =================================================== */}
-          <div className="md:w-[360px] dark:bg-black light:bg-cyan-600 dark:text-white light:text-white rounded-xl p-6">
+          <div className="md:w-[360px] dark:bg-black light:bg-white dark:text-white light:text-slate-900 rounded-xl p-6 light:border light:border-gray-200 light:shadow-md">
             <h2 className="font-semibold mb-4">Today’s Checklist</h2>
 
             {/* KEEP: real ProgressList with routing/modals */}
@@ -341,7 +359,7 @@ function DashboardContent() {
           {/* =================================================== */}
           {/* RIGHT: JOURNAL */}
           {/* =================================================== */}
-          <div className="flex-1 dark:bg-black light:bg-cyan-600 dark:text-white light:text-white rounded-xl p-6">
+          <div className="flex-1 dark:bg-black light:bg-white dark:text-white light:text-slate-900 rounded-xl p-6 light:border light:border-gray-200 light:shadow-md">
             <JournalChat />
           </div>
           
