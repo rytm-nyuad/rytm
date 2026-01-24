@@ -150,7 +150,7 @@ export async function hasCheckInToday(userId: string): Promise<boolean> {
   
   const { data, error } = await supabase
     .from("daily_checkins")
-    .select("id")
+    .select("sleep_quality, energy_score, focus_score, workload_score, coping_capacity_score, stress_score, stress_unexpected_score, social_score, mood_score, mood_stability_score, mood_emotions")
     .eq("user_id", userId)
     .gte("created_at", `${today}T00:00:00`)
     .lt("created_at", `${today}T23:59:59`)
@@ -161,33 +161,59 @@ export async function hasCheckInToday(userId: string): Promise<boolean> {
     return false;
   }
 
-  return data && data.length > 0;
+  if (!data || data.length === 0) {
+    return false;
+  }
+
+  const checkin = data[0];
+
+  // Check if all required fields are filled
+  return !!
+    (checkin &&
+    checkin.sleep_quality !== null &&
+    checkin.energy_score !== null &&
+    checkin.focus_score !== null &&
+    checkin.workload_score !== null &&
+    checkin.coping_capacity_score !== null &&
+    checkin.stress_score !== null &&
+    checkin.stress_unexpected_score !== null &&
+    checkin.social_score !== null &&
+    checkin.mood_score !== null &&
+    checkin.mood_stability_score !== null &&
+    checkin.mood_emotions &&
+    checkin.mood_emotions.length > 0);
 }
 
 // Submit daily check-in
 export async function submitDailyCheckIn(
   userId: string,
-  mood: number,
-  stress: number,
+  sleepQuality: number,
   energy: number,
   focus: number,
   workload: number,
-  sleepRestfulness: number,
-  socialConnectedness: number,
+  copingCapacity: number,
+  stress: number,
+  stressUnexpected: number,
+  social: number,
+  mood: number,
+  moodStability: number,
   emotions: string[]
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from("daily_checkins")
     .insert({
       user_id: userId,
-      mood,
-      stress,
-      energy,
-      focus,
-      workload,
-      sleep_restfulness: sleepRestfulness,
-      social_connectedness: socialConnectedness,
-      emotions,
+      sleep_quality: sleepQuality,
+      energy_score: energy,
+      focus_score: focus,
+      workload_score: workload,
+      coping_capacity_score: copingCapacity,
+      stress_score: stress,
+      stress_unexpected_score: stressUnexpected,
+      social_score: social,
+      mood_score: mood,
+      mood_stability_score: moodStability,
+      mood_emotions: emotions,
     })
     .select();
 
@@ -250,7 +276,16 @@ export async function getStreakData(userId: string): Promise<number> {
         .lt("created_at", `${checkDate}T23:59:59`)
         .limit(1);
 
-      if (hasOverall && meals && meals.length > 0 && water && water.length > 0 && journal && journal.length > 0) {
+      // Check daily check-in (10 VAS questions)
+      const { data: checkin } = await supabase
+        .from("daily_checkins")
+        .select("id")
+        .eq("user_id", userId)
+        .gte("created_at", `${checkDate}T00:00:00`)
+        .lt("created_at", `${checkDate}T23:59:59`)
+        .limit(1);
+
+      if (hasOverall && meals && meals.length > 0 && water && water.length > 0 && journal && journal.length > 0 && checkin && checkin.length > 0) {
         streak++;
         currentDate.setDate(currentDate.getDate() - 1);
       } else {
@@ -269,12 +304,18 @@ export async function getStreakData(userId: string): Promise<number> {
 export async function getWeeklyActivity(userId: string): Promise<boolean[]> {
   try {
     const today = new Date();
+    const currentDay = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    
+    // Calculate days since Monday (convert Sunday from 0 to 7 for calculation)
+    const daysSinceMonday = currentDay === 0 ? 6 : currentDay - 1;
+    
     const weeklyData: boolean[] = [];
 
-    // Get last 7 days (starting from today going back)
-    for (let i = 6; i >= 0; i--) {
+    // Get data for the current week (Monday to Sunday)
+    for (let i = 0; i < 7; i++) {
       const checkDate = new Date(today);
-      checkDate.setDate(today.getDate() - i);
+      // Calculate offset from Monday
+      checkDate.setDate(today.getDate() - daysSinceMonday + i);
       const dateStr = checkDate.toISOString().split("T")[0];
 
       // Check if this date has all requirements
@@ -309,11 +350,20 @@ export async function getWeeklyActivity(userId: string): Promise<boolean[]> {
         .lt("created_at", `${dateStr}T23:59:59`)
         .limit(1);
 
+      const { data: checkin } = await supabase
+        .from("daily_checkins")
+        .select("id")
+        .eq("user_id", userId)
+        .gte("created_at", `${dateStr}T00:00:00`)
+        .lt("created_at", `${dateStr}T23:59:59`)
+        .limit(1);
+
       const isCompleted = 
         overall && overall.length > 0 &&
         meals && meals.length > 0 &&
         water && water.length > 0 &&
-        journal && journal.length > 0;
+        journal && journal.length > 0 &&
+        checkin && checkin.length > 0;
 
       weeklyData.push(isCompleted);
     }

@@ -5,6 +5,13 @@
 :root {
   --background: #ffffff;
   --foreground: #000000;
+  --screen-bg: #F5F9FF;
+  --screen-bg-gradient: #F5F9FF;
+}
+
+.dark {
+  --screen-bg: #000000;
+  --screen-bg-gradient: linear-gradient(to bottom, #000000 0%, #09090b 50%, #000000 100%);
 }
 
 body {
