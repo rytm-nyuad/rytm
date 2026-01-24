@@ -3,15 +3,17 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS first_name TEXT,
   ADD COLUMN IF NOT EXISTS last_name TEXT,
   ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user',
+  ADD COLUMN IF NOT EXISTS email TEXT,
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
 -- Create a trigger to automatically create profile when user signs up
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.profiles (user_id, first_name, last_name, full_name, role, created_at, updated_at)
+  INSERT INTO public.profiles (user_id, email, first_name, last_name, full_name, role, created_at, updated_at)
   VALUES (
     new.id,
+    new.email,
     COALESCE(new.raw_user_meta_data->>'first_name', ''),
     COALESCE(new.raw_user_meta_data->>'last_name', ''),
     COALESCE(
