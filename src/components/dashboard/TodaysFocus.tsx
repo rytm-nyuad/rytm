@@ -1,5 +1,16 @@
 "use client";
 
-export function TodaysFocus() {
-  return <p>Every day is a fresh start</p>;
+interface TodaysFocusProps {
+  streak: number;
+}
+
+export function TodaysFocus({ streak }: TodaysFocusProps) {
+  return (
+    <div>
+      <p>Let's build momentum</p>
+      {streak === 0 && (
+        <p className="mt-1 text-xs">Your streak begins now.</p>
+      )}
+    </div>
+  );
 }
