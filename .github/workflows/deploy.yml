@@ -2,8 +2,7 @@ name: CD
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -15,23 +14,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-            - name: Deploy to DigitalOcean Droplet (raw ssh, fixed key)
+      - name: Verify SSH key format (no leak)
+        shell: bash
         run: |
-          # Write key exactly (preserve multiline), and remove CRLF just in case
           printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key
           sed -i 's/\r$//' /tmp/deploy_key
           chmod 600 /tmp/deploy_key
-
-          # (Optional) confirm fingerprint inside runner
           ssh-keygen -lf /tmp/deploy_key
 
-          # Connect + deploy
+      - name: Deploy to DigitalOcean Droplet (raw ssh)
+        shell: bash
+        run: |
           ssh -o StrictHostKeyChecking=no \
               -o IdentitiesOnly=yes \
               -i /tmp/deploy_key \
-              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
+              "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" << EOF
             set -e
-            cd ~/rytm
+
+            cd /home/${{ secrets.SSH_USER }}
+            if [ ! -d "rytm" ]; then
+              echo "ERROR: /home/${{ secrets.SSH_USER }}/rytm does not exist. Clone it first."
+              exit 1
+            fi
+
+            cd rytm
             git pull origin main
 
             export NEXT_PUBLIC_SUPABASE_URL='${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}'
