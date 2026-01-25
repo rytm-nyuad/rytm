@@ -359,13 +359,13 @@ export async function getWeeklyActivity(userId: string): Promise<boolean[]> {
         .limit(1);
 
       const isCompleted = 
-        overall && overall.length > 0 &&
-        meals && meals.length > 0 &&
-        water && water.length > 0 &&
-        journal && journal.length > 0 &&
-        checkin && checkin.length > 0;
+        (overall && overall.length > 0) &&
+        (meals && meals.length > 0) &&
+        (water && water.length > 0) &&
+        (journal && journal.length > 0) &&
+        (checkin && checkin.length > 0);
 
-      weeklyData.push(isCompleted);
+      weeklyData.push(isCompleted ?? false);
     }
 
     return weeklyData;
