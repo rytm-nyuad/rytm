@@ -15,12 +15,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify SSH key format (no leak)
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          ssh-keygen -lf /tmp/deploy_key
+
       - name: Deploy to DigitalOcean Droplet
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          port: ${{ secrets.SSH_PORT }}
+          port: 22
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/rytm
