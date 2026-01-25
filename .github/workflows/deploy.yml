@@ -14,23 +14,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify SSH key format (no leak)
-        shell: bash
-        run: |
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key
-          sed -i 's/\r$//' /tmp/deploy_key
-          chmod 600 /tmp/deploy_key
-          ssh-keygen -lf /tmp/deploy_key
+      - name: Deploy to DigitalOcean Droplet
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/rytm
+            git pull origin main
 
-      - name: Deploy debug (raw ssh)
-        shell: bash
-        run: |
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key
-          sed -i 's/\r$//' /tmp/deploy_key
-          chmod 600 /tmp/deploy_key
-          ssh-keygen -lf /tmp/deploy_key
+            # Export environment variables for docker compose
+            export NEXT_PUBLIC_SUPABASE_URL='${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}'
+            export NEXT_PUBLIC_SUPABASE_ANON_KEY='${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}'
+            export SUPABASE_SERVICE_ROLE_KEY='${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}'
+            export OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}'
+            export NEXTAUTH_SECRET='${{ secrets.NEXTAUTH_SECRET }}'
+            export NEXTAUTH_URL='${{ secrets.NEXTAUTH_URL }}'
+            export NODE_ENV='production'
 
-          ssh -vvv -o StrictHostKeyChecking=no \
-              -o IdentitiesOnly=yes \
-              -i /tmp/deploy_key \
-              deploy@138.197.2.64 "whoami && hostname"
+            # Build & deploy with docker compose
+            docker compose -f docker-compose.prod.yml pull app || true
+            docker compose -f docker-compose.prod.yml build app
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
