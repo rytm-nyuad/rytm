@@ -21,14 +21,16 @@ jobs:
           chmod 600 /tmp/deploy_key
           ssh-keygen -lf /tmp/deploy_key
 
-      - name: Deploy to DigitalOcean Droplet
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          port: 22
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
+      - name: Deploy to DigitalOcean Droplet (raw ssh)
+        run: |
+          # Write the private key to a file
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > key.pem
+          chmod 600 key.pem
+
+          # Connect and deploy
+          ssh -o StrictHostKeyChecking=no -i key.pem ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            set -e
+
             cd ~/rytm
             git pull origin main
 
@@ -45,3 +47,4 @@ jobs:
             docker compose -f docker-compose.prod.yml pull app || true
             docker compose -f docker-compose.prod.yml build app
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
+          EOF
