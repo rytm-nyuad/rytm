@@ -1,0 +1,41 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to DigitalOcean Droplet
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/rytm
+            git pull origin main
+
+            # Export environment variables for docker compose
+            export NEXT_PUBLIC_SUPABASE_URL='${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}'
+            export NEXT_PUBLIC_SUPABASE_ANON_KEY='${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}'
+            export SUPABASE_SERVICE_ROLE_KEY='${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}'
+            export OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}'
+            export NEXTAUTH_SECRET='${{ secrets.NEXTAUTH_SECRET }}'
+            export NEXTAUTH_URL='${{ secrets.NEXTAUTH_URL }}'
+            export NODE_ENV='production'
+
+            # Build & deploy with docker compose
+            docker compose -f docker-compose.prod.yml pull app || true
+            docker compose -f docker-compose.prod.yml build app
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
