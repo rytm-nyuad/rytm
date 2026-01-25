@@ -22,33 +22,15 @@ jobs:
           chmod 600 /tmp/deploy_key
           ssh-keygen -lf /tmp/deploy_key
 
-      - name: Deploy to DigitalOcean Droplet (raw ssh)
+      - name: Deploy debug (raw ssh)
         shell: bash
         run: |
-          ssh -o StrictHostKeyChecking=no \
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key
+          sed -i 's/\r$//' /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          ssh-keygen -lf /tmp/deploy_key
+
+          ssh -vvv -o StrictHostKeyChecking=no \
               -o IdentitiesOnly=yes \
               -i /tmp/deploy_key \
-              "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" << EOF
-            set -e
-
-            cd /home/${{ secrets.SSH_USER }}
-            if [ ! -d "rytm" ]; then
-              echo "ERROR: /home/${{ secrets.SSH_USER }}/rytm does not exist. Clone it first."
-              exit 1
-            fi
-
-            cd rytm
-            git pull origin main
-
-            export NEXT_PUBLIC_SUPABASE_URL='${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}'
-            export NEXT_PUBLIC_SUPABASE_ANON_KEY='${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}'
-            export SUPABASE_SERVICE_ROLE_KEY='${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}'
-            export OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}'
-            export NEXTAUTH_SECRET='${{ secrets.NEXTAUTH_SECRET }}'
-            export NEXTAUTH_URL='${{ secrets.NEXTAUTH_URL }}'
-            export NODE_ENV='production'
-
-            docker compose -f docker-compose.prod.yml pull app || true
-            docker compose -f docker-compose.prod.yml build app
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-          EOF
+              deploy@138.197.2.64 "whoami && hostname"
