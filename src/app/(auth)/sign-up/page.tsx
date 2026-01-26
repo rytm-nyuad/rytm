@@ -35,6 +35,7 @@ export default function SignUpPage() {
           last_name: lastName,
           role: "user",
         },
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     });
 
@@ -49,8 +50,17 @@ export default function SignUpPage() {
         return;
       }
       
-      // New user successfully created
-      window.location.href = "/consent";
+      // Check if the user has a session (auto-confirmed)
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        // User is signed in, redirect to consent
+        window.location.href = "/consent";
+      } else {
+        // Email confirmation required
+        setError("Please check your email to confirm your account before signing in.");
+        setLoading(false);
+      }
     }
   };
 
