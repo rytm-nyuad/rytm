@@ -13,7 +13,7 @@ RUN npm ci
 COPY . .
 
 # Copy environment variables for build
-COPY .env.local .env.local
+#COPY .env.local .env.local
 
 # Build the Next.js app
 RUN npm run build
