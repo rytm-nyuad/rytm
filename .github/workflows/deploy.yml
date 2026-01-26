@@ -22,7 +22,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd ~/rytm/rytm
+            cd ~/rytm
             git pull origin main
 
             # Export environment variables for docker compose
