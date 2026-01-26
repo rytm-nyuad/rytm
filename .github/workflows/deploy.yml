@@ -36,5 +36,5 @@ jobs:
 
             # Build & deploy with docker compose
             docker compose -f docker-compose.prod.yml pull app || true
-            docker compose -f docker-compose.prod.yml build app
+            docker compose -f docker-compose-prod.yml build --build-arg NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY --build-arg NEXTAUTH_URL=$NEXTAUTH_URL app
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
