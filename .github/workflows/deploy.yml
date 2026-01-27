@@ -33,6 +33,10 @@ jobs:
             export NEXTAUTH_SECRET='${{ secrets.NEXTAUTH_SECRET }}'
             export NEXTAUTH_URL='${{ secrets.NEXTAUTH_URL }}'
             export NODE_ENV='production'
+            export FITBIT_CLIENT_ID='${{ secrets.FITBIT_CLIENT_ID }}'
+            export FITBIT_CLIENT_SECRET='${{ secrets.FITBIT_CLIENT_SECRET }}'
+            export FITBIT_REDIRECT_URI='${{ secrets.FITBIT_REDIRECT_URI }}'
+
 
             # Build & deploy with docker compose
             docker compose -f docker-compose.prod.yml pull app || true
