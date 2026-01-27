@@ -15,6 +15,16 @@ if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
 }
 
 export async function GET(req: NextRequest) {
+  const CLIENT_ID = process.env.FITBIT_CLIENT_ID!;
+  const CLIENT_SECRET = process.env.FITBIT_CLIENT_SECRET!;
+  const REDIRECT_URI = process.env.FITBIT_REDIRECT_URI!;
+
+  if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
+    console.warn(
+      "[Fitbit] Missing FITBIT_CLIENT_ID / FITBIT_CLIENT_SECRET / FITBIT_REDIRECT_URI env vars."
+    );
+  }
+
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");

@@ -20,15 +20,6 @@ const FITBIT_SCOPES = [
   "weight",
 ];
 
-const CLIENT_ID = process.env.FITBIT_CLIENT_ID!;
-const REDIRECT_URI = process.env.FITBIT_REDIRECT_URI!;
-
-if (!CLIENT_ID || !REDIRECT_URI) {
-  console.warn(
-    "[Fitbit] Missing FITBIT_CLIENT_ID / FITBIT_REDIRECT_URI env vars."
-  );
-}
-
 // Helper to generate a random string (for state & PKCE code_verifier)
 function generateRandomString(length: number): string {
   return crypto.randomBytes(length).toString("hex");
@@ -50,6 +41,14 @@ function generateCodeChallenge(codeVerifier: string): string {
 }
 
 export async function GET(req: NextRequest) {
+  const CLIENT_ID = process.env.FITBIT_CLIENT_ID!;
+  const REDIRECT_URI = process.env.FITBIT_REDIRECT_URI!;
+
+  if (!CLIENT_ID || !REDIRECT_URI) {
+    console.warn(
+      "[Fitbit] Missing FITBIT_CLIENT_ID / FITBIT_REDIRECT_URI env vars."
+    );
+  }
   const supabase = await createClient();
 
   // 1) Ensure user is authenticated
