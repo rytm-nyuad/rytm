@@ -128,17 +128,7 @@ export default function ConsentPage() {
               </div>
 
               <div>
-                <h3 className="text-xl font-semibold mb-2 text-white">C) Weekly In-Person Session Data (Flexibility/Wellness)</h3>
-                <p className="text-zinc-300 mb-2">Collected during weekly sessions:</p>
-                <ul className="list-disc list-inside text-zinc-300 space-y-1 ml-4">
-                  <li>Simple flexibility and wellness assessments</li>
-                  <li>Video recordings of the assessments for analysis and scoring</li>
-                  <li>Notes recorded by the research team (e.g., test completion, basic observations)</li>
-                </ul>
-              </div>
-
-              <div>
-                <h3 className="text-xl font-semibold mb-2 text-white">D) Daily Self-Report Form Data (Mood / Overall State)</h3>
+                <h3 className="text-xl font-semibold mb-2 text-white">C) Daily Self-Report Form Data (Mood / Overall State)</h3>
                 <p className="text-zinc-300 mb-2">Collected via short daily check-ins, potentially including:</p>
                 <ul className="list-disc list-inside text-zinc-300 space-y-1 ml-4">
                   <li>Overall well-being rating (physical + mental + emotional + spiritual, as you interpret it)</li>
@@ -148,7 +138,7 @@ export default function ConsentPage() {
               </div>
 
               <div>
-                <h3 className="text-xl font-semibold mb-2 text-white">E) Journals & Written Reflections</h3>
+                <h3 className="text-xl font-semibold mb-2 text-white">D) Journals & Written Reflections</h3>
                 <p className="text-zinc-300 mb-2">If included in the study workflow, you may be asked to submit:</p>
                 <ul className="list-disc list-inside text-zinc-300 space-y-1 ml-4">
                   <li>Short daily or periodic journal entries</li>
@@ -158,7 +148,7 @@ export default function ConsentPage() {
               </div>
 
               <div>
-                <h3 className="text-xl font-semibold mb-2 text-white">F) Conversations / Chat-Based Check-ins</h3>
+                <h3 className="text-xl font-semibold mb-2 text-white">E) Conversations / Chat-Based Check-ins</h3>
                 <p className="text-zinc-300 mb-2">If included in the workflow, you may interact through:</p>
                 <ul className="list-disc list-inside text-zinc-300 space-y-1 ml-4">
                   <li>Short guided chat prompts (e.g., "How are you feeling today?")</li>
@@ -171,13 +161,16 @@ export default function ConsentPage() {
               </div>
 
               <div>
-                <h3 className="text-xl font-semibold mb-2 text-white">G) Basic Participant Information (Setup + Study Context)</h3>
+                <h3 className="text-xl font-semibold mb-2 text-white">F) Basic Participant Information (Setup + Study Context)</h3>
                 <p className="text-zinc-300 mb-2">To interpret the data, we may collect:</p>
                 <ul className="list-disc list-inside text-zinc-300 space-y-1 ml-4">
                   <li>Height, weight, age, sex (and other non-sensitive profile fields if needed)</li>
                 </ul>
               </div>
             </div>
+            <p className="text-zinc-300 leading-relaxed mt-4">
+              The above requirements are mandatory. Consistent compliance is expected for the integrity of the study. Participants who fail to meet these obligations (e.g., irregular device usage, missing food logs) will be withdrawn from the study, and the smartwatch will be collected by the research team.
+            </p>
           </section>
 
           <section>
@@ -191,11 +184,7 @@ export default function ConsentPage() {
               <li>Complete a daily nutrition log, documenting meals/snacks/drinks (written, photo, or both).</li>
               <li>Complete daily check-ins (e.g., mood/overall state) as requested.</li>
               <li>Submit journal entries and/or chat-style reflections if they are part of the protocol.</li>
-              <li>Attend weekly in-person sessions, which will be video recorded.</li>
             </ul>
-            <p className="text-zinc-300 leading-relaxed mt-4">
-              These tasks are essential for study integrity. Repeated non-compliance (missed logs, not wearing the device, repeated missed sessions) may result in removal from the study and collection of the device.
-            </p>
           </section>
 
           <section>
@@ -273,7 +262,6 @@ export default function ConsentPage() {
             <ul className="list-disc list-inside text-zinc-300 space-y-1 ml-4">
               <li>Mild skin irritation from wearing the Fitbit</li>
               <li>Minor inconvenience or fatigue due to daily logging</li>
-              <li>Mild physical discomfort during flexibility testing</li>
               <li>Discomfort from reflecting on mood or personal experiences in journals/chats</li>
             </ul>
             <p className="text-zinc-300 leading-relaxed mt-4">
@@ -312,7 +300,7 @@ export default function ConsentPage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-white">10. Questions / Contact Information</h2>
             <p className="text-zinc-300 leading-relaxed mb-4">
-              For questions, concerns, or withdrawal requests:
+              For questions or concerns regarding this study, please contact:
             </p>
             <div className="text-zinc-300 space-y-2 ml-4">
               <p>Ameena Zewail — <a href="mailto:aa9656@nyu.edu" className="text-purple-400 hover:text-purple-300">aa9656@nyu.edu</a></p>
