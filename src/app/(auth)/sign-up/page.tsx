@@ -54,11 +54,11 @@ export default function SignUpPage() {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session) {
-        // User is signed in, redirect to consent
+        // User is signed in and registered, redirect to consent form
         window.location.href = "/consent";
       } else {
-        // Email confirmation required
-        setError("Please check your email to confirm your account before signing in.");
+        // Email confirmation required - show message
+        setError("Please check your email to confirm your account. After confirming, sign in and you'll be directed to the consent form.");
         setLoading(false);
       }
     }

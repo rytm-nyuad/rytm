@@ -51,11 +51,11 @@ export function LogWaterModal({ isOpen, onClose, onSubmit }: LogWaterModalProps)
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
-      <div className="relative w-full max-w-lg dark:bg-zinc-900 light:bg-gradient-to-br light:from-blue-600 light:to-blue-700 dark:border dark:border-zinc-800 light:border-none rounded-xl shadow-2xl p-6">
+      <div className="relative w-full max-w-lg dark:bg-zinc-900 light:bg-gradient-to-b light:from-cyan-700 light:via-cyan-600 light:to-cyan-800 dark:border dark:border-zinc-800 light:border-none rounded-xl shadow-2xl p-6">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 dark:text-zinc-400 light:text-white/90 dark:hover:text-white light:hover:text-white transition-colors"
+          className="absolute top-4 right-4 dark:text-zinc-400 light:text-white dark:hover:text-white light:hover:text-white/80 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -76,7 +76,7 @@ export function LogWaterModal({ isOpen, onClose, onSubmit }: LogWaterModalProps)
             <select
               value={source}
               onChange={(e) => setSource(e.target.value)}
-              className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-white/20 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50"
+              className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50"
               disabled={submitting}
             >
               <option value="water">Water</option>
@@ -97,7 +97,7 @@ export function LogWaterModal({ isOpen, onClose, onSubmit }: LogWaterModalProps)
                 value={otherSource}
                 onChange={(e) => setOtherSource(e.target.value)}
                 placeholder="e.g., Smoothie, Sports drink..."
-                className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-white/20 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/70 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50"
+                className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/60 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50"
                 disabled={submitting}
               />
             </Field>
@@ -109,7 +109,7 @@ export function LogWaterModal({ isOpen, onClose, onSubmit }: LogWaterModalProps)
               <button
                 type="button"
                 onClick={() => setAmountMl(Math.max(0, amountMl - 100))}
-                className="flex flex-col items-center px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white hover:bg-zinc-700 transition-colors"
+                className="flex flex-col items-center px-3 py-2 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:hover:bg-zinc-700 light:hover:bg-blue-400/40 transition-colors"
                 disabled={submitting || amountMl <= 0}
               >
                 <span className="text-xl font-bold">−</span>
@@ -123,12 +123,12 @@ export function LogWaterModal({ isOpen, onClose, onSubmit }: LogWaterModalProps)
                   className="w-full text-center text-3xl font-bold dark:text-white light:text-white bg-transparent border-none focus:outline-none focus:ring-0"
                   disabled={submitting}
                 />
-                <span className="absolute right-1/4 top-1/2 -translate-y-1/2 text-sm dark:text-zinc-500 light:text-white/60 pointer-events-none">ml</span>
+                <span className="absolute right-1/4 top-1/2 -translate-y-1/2 text-sm dark:text-zinc-500 light:text-white/70 pointer-events-none">ml</span>
               </div>
               <button
                 type="button"
                 onClick={() => setAmountMl(amountMl + 100)}
-                className="flex flex-col items-center px-3 py-2 dark:bg-zinc-800 light:bg-white/20 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:hover:bg-zinc-700 light:hover:bg-white/30 transition-colors"
+                className="flex flex-col items-center px-3 py-2 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:hover:bg-zinc-700 light:hover:bg-blue-400/40 transition-colors"
                 disabled={submitting}
               >
                 <span className="text-xl font-bold">+</span>

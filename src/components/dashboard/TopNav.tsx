@@ -61,11 +61,11 @@ export function TopNav() {
   };
 
   return (
-    <nav className="relative h-14 dark:bg-zinc-950 light:bg-gradient-to-r light:from-blue-600 light:to-blue-700 dark:border-b dark:border-zinc-800 light:border-none flex items-center px-4 sm:px-6 light:shadow-md">
+    <nav className="relative h-14 dark:bg-zinc-950 light:bg-gradient-to-r light:from-cyan-600 light:to-cyan-700 dark:border-b dark:border-zinc-800 light:border-none flex items-center px-4 sm:px-6 dark:shadow-none light:shadow-none">
       {/* ================================================= */}
       {/* LEFT: Brand */}
       {/* ================================================= */}
-      <div className="dark:text-white light:text-white font-bold text-lg tracking-wide">
+      <div className="dark:text-white light:text-white font-bold text-lg tracking-wide z-10">
         RYTM
       </div>
 

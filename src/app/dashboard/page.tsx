@@ -111,6 +111,19 @@ function DashboardContent() {
       return;
     }
 
+    // Check if user has signed consent form
+    const { data: consentData } = await supabase
+      .from("consent_signatures")
+      .select("id")
+      .eq("user_id", session.user.id)
+      .maybeSingle(); // Use maybeSingle() to avoid error when no record
+
+    if (!consentData) {
+      // No consent signature found, redirect to consent page
+      router.push("/consent");
+      return;
+    }
+
     setUserId(session.user.id);
 
     // Get first name - prefer user_metadata, fallback to profiles
@@ -253,7 +266,7 @@ function DashboardContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black dark:bg-black light:bg-cyan-500 flex items-center justify-center">
+      <div className="min-h-screen bg-black dark:bg-black light:bg-gradient-to-br light:from-cyan-600 light:to-cyan-700 flex items-center justify-center">
         <div className="text-white">Loading...</div>
       </div>
     );
@@ -272,11 +285,14 @@ function DashboardContent() {
       {/* SCREEN 1 — ORIENTATION */}
       {/* ======================================================= */}
       <section 
-        className="h-screen dark:text-white light:text-slate-900 scroll-snap-start relative overflow-hidden"
-        style={{ 
-          background: 'var(--screen-bg-gradient, #F5F9FF)'
+        className="h-screen scroll-snap-start relative overflow-hidden"
+        style={{
+          background: 'var(--screen-bg-gradient)'
         }}
       >
+        {/* Cyan gradient header area for light mode only */}
+        <div className="absolute top-0 left-0 right-0 h-14 light:bg-gradient-to-r light:from-cyan-600 light:to-cyan-700 dark:hidden" />
+        
         <DashboardBackground />
 
         <div className="relative z-10 h-full flex flex-col">
@@ -284,41 +300,41 @@ function DashboardContent() {
           <TopNav />
 
           {/* CONTENT */}
-          <div className="flex-1 flex flex-col justify-center px-4 sm:px-6">
+          <div className="flex-1 flex flex-col justify-between py-6 px-4 sm:px-6">
             {/* GREETING - top */}
-            <div className="absolute top-20 left-4 sm:left-6">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            <div className="pt-4">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight dark:text-white light:text-cyan-700">
                 Welcome Back, {firstName}.
               </h1>
             </div>
 
-            {/* STREAK - dead center, slightly up */}
-            <div className="flex justify-center -mt-20">
-              <div className="scale-[1.0] sm:scale-[1.1] md:scale-[1.3]">
+            {/* STREAK - center */}
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 sm:gap-6 py-4">
+              <div className="scale-90 sm:scale-100 md:scale-110">
                 <StreakRing
                   streak={streak}
                   tasksCompleted={completedTasks}
                   totalTasks={totalTasks}
                 />
               </div>
-            </div>
-
-            {/* WEEKLY STREAK - separate below */}
-            <div className="mt-8">
-              <WeeklyStreak weeklyData={weeklyData} streak={streak} />
+              
+              {/* WEEKLY STREAK - integrated */}
+              <div className="w-full max-w-md px-4">
+                <WeeklyStreak weeklyData={weeklyData} streak={streak} />
+              </div>
             </div>
 
             {/* BOTTOM SECTION - coach and tagline */}
-            <div className="absolute bottom-24 left-0 right-0 px-4 sm:px-6">
+            <div className="pb-4">
               {/* RYTM COACH MESSAGE */}
               <div className="text-center mb-3">
-                <p className="text-xs font-medium dark:text-zinc-500 light:text-slate-600 tracking-widest uppercase">
+                <p className="text-xs sm:text-sm font-medium dark:text-zinc-500 light:text-slate-500 tracking-widest uppercase">
                   RYTM Coach
                 </p>
               </div>
 
               {/* COACH PROMPT BAR */}
-              <div className="flex justify-center mb-6">
+              <div className="flex justify-center">
                 <CoachPromptBar 
                   onSendMessage={(message) => {
                     setInitialCoachMessage(message);
@@ -327,36 +343,34 @@ function DashboardContent() {
                   onOpenChats={() => setShowCoachModal(true)}
                 />
               </div>
+              
+              {/* START LOGGING - positioned below coach bar */}
+              {showScrollArrow && (
+                <div className="flex justify-center mt-4 sm:mt-6">
+                  <button
+                    onClick={() => {
+                      const element = actionScreenRef.current;
+                      if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
+                    className="
+                      flex flex-col items-center gap-1 sm:gap-2
+                      dark:text-zinc-400 light:text-slate-600
+                      dark:hover:text-white light:hover:text-purple-600
+                      transition-all duration-300
+                      group
+                      cursor-pointer
+                    "
+                    aria-label="Start Logging"
+                  >
+                    <div className="text-xs sm:text-sm font-semibold tracking-wide uppercase opacity-80 group-hover:opacity-100">Start Logging</div>
+                    <div className="text-2xl sm:text-3xl animate-bounce">↓</div>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-
-          {showScrollArrow && (
-            <button
-              onClick={() => {
-                const element = actionScreenRef.current;
-                if (element) {
-                  element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }}
-              className="
-                absolute
-                bottom-6
-                left-1/2
-                -translate-x-1/2
-                flex flex-col items-center gap-2
-                dark:text-zinc-400 light:text-slate-600
-                dark:hover:text-white light:hover:text-purple-600
-                transition-all duration-300
-                group
-                cursor-pointer
-              "
-              style={{ zIndex: 100 }}
-              aria-label="Start Logging"
-            >
-              <div className="text-sm font-semibold tracking-wide uppercase opacity-80 group-hover:opacity-100">Start Logging</div>
-              <div className="text-3xl animate-bounce">↓</div>
-            </button>
-          )}
 
         </div>
       </section>
@@ -366,18 +380,19 @@ function DashboardContent() {
       {/* ======================================================= */}
       <section 
         ref={actionScreenRef} 
-        className="h-screen dark:bg-white light:bg-[#F5F9FF] scroll-snap-start"
+        className="h-screen dark:bg-white light:bg-cyan-600 scroll-snap-start"
       >
-        <div className="h-full px-6 py-8 flex gap-6 max-w-7xl mx-auto
-                        flex-col md:flex-row">
+        <div className="h-full px-4 sm:px-6 py-6 sm:py-8 flex gap-4 sm:gap-6 max-w-7xl mx-auto
+                        flex-col lg:flex-row">
           {/* =================================================== */}
           {/* LEFT: CHECKLIST */}
           {/* =================================================== */}
-          <div className="md:w-[360px] dark:bg-black light:bg-white dark:text-white light:text-slate-900 rounded-xl p-6 light:border light:border-gray-200 light:shadow-md">
-            <h2 className="font-semibold mb-4">Today’s Checklist</h2>
+          <div className="w-full lg:w-[360px] lg:flex-shrink-0 h-full dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col">
+            <h2 className="font-semibold mb-4">Today's Checklist</h2>
 
             {/* KEEP: real ProgressList with routing/modals */}
-            <ProgressList
+            <div className="flex-1 overflow-y-auto">
+              <ProgressList
               progress={progress}
               currentDate={selectedDate}
               onDateChange={setSelectedDate}
@@ -390,13 +405,14 @@ function DashboardContent() {
                   setTimeout(() => setJournalAutoFocus(false), 100);
                 }
               }}
-            />
+              />
+            </div>
           </div>
 
           {/* =================================================== */}
           {/* RIGHT: JOURNAL */}
           {/* =================================================== */}
-          <div className="flex-1 dark:bg-black light:bg-white dark:text-white light:text-slate-900 rounded-xl p-6 light:border light:border-gray-200 light:shadow-md">
+          <div className="w-full lg:flex-1 h-full dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col">
             <JournalChat autoFocus={journalAutoFocus} />
           </div>
           

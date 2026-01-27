@@ -335,18 +335,12 @@ export async function getStreakData(userId: string): Promise<number> {
 export async function getWeeklyActivity(userId: string): Promise<boolean[]> {
   try {
     const today = new Date();
-    const currentDay = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    
-    // Calculate days since Monday (convert Sunday from 0 to 7 for calculation)
-    const daysSinceMonday = currentDay === 0 ? 6 : currentDay - 1;
-    
     const weeklyData: boolean[] = [];
 
-    // Get data for the current week (Monday to Sunday)
-    for (let i = 0; i < 7; i++) {
+    // Get data for the last 7 days (6 days ago through today)
+    for (let i = 6; i >= 0; i--) {
       const checkDate = new Date(today);
-      // Calculate offset from Monday
-      checkDate.setDate(today.getDate() - daysSinceMonday + i);
+      checkDate.setDate(today.getDate() - i);
       const dateStr = getLocalDateString(checkDate);
 
       // Check if this date has all requirements

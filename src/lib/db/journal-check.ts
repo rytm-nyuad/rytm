@@ -24,13 +24,12 @@ export async function hasJournaledToday(userId: string, date?: Date): Promise<bo
     .eq("user_id", userId)
     .gte("created_at", `${dateStr}T00:00:00`)
     .lt("created_at", `${dateStr}T23:59:59`)
-    .limit(1)
-    .single();
+    .limit(1);
 
-  if (error && error.code !== "PGRST116") {
+  if (error) {
     console.error("Error checking journal:", error);
     return false;
   }
 
-  return !!data;
+  return data && data.length > 0;
 }

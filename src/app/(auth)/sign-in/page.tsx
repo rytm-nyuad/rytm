@@ -38,9 +38,13 @@ export default function SignInPage() {
         .from("consent_signatures")
         .select("id")
         .eq("user_id", data.user.id)
-        .single();
+        .maybeSingle(); // Use maybeSingle() to avoid error when no record
 
-      console.log("Consent check:", { consentData, consentError, userId: data.user.id });
+      console.log("Consent check:", { 
+        hasConsent: !!consentData, 
+        consentError: consentError?.message, 
+        userId: data.user.id 
+      });
 
       if (consentData) {
         window.location.href = "/dashboard";

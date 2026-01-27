@@ -26,8 +26,11 @@ export default function AnalyticsPage() {
             </h1>
             
             {/* Subtitle */}
-            <p className="text-lg dark:text-zinc-400 light:text-slate-600 mb-8">
+            <p className="text-lg dark:text-zinc-400 light:text-slate-600 mb-2">
               Deep insights into your wellness journey are on the way
+            </p>
+            <p className="text-sm dark:text-zinc-500 light:text-slate-500 mb-8">
+              Coming after baseline is defined.
             </p>
 
             {/* Feature Pills */}

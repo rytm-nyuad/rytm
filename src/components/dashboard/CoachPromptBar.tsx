@@ -27,11 +27,11 @@ export function CoachPromptBar({ onSendMessage, onOpenChats }: CoachPromptBarPro
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-6">
+    <div className="w-full max-w-3xl mx-auto px-2 sm:px-4">
       <div
         className="
           w-full
-          px-4 py-3
+          px-3 sm:px-4 py-2 sm:py-3
           rounded-full
           dark:bg-gradient-to-r dark:from-zinc-800/90 dark:via-zinc-800/95 dark:to-zinc-800/90
           light:bg-white
@@ -56,8 +56,8 @@ export function CoachPromptBar({ onSendMessage, onOpenChats }: CoachPromptBarPro
             dark:text-white light:text-slate-900
             dark:placeholder-zinc-400 light:placeholder-slate-400
             focus:outline-none
-            text-sm
-            px-2
+            text-xs sm:text-sm
+            px-1 sm:px-2
           "
         />
         <button
