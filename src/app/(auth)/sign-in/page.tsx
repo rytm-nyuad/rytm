@@ -96,7 +96,6 @@ export default function SignInPage() {
                     type="button"
                     onClick={handleGoogleLogin}
                     disabled={loading}
-                    className="text-zinc-900 border-zinc-300 hover:bg-zinc-50 hover:border-zinc-400"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5 mr-2">
                       <path

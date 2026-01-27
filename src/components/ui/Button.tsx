@@ -14,7 +14,7 @@ const Button = React.forwardRef<
         variant === "default" &&
           "dark:bg-purple-600 light:bg-white text-white light:text-blue-600 dark:hover:bg-purple-700 light:hover:bg-white/90 h-11 px-8 font-semibold",
         variant === "outline" &&
-          "border-2 dark:border-zinc-700 light:border-white/40 bg-transparent dark:text-white light:text-white dark:hover:bg-zinc-800 light:hover:bg-blue-400/20 dark:hover:border-zinc-600 light:hover:border-white/60 h-11 px-8",
+          "border-2 dark:border-zinc-700 light:border-zinc-300 bg-transparent dark:text-white light:text-zinc-900 dark:hover:bg-zinc-800 light:hover:bg-zinc-50 dark:hover:border-zinc-600 light:hover:border-zinc-400 h-11 px-8",
         className
       )}
       ref={ref}
