@@ -5,8 +5,8 @@
 :root {
   --background: #ffffff;
   --foreground: #000000;
-  --screen-bg: #F5F9FF;
-  --screen-bg-gradient: #F5F9FF;
+  --screen-bg: #ffffff;
+  --screen-bg-gradient: #ffffff;
 }
 
 .dark {

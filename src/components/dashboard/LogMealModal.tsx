@@ -132,11 +132,11 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
-      <div className="relative w-full max-w-lg dark:bg-zinc-900 light:bg-gradient-to-br light:from-blue-600 light:to-blue-700 dark:border dark:border-zinc-800 light:border-none rounded-xl shadow-2xl p-6">
+      <div className="relative w-full max-w-lg dark:bg-zinc-900 light:bg-gradient-to-b light:from-cyan-700 light:via-cyan-600 light:to-cyan-800 dark:border dark:border-zinc-800 light:border-none rounded-xl shadow-2xl p-6">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 dark:text-zinc-400 light:text-white/90 dark:hover:text-white light:hover:text-white transition-colors"
+          className="absolute top-4 right-4 dark:text-zinc-400 light:text-white dark:hover:text-white light:hover:text-white/80 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -157,7 +157,7 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
             <select
               value={mealType}
               onChange={(e) => setMealType(e.target.value)}
-              className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-white/20 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50"
+              className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50"
               disabled={submitting}
             >
               <option value="breakfast">Breakfast</option>
@@ -177,7 +177,7 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
                 value={otherMealType}
                 onChange={(e) => setOtherMealType(e.target.value)}
                 placeholder="e.g., Brunch, Dessert..."
-                className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-white/20 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/70 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50"
+                className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/60 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50"
                 disabled={submitting}
               />
             </Field>
@@ -190,7 +190,7 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What did you eat?"
               rows={4}
-              className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-white/20 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/70 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50 resize-none"
+              className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/60 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50 resize-none"
               disabled={submitting}
             />
           </Field>
@@ -214,10 +214,10 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
                 </button>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-zinc-700 rounded-lg cursor-pointer hover:border-zinc-600 transition-colors">
-                <Upload className="w-8 h-8 text-zinc-500 mb-2" />
-                <span className="text-sm text-zinc-500">Click to upload image</span>
-                <span className="text-xs text-zinc-600 mt-1">Max 5MB • JPG, PNG, GIF</span>
+              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed dark:border-zinc-700 light:border-white/40 rounded-lg cursor-pointer dark:hover:border-zinc-600 light:hover:border-white/60 transition-colors">
+                <Upload className="w-8 h-8 dark:text-zinc-500 light:text-white/70 mb-2" />
+                <span className="text-sm dark:text-zinc-500 light:text-white/90">Click to upload image</span>
+                <span className="text-xs dark:text-zinc-600 light:text-white/70 mt-1">Max 5MB • JPG, PNG, GIF</span>
                 <input
                   type="file"
                   accept="image/*"

@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -7,17 +8,18 @@ export async function GET(request: NextRequest) {
   const next = searchParams.get('next') ?? '/dashboard';
 
   if (code) {
+    const cookieStore = cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           getAll() {
-            return request.cookies.getAll();
+            return cookieStore.getAll();
           },
           setAll(cookiesToSet: Array<{ name: string; value: string; options?: object }>) {
             cookiesToSet.forEach(({ name, value, options }) =>
-              request.cookies.set(name, value)
+              cookieStore.set(name, value, options)
             );
           },
         },
@@ -25,22 +27,35 @@ export async function GET(request: NextRequest) {
     );
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error && data.user) {
+    
+    if (error) {
+      console.error('Auth callback error:', error);
+      return NextResponse.redirect(`${origin}/sign-in?error=auth_failed`);
+    }
+    
+    if (data.user) {
       // Check if user has signed consent
-      const { data: consentData } = await supabase
+      const { data: consentData, error: consentError } = await supabase
         .from("consent_signatures")
         .select("id")
         .eq("user_id", data.user.id)
-        .single();
+        .maybeSingle(); // Use maybeSingle() instead of single() to avoid error when no record exists
 
-      if (consentData) {
-        return NextResponse.redirect(`${origin}/dashboard`);
-      } else {
-        return NextResponse.redirect(`${origin}/consent`);
-      }
+      console.log('Consent check in callback:', { 
+        hasConsent: !!consentData, 
+        consentError: consentError?.message,
+        userId: data.user.id 
+      });
+
+      // Create response with proper cookie headers
+      const response = consentData 
+        ? NextResponse.redirect(`${origin}/dashboard`)
+        : NextResponse.redirect(`${origin}/consent`);
+
+      return response;
     }
   }
 
-  // Return the user to an error page with instructions
-  return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+  // Return the user to sign-in with error
+  return NextResponse.redirect(`${origin}/sign-in?error=no_code`);
 }

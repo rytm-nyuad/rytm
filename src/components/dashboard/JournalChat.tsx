@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Send, Plus, MessageSquare, Trash2, BookOpen, Lightbulb } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import type { ChatMessage } from "@/types/dashboard";
@@ -28,11 +28,19 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
   const [threads, setThreads] = useState<JournalThread[]>([]);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true); // Show sidebar by default
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+
+  // Focus input when autoFocus prop changes to true
+  useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [autoFocus]);
 
   const loadThreads = async (uid: string) => {
     const { data, error } = await supabase.rpc('get_user_journal_threads', {
@@ -114,25 +122,37 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
     setCurrentThreadId(null);
   };
 
-  const handleNewEntry = async () => {
+  const handleNewSession = async () => {
+    if (!userId) return;
+
     // Clear local messages and current thread
     setMessages([]);
     setInput("");
     setCurrentThreadId(null);
     
-    // For guided mode, create a new thread
-    if (mode === "structured" && userId) {
+    // Close ALL active threads of the current journal type
+    const journalType = mode === "structured" ? "guided" : "free";
+    await supabase
+      .from("journal_threads")
+      .update({ status: "closed" })
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .eq("journal_type", journalType);
+    
+    // For guided mode, create a new thread immediately
+    if (mode === "structured") {
       try {
         await fetch("/api/journal/new-thread", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
-        // Reload threads to show the new one
-        loadThreads(userId);
       } catch (error) {
         console.error("Error creating new thread:", error);
       }
     }
+    
+    // Reload threads to update the list
+    loadThreads(userId);
   };
 
   const handleSend = async () => {
@@ -243,7 +263,7 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
       <div className={`border-r border-zinc-800 flex flex-col transition-all duration-300 ${showSidebar ? 'w-56' : 'w-0'} overflow-hidden`}>
         <div className="p-3 border-b border-zinc-800">
           <button
-            onClick={handleNewEntry}
+            onClick={handleNewSession}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg bg-zinc-800 text-white hover:bg-zinc-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -303,15 +323,6 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
             <h3 className="font-semibold text-white">Journal</h3>
           </div>
           <div className="flex gap-3 items-center">
-            {/* New Entry Button */}
-            <button
-              onClick={handleNewEntry}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-zinc-800 text-zinc-400 hover:text-white transition-colors border border-zinc-700"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New Entry</span>
-            </button>
-            
             {/* Toggle Switch for Free/Guided */}
             <div className="flex bg-zinc-800 rounded-full p-0.5 border border-zinc-700">
               <button
@@ -374,6 +385,7 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
         <div className="p-4 border-t border-zinc-800">
           <div className="flex gap-2">
             <input
+              ref={inputRef}
               id="journal-input"
               type="text"
               value={input}

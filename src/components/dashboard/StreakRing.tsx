@@ -91,7 +91,7 @@ export function StreakRing({
                   className={`w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
                     isComplete
                       ? "bg-gradient-to-t from-blue-400 via-green-400 to-yellow-300"
-                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:bg-gray-400"
+                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:bg-slate-200 light:border light:border-slate-300"
                   }`}
                   style={{ height }}
                 />
@@ -126,7 +126,7 @@ export function StreakRing({
                   className={`w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
                     isComplete
                       ? "bg-gradient-to-t from-blue-400 via-green-400 to-yellow-300"
-                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:bg-gray-400"
+                      : "dark:border dark:border-zinc-600 dark:opacity-60 light:bg-slate-200 light:border light:border-slate-300"
                   }`}
                   style={{ height }}
                 />
@@ -152,7 +152,7 @@ export function StreakRing({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            className="dark:stroke-zinc-800 light:stroke-gray-200"
+            className="dark:stroke-zinc-800 light:stroke-slate-200"
             strokeWidth={strokeWidth}
             fill="none"
           />
@@ -182,13 +182,13 @@ export function StreakRing({
           className="absolute top-0 flex flex-col items-center justify-center z-20"
           style={{ height: size, width: size }}
         >
-          <div className="text-4xl font-bold dark:text-white light:text-slate-900">{streak}</div>
-          <div className="text-xs font-medium dark:text-zinc-500 light:text-slate-600">days</div>
+          <div className="text-4xl font-bold dark:text-white light:text-cyan-700">{streak}</div>
+          <div className="text-xs font-medium dark:text-zinc-500 light:text-slate-500">days</div>
         </div>
       </div>
 
       {/* KEEP */}
-      <p className="mt-2 text-xs dark:text-zinc-500 light:text-slate-600">Keep your rytm alive.</p>
+      <p className="mt-2 text-xs dark:text-zinc-500 light:text-slate-500">Keep your rytm alive.</p>
     </div>
   );
 }

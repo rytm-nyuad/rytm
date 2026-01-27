@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
@@ -10,6 +10,13 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "rytm — Master your flow",
   description: "Track how you feel, what you do, and what shapes your performance. Combining daily check-ins, nutrition, hydration, and journaling into one simple rhythm.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
 };
 
 export default function RootLayout({

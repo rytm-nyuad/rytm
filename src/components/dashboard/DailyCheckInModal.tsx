@@ -119,11 +119,11 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="relative w-full max-w-7xl max-h-[90vh] dark:bg-zinc-900 light:bg-gradient-to-br light:from-blue-600 light:to-blue-700 dark:border dark:border-zinc-800 light:border-none rounded-xl shadow-2xl p-8 flex flex-col">
+      <div className="relative w-full max-w-7xl max-h-[90vh] dark:bg-zinc-900 light:bg-gradient-to-b light:from-cyan-700 light:via-cyan-600 light:to-cyan-800 dark:border dark:border-zinc-800 light:border-none rounded-xl shadow-2xl p-8 flex flex-col">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 dark:text-zinc-400 light:text-white/90 dark:hover:text-white light:hover:text-white transition-colors z-10"
+          className="absolute top-4 right-4 dark:text-zinc-400 light:text-white dark:hover:text-white light:hover:text-white/80 transition-colors z-10"
         >
           <X className="w-5 h-5" />
         </button>
@@ -145,14 +145,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Sleep Quality */}
             <div>
               <FieldLabel className="text-sm mb-8">When you woke up, how rested did you feel?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.sleepQuality ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.sleepQuality ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${sleepQuality}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.sleepQuality ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${sleepQuality}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.sleepQuality ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.sleepQuality ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${sleepQuality}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.sleepQuality ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${sleepQuality}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={sleepQuality} onChange={(e) => { setTouched(prev => ({ ...prev, sleepQuality: true })); setSleepQuality(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className="flex justify-between text-xs text-zinc-500 px-4 mt-1">
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                 <span>Not at all rested</span>
                 <span>Fully rested</span>
               </div>
@@ -161,14 +161,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Energy */}
             <div>
               <FieldLabel className="text-sm mb-8">How much energy did you feel you had today?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.energy ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.energy ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${energy}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.energy ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${energy}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.energy ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.energy ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${energy}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.energy ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${energy}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={energy} onChange={(e) => { setTouched(prev => ({ ...prev, energy: true })); setEnergy(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className={`flex justify-between text-xs px-4 mt-1 ${touched.energy ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                   <span>No energy at all</span>
                   <span>Very high energy</span>
               </div>
@@ -177,14 +177,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Focus */}
             <div>
               <FieldLabel className="text-sm mb-8">Were you able to concentrate today when you needed to?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.focus ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.focus ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${focus}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.focus ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${focus}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.focus ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.focus ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${focus}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.focus ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${focus}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={focus} onChange={(e) => { setTouched(prev => ({ ...prev, focus: true })); setFocus(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className={`flex justify-between text-xs px-4 mt-1 ${touched.focus ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                   <span>Not able at all</span>
                   <span>Fully able to focus</span>
               </div>
@@ -193,14 +193,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Workload */}
             <div>
               <FieldLabel className="text-sm mb-8">Overall, how demanding did today feel for you?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.workload ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.workload ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${workload}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.workload ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${workload}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.workload ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.workload ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${workload}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.workload ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${workload}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={workload} onChange={(e) => { setTouched(prev => ({ ...prev, workload: true })); setWorkload(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className={`flex justify-between text-xs px-4 mt-1 ${touched.workload ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                   <span>Not at all demanding</span>
                   <span>Extremely demanding</span>
               </div>
@@ -209,14 +209,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Coping Capacity */}
             <div>
               <FieldLabel className="text-sm mb-8">To what extent did you feel able to handle the demands placed on you?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.copingCapacity ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.copingCapacity ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${copingCapacity}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.copingCapacity ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${copingCapacity}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.copingCapacity ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.copingCapacity ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${copingCapacity}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.copingCapacity ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${copingCapacity}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={copingCapacity} onChange={(e) => { setTouched(prev => ({ ...prev, copingCapacity: true })); setCopingCapacity(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className={`flex justify-between text-xs px-4 mt-1 ${touched.copingCapacity ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                   <span>Not at all</span>
                   <span>Completely</span>
               </div>
@@ -225,14 +225,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Stress */}
             <div>
               <FieldLabel className="text-sm mb-8">Overall, how stressful did today feel for you?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.stress ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.stress ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${stress}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.stress ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${stress}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.stress ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.stress ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${stress}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.stress ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${stress}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={stress} onChange={(e) => { setTouched(prev => ({ ...prev, stress: true })); setStress(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className={`flex justify-between text-xs px-4 mt-1 ${touched.stress ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                   <span>Not at all stressful</span>
                   <span>Extremely stressful</span>
               </div>
@@ -241,14 +241,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Stress Unexpected */}
             <div>
               <FieldLabel className="text-sm mb-8">To what extent did unexpected events contribute to your stress today?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.stressUnexpected ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.stressUnexpected ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${stressUnexpected}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.stressUnexpected ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${stressUnexpected}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.stressUnexpected ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.stressUnexpected ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${stressUnexpected}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.stressUnexpected ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${stressUnexpected}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={stressUnexpected} onChange={(e) => { setTouched(prev => ({ ...prev, stressUnexpected: true })); setStressUnexpected(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className={`flex justify-between text-xs px-4 mt-1 ${touched.stressUnexpected ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                   <span>Not at all</span>
                   <span>Very much</span>
               </div>
@@ -257,14 +257,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Social */}
             <div>
               <FieldLabel className="text-sm mb-8">Did your social interactions today feel sufficient for you?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.social ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.social ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${social}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.social ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${social}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.social ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.social ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${social}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.social ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${social}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={social} onChange={(e) => { setTouched(prev => ({ ...prev, social: true })); setSocial(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className={`flex justify-between text-xs px-4 mt-1 ${touched.social ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                   <span>Not at all sufficient</span>
                   <span>Completely sufficient</span>
               </div>
@@ -273,14 +273,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Mood */}
             <div>
               <FieldLabel className="text-sm mb-8">Overall, how did today feel emotionally for you?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.mood ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.mood ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${mood}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.mood ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${mood}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.mood ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.mood ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${mood}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.mood ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${mood}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={mood} onChange={(e) => { setTouched(prev => ({ ...prev, mood: true })); setMood(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className={`flex justify-between text-xs px-4 mt-1 ${touched.mood ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                   <span>Very negative</span>
                   <span>Very positive</span>
               </div>
@@ -289,14 +289,14 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
             {/* Mood Stability */}
             <div>
               <FieldLabel className="text-sm mb-8">How much did your emotional state change throughout the day?</FieldLabel>
-              <div className="relative px-4">
-                <div className={`h-2 rounded-full mb-6 relative ${touched.moodStability ? 'bg-zinc-800' : 'bg-zinc-800/50'}`}>
-                  <div className={`h-full rounded-full ${touched.moodStability ? 'bg-white' : 'bg-zinc-700'}`} style={{ width: `${moodStability}%` }} />
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg ${touched.moodStability ? 'bg-white' : 'bg-zinc-600'}`} style={{ left: `${moodStability}%`, transform: `translate(-50%, -50%)` }} />
+              <div className="relative px-4 mt-4">
+                <div className={`h-2 rounded-full mb-2 relative ${touched.moodStability ? 'dark:bg-zinc-800 light:bg-blue-400/40' : 'dark:bg-zinc-800/50 light:bg-blue-400/20'}`}>
+                  <div className={`h-full rounded-full ${touched.moodStability ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-700 light:bg-white/50'}`} style={{ width: `${moodStability}%` }} />
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-lg ${touched.moodStability ? 'dark:bg-white light:bg-white' : 'dark:bg-zinc-600 light:bg-white/60'}`} style={{ left: `${moodStability}%`, transform: `translate(-50%, -50%)` }} />
                 </div>
                 <input type="range" min="0" max="100" step="any" value={moodStability} onChange={(e) => { setTouched(prev => ({ ...prev, moodStability: true })); setMoodStability(parseFloat(e.target.value)); }} className="absolute inset-0 w-full opacity-0 cursor-pointer" disabled={submitting} style={{ top: 0, left: 0, right: 0 }} />
               </div>
-              <div className={`flex justify-between text-xs px-4 mt-1 ${touched.moodStability ? 'text-zinc-500' : 'text-zinc-600'}`}>
+              <div className="flex justify-between text-xs text-white px-4 mt-1">
                   <span>Very stable</span>
                   <span>Changed a lot</span>
               </div>
@@ -316,7 +316,7 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                     emotions.includes(emotion)
                       ? "dark:bg-white dark:text-black light:bg-white light:text-blue-600"
-                      : "dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-white light:bg-white/20 light:text-white/90 light:hover:bg-white/30 light:hover:text-white"
+                      : "dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-white light:bg-blue-400/30 light:text-white light:hover:bg-blue-400/40"
                   }`}
                   disabled={submitting}
                 >
