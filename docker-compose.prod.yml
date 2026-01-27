@@ -10,6 +10,10 @@ services:
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - FITBIT_CLIENT_ID=${FITBIT_CLIENT_ID}
+      - FITBIT_CLIENT_SECRET=${FITBIT_CLIENT_SECRET}
+      - FITBIT_REDIRECT_URI=${FITBIT_REDIRECT_URI}
+
     restart: always
     container_name: rytm-app
     healthcheck:
