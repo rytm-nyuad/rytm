@@ -4,15 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 const TOKEN_URL = "https://api.fitbit.com/oauth2/token";
 const PROFILE_URL = "https://api.fitbit.com/1/user/-/profile.json";
 
-const CLIENT_ID = process.env.FITBIT_CLIENT_ID!;
-const CLIENT_SECRET = process.env.FITBIT_CLIENT_SECRET!;
-const REDIRECT_URI = process.env.FITBIT_REDIRECT_URI!;
-
-if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
-  console.warn(
-    "[Fitbit] Missing FITBIT_CLIENT_ID / FITBIT_CLIENT_SECRET / FITBIT_REDIRECT_URI env vars."
-  );
-}
 
 export async function GET(req: NextRequest) {
   const CLIENT_ID = process.env.FITBIT_CLIENT_ID!;
