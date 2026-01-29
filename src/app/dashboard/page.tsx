@@ -59,6 +59,8 @@ function DashboardContent() {
     checkInCompleted: false,
     journalCompleted: false,
   });
+  const [canonicalTz, setCanonicalTz] = useState<string>("UTC");
+
 
   // Modal states
   const [showMealModal, setShowMealModal] = useState(false);
@@ -142,22 +144,21 @@ function DashboardContent() {
   };
 
   const loadDashboardData = async (userId: string, date: Date) => {
-    // Check if morning gate needed
-    // If it's before 5am, check for previous day's entry
-    // If it's after 5am, check for current day's entry
-    const now = new Date();
-    const currentHour = now.getHours();
-    const checkDate = currentHour < 5 ? new Date(now.getTime() - 24 * 60 * 60 * 1000) : now;
-    
-    const todayOverall = await getTodayOverall(userId, checkDate);
+    // 1) Overall gate (locks dashboard until overall is logged)
+    // This will call the snapshot and refresh today’s daily_summary row once.
+    const todayOverall = await getTodayOverall(userId); // CHANGE: no date arg
     setIsLocked(!todayOverall);
 
-    // Load progress data
-    const mealsCount = await getTodayMealsCount(userId, date);
-    const waterLogged = await hasWaterLoggedToday(userId, date);
-    const checkInDone = await hasCheckInToday(userId, date);
+    // 2) Progress flags (all backed by daily_summary snapshot)
+    const mealsCount = await getTodayMealsCount(userId); // CHANGE: no date arg
+    const waterLogged = await hasWaterLoggedToday(userId); // CHANGE: no date arg
+    const checkInDone = await hasCheckInToday(userId); // CHANGE: no date arg
+
+    // 3) Journal completion (see section below)
+    // Recommended: replace journal-check with daily_summary.has_journal
+    // For now, keep existing:
     const journalDone = await import("@/lib/db/journal-check").then((m) =>
-      m.hasJournaledToday(userId, date)
+      m.hasJournaledToday(userId) // CHANGE: no date arg, if you refactor journal-check too
     );
 
     setProgress({
@@ -168,16 +169,16 @@ function DashboardContent() {
       journalCompleted: journalDone,
     });
 
-    // Load streak data - always based on current date, not selectedDate
-    // Only load if we're looking at today (to avoid unnecessary API calls)
+    // 4) Streak + weekly (still only for "today view")
     const isToday = date.toDateString() === new Date().toDateString();
     if (isToday) {
       const streakCount = await import("@/lib/db/dashboard").then((m) =>
         m.getStreakData(userId)
       );
       setStreak(streakCount);
+      const tz = await import("@/lib/db/dashboard").then((m) => m.getDashboardTimeZone(userId));
+      setCanonicalTz(tz);
 
-      // Load weekly activity data
       const weekly = await getWeeklyActivity(userId);
       setWeeklyData(weekly);
     }
@@ -223,6 +224,13 @@ function DashboardContent() {
       setProgress((prev) => ({ ...prev, waterLogged: true }));
       await loadDashboardData(userId, selectedDate);
     }
+  };
+
+  // ADD: journal callback so streak/checklist refresh immediately after journaling
+  const handleJournalMessageSent = async () => {
+    if (!userId) return;
+    // reload from DB-backed daily_summary snapshot (fast: 1 RPC + 1 read)
+    await loadDashboardData(userId, selectedDate);
   };
 
   const handleCheckInSubmit = async (data: {
@@ -320,7 +328,11 @@ function DashboardContent() {
               
               {/* WEEKLY STREAK - integrated */}
               <div className="w-full max-w-md px-4">
-                <WeeklyStreak weeklyData={weeklyData} streak={streak} />
+                <WeeklyStreak
+                  weeklyData={weeklyData}
+                  streak={streak}
+                  timeZone={canonicalTz}
+                />
               </div>
             </div>
 
@@ -413,7 +425,9 @@ function DashboardContent() {
           {/* RIGHT: JOURNAL */}
           {/* =================================================== */}
           <div className="w-full lg:flex-1 h-full dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col">
-            <JournalChat autoFocus={journalAutoFocus} />
+            <JournalChat autoFocus={journalAutoFocus} 
+            onMessageSent={handleJournalMessageSent} // ADD
+          />
           </div>
           
         </div>
