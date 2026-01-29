@@ -1,32 +1,71 @@
+# -------------------------
 # Build stage
+# -------------------------
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# ✅ Accept build-time args
+# Accept build-time args
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG SUPABASE_SERVICE_ROLE_KEY
+ARG OPENAI_API_KEY
 ARG NEXTAUTH_SECRET
 ARG NEXTAUTH_URL
-ARG OPENAI_API_KEY
 ARG FITBIT_CLIENT_ID
 ARG FITBIT_CLIENT_SECRET
 ARG FITBIT_REDIRECT_URI
 ARG BUILD_TIME
 
-# ✅ Make them available during `npm run build`
+# Make them available during `npm run build`
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+ENV OPENAI_API_KEY=$OPENAI_API_KEY
 ENV NEXTAUTH_SECRET=$NEXTAUTH_SECRET
 ENV NEXTAUTH_URL=$NEXTAUTH_URL
-ENV OPENAI_API_KEY=$OPENAI_API_KEY
 ENV FITBIT_CLIENT_ID=$FITBIT_CLIENT_ID
 ENV FITBIT_CLIENT_SECRET=$FITBIT_CLIENT_SECRET
 ENV FITBIT_REDIRECT_URI=$FITBIT_REDIRECT_URI
 ENV BUILD_TIME=$BUILD_TIME
 
+# Install deps & build
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
+
+
+# -------------------------
+# Production stage
+# -------------------------
+FROM node:20-alpine
+WORKDIR /app
+
+# Tools for proper signal handling + healthcheck
+RUN apk add --no-cache dumb-init curl
+
+# Copy package files
+COPY package*.json ./
+
+# IMPORTANT: Next.js needs `next` at runtime in many setups.
+# Installing prod-only often breaks `npm start` (next binary missing).
+RUN npm ci
+
+# Copy build output and public assets
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+
+# Optional: if you use next/image with sharp, you may need it installed via deps.
+
+# Run as non-root
+RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+USER nextjs
+
+EXPOSE 3000
+ENV NODE_ENV=production
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000 || exit 1
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["npm", "start"]
