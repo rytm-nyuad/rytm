@@ -1,70 +1,24 @@
 # Build stage
 FROM node:20-alpine AS builder
-
-
 WORKDIR /app
 
+# ✅ Accept build-time args
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG SUPABASE_SERVICE_ROLE_KEY
+ARG NEXTAUTH_SECRET
+ARG NEXTAUTH_URL
+ARG OPENAI_API_KEY
 
-# Copy package files
+# ✅ Make them available during `npm run build`
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+ENV NEXTAUTH_SECRET=$NEXTAUTH_SECRET
+ENV NEXTAUTH_URL=$NEXTAUTH_URL
+ENV OPENAI_API_KEY=$OPENAI_API_KEY
+
 COPY package*.json ./
-
-
-# Install dependencies
 RUN npm ci
-
-
-# Copy source code
 COPY . .
-
-
-# Build the Next.js app
 RUN npm run build
-
-
-# Production stage
-FROM node:20-alpine
-
-
-WORKDIR /app
-
-
-# Install dumb-init to handle signals properly
-RUN apk add --no-cache dumb-init curl
-
-
-# Copy package files
-COPY package*.json ./
-
-
-# Install production dependencies only
-RUN npm ci --only=production
-
-
-# Copy built app from builder stage
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-
-
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
-USER nextjs
-
-
-# Expose port
-EXPOSE 3000
-
-
-# Environment
-ENV NODE_ENV=production
-
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
- CMD curl -f http://localhost:3000 || exit 1
-
-
-# Use dumb-init to run the app
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["npm", "start"]
-#Change
