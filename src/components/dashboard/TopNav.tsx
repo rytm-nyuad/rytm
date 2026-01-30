@@ -161,6 +161,17 @@ export function TopNav() {
                 </Link>
               );
             })}
+            {/* MOBILE CONNECT FITBIT */}
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                handleConnectFitbit();
+              }}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition"
+            >
+              <Activity className="w-4 h-4" />
+              <span>Connect Fitbit</span>
+            </button>
 
             {/* MOBILE THEME TOGGLE */}
             <button
