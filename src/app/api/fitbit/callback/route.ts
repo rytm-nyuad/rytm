@@ -217,9 +217,10 @@ export async function GET(req: NextRequest) {
   }
 
   // 8) Redirect back to your dashboard with a success flag
-  const redirectUrl = new URL(
-    "/dashboard?fitbit=connected",
-    req.nextUrl.origin
-  );
+  const APP_URL =
+    process.env.NEXTAUTH_URL || req.nextUrl.origin;
+
+  const redirectUrl = new URL("/dashboard?fitbit=connected", APP_URL);
   return NextResponse.redirect(redirectUrl);
+
 }
