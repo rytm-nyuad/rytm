@@ -58,10 +58,12 @@ export default function SignInPage() {
     setLoading(true);
     setError(null);
 
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${appUrl}/auth/callback`,
+        // redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
 
