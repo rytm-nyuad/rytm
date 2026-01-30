@@ -3,27 +3,35 @@
 interface WeeklyStreakProps {
   weeklyData: boolean[];
   streak: number;
+  timeZone?: string; // ADD
 }
 
-export function WeeklyStreak({ weeklyData, streak }: WeeklyStreakProps) {
-  // Generate day letters for the last 7 days (6 days ago through today)
+export function WeeklyStreak({ weeklyData, streak, timeZone = "UTC" }: WeeklyStreakProps) {
+  // CHANGE: generate day letters in the provided timezone (canonical tz)
   const getDayLetters = () => {
-    const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "short",
+    });
+
     const today = new Date();
     const dayLetters: string[] = [];
-    
+
     for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(today.getDate() - i);
-      dayLetters.push(days[date.getDay()]);
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+
+      // "Mon", "Tue", ... -> take first letter (or keep 3 letters if you prefer)
+      const label = formatter.format(d); // e.g., "Mon"
+      dayLetters.push(label[0]); // KEEP: your UI expects single letter
     }
-    
+
     return dayLetters;
   };
 
   const dayLetters = getDayLetters();
-  const todayIndex = 6; // Today is always the last (7th) circle
-
+  const todayIndex = 6;
+  
   return (
     <div className="w-full max-w-sm px-2 mx-auto">
       {/* Weekly Days */}

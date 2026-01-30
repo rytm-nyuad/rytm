@@ -8,7 +8,7 @@ import type { ChatMessage } from "@/types/dashboard";
 interface JournalThread {
   id: string;
   title: string;
-  journal_type: 'free' | 'guided';
+  journal_type: "free" | "guided";
   last_message_at: string;
   message_count: number;
 }
@@ -27,7 +27,7 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
   const [loading, setLoading] = useState(false);
   const [threads, setThreads] = useState<JournalThread[]>([]);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
-  const [showSidebar, setShowSidebar] = useState(true); // Show sidebar by default
+  const [showSidebar, setShowSidebar] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const supabase = createBrowserClient(
@@ -35,7 +35,7 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Focus input when autoFocus prop changes to true
+  // KEEP: Focus input when autoFocus prop changes to true
   useEffect(() => {
     if (autoFocus && inputRef.current) {
       inputRef.current.focus();
@@ -43,23 +43,25 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
   }, [autoFocus]);
 
   const loadThreads = async (uid: string) => {
-    const { data, error } = await supabase.rpc('get_user_journal_threads', {
+    const { data, error } = await supabase.rpc("get_user_journal_threads", {
       p_user_id: uid,
-      p_limit: 50
+      p_limit: 50,
     });
 
     if (error) {
-      console.error('Error loading threads:', error);
+      console.error("Error loading threads:", error);
       return;
     }
 
     setThreads(data || []);
   };
 
-  // Get user ID on mount
+  // KEEP: Get user ID on mount
   useEffect(() => {
     const getUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (session) {
         setUserId(session.user.id);
         loadThreads(session.user.id);
@@ -70,13 +72,13 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
   }, []);
 
   const loadThreadMessages = async (threadId: string) => {
-    const { data, error } = await supabase.rpc('get_thread_messages', {
+    const { data, error } = await supabase.rpc("get_thread_messages", {
       p_thread_id: threadId,
-      p_user_id: userId
+      p_user_id: userId,
     });
 
     if (error) {
-      console.error('Error loading messages:', error);
+      console.error("Error loading messages:", error);
       return;
     }
 
@@ -84,7 +86,7 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
       id: msg.id,
       role: msg.role,
       content: msg.content,
-      timestamp: new Date(msg.created_at)
+      timestamp: new Date(msg.created_at),
     }));
 
     setMessages(formattedMessages);
@@ -93,30 +95,41 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
 
   const deleteThread = async (threadId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    const { error } = await supabase.rpc('delete_journal_thread', {
+
+    const { error } = await supabase.rpc("delete_journal_thread", {
       p_thread_id: threadId,
-      p_user_id: userId
+      p_user_id: userId,
     });
 
     if (error) {
-      console.error('Error deleting thread:', error);
+      console.error("Error deleting thread:", error);
       return;
     }
 
-    // Reload threads
+    // KEEP
     loadThreads(userId);
-    
-    // Clear current thread if it was deleted
+
     if (currentThreadId === threadId) {
       setMessages([]);
       setCurrentThreadId(null);
     }
+
+    // CHANGE: Refresh daily summary after deletion, in case this was the only journal entry today
+    // (so daily_summary.has_journal updates correctly)
+    if (userId) {
+      const { error: refreshErr } = await supabase.rpc("refresh_daily_summary", {
+        p_user_id: userId,
+        p_target_date: null,
+      });
+      if (refreshErr) console.error("Error refreshing daily summary after delete:", refreshErr);
+    }
+
+    // CHANGE: Notify parent UI to re-check progress/streak if needed
+    if (onMessageSent) onMessageSent();
   };
 
   const handleModeChange = (newMode: "unstructured" | "structured") => {
     setMode(newMode);
-    // Clear messages and thread when switching modes
     setMessages([]);
     setInput("");
     setCurrentThreadId(null);
@@ -125,12 +138,10 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
   const handleNewSession = async () => {
     if (!userId) return;
 
-    // Clear local messages and current thread
     setMessages([]);
     setInput("");
     setCurrentThreadId(null);
-    
-    // Close ALL active threads of the current journal type
+
     const journalType = mode === "structured" ? "guided" : "free";
     await supabase
       .from("journal_threads")
@@ -138,8 +149,7 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
       .eq("user_id", userId)
       .eq("status", "active")
       .eq("journal_type", journalType);
-    
-    // For guided mode, create a new thread immediately
+
     if (mode === "structured") {
       try {
         await fetch("/api/journal/new-thread", {
@@ -150,9 +160,29 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
         console.error("Error creating new thread:", error);
       }
     }
-    
-    // Reload threads to update the list
+
     loadThreads(userId);
+  };
+
+  // ADD: Central helper — refresh daily_summary after any journal write
+  // This updates:
+  // - daily_summary.has_journal
+  // - daily_summary.is_complete (if journal was the last missing task)
+  // - daily_summary.streak_value (incremented if day becomes complete)
+  const refreshSummaryAndNotify = async () => {
+    if (!userId) return;
+
+    const { error: refreshErr } = await supabase.rpc("refresh_daily_summary", {
+      p_user_id: userId,
+      p_target_date: null, // let server compute "today" in canonical timezone
+    });
+
+    if (refreshErr) {
+      console.error("Error refreshing daily summary after journal write:", refreshErr);
+    }
+
+    // KEEP/CHANGE: onMessageSent now means "a task changed; parent can reload progress/streak"
+    if (onMessageSent) onMessageSent();
   };
 
   const handleSend = async () => {
@@ -168,51 +198,61 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
 
-    // FREE MODE: Save to thread (so it appears in sidebar)
+    // ==========================================================
+    // FREE MODE
+    // ==========================================================
     if (mode === "unstructured") {
-      // Get or create thread for free mode
-      if (!currentThreadId) {
-        const { data: threadId, error: threadError } = await supabase.rpc('get_or_create_active_thread', {
-          p_user_id: userId,
-          p_journal_type: 'free'
+      try {
+        let threadIdToUse = currentThreadId;
+
+        // KEEP: Get or create thread for free mode
+        if (!threadIdToUse) {
+          const { data: threadId, error: threadError } = await supabase.rpc(
+            "get_or_create_active_thread",
+            {
+              p_user_id: userId,
+              p_journal_type: "free",
+            }
+          );
+
+          if (threadError) {
+            console.error("Error creating thread:", threadError);
+            return;
+          }
+
+          threadIdToUse = threadId;
+          setCurrentThreadId(threadIdToUse);
+        }
+
+        // KEEP: Save message with thread_id
+        const { error: insertErr } = await supabase.from("journal_messages").insert({
+          user_id: userId,
+          thread_id: threadIdToUse,
+          mode: "free",
+          role: "user",
+          content: userMessage.content,
         });
-        
-        if (threadError) {
-          console.error('Error creating thread:', threadError);
+
+        if (insertErr) {
+          console.error("Error inserting journal message:", insertErr);
           return;
         }
-        
-        setCurrentThreadId(threadId);
-        
-        // Save message with thread_id
-        await supabase.from("journal_messages").insert({
-          user_id: userId,
-          thread_id: threadId,
-          mode: "free",
-          role: "user",
-          content: userMessage.content,
-        });
-      } else {
-        // Use existing thread
-        await supabase.from("journal_messages").insert({
-          user_id: userId,
-          thread_id: currentThreadId,
-          mode: "free",
-          role: "user",
-          content: userMessage.content,
-        });
+
+        // CHANGE: Refresh daily_summary so checklist/streak update immediately
+        await refreshSummaryAndNotify();
+
+        // KEEP: Reload threads to update sidebar counts
+        loadThreads(userId);
+      } catch (error) {
+        console.error("Error in free-mode send:", error);
       }
 
-      if (onMessageSent) {
-        onMessageSent();
-      }
-      
-      // Reload threads to update sidebar
-      loadThreads(userId);
       return;
     }
 
-    // GUIDED MODE: Call API for AI response
+    // ==========================================================
+    // GUIDED MODE
+    // ==========================================================
     setLoading(true);
 
     try {
@@ -232,7 +272,7 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
         return;
       }
 
-      // Add AI response to chat (only for guided mode)
+      // KEEP: Add AI response to chat (UI only)
       if (data.response && mode === "structured") {
         const aiMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
@@ -243,12 +283,11 @@ export function JournalChat({ className = "", onMessageSent, autoFocus = false }
         setMessages((prev) => [...prev, aiMessage]);
       }
 
-      // Notify parent that a message was sent (for progress tracking)
-      if (onMessageSent) {
-        onMessageSent();
-      }
-      
-      // Reload threads to update counts
+      // CHANGE: Refresh daily_summary after guided interaction too
+      // (the API route should have inserted messages already)
+      await refreshSummaryAndNotify();
+
+      // KEEP: Reload threads to update counts
       loadThreads(userId);
     } catch (error) {
       console.error("Error sending message:", error);
