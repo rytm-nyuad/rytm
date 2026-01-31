@@ -18,6 +18,8 @@ export default function ForgotPasswordPage() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+  const APP_URL =
+    process.env.NEXTAUTH_URL ?? window.location.origin;
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +28,7 @@ export default function ForgotPasswordPage() {
     setSuccess(false);
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${APP_URL}/reset-password`,
     });
 
     if (error) {
