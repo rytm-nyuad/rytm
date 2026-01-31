@@ -19,8 +19,6 @@ export default function SignInPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
   
-  const APP_URL =
-    process.env.NEXTAUTH_URL ?? window.location.origin;
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,10 +59,12 @@ export default function SignInPage() {
     setLoading(true);
     setError(null);
 
+    const appUrl = process.env.NEXTAUTH_URL || window.location.origin;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${APP_URL}/auth/callback`,
+        redirectTo: `${appUrl}/auth/callback`,
+        // redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
 
