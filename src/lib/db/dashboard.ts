@@ -274,11 +274,28 @@ export async function logMeal(
   mealType: string,
   description?: string,
   photoUrl?: string,
-  date?: Date
+  date?: Date,
+  mealTime?: string // HH:MM format in 24h time
 ): Promise<boolean> {
   const tz = await getCanonicalTimeZone(userId);
   const target = date ?? new Date();
   const localDate = formatDateInTimeZone(target, tz);
+
+  // Calculate meal_datetime:
+  // - If mealTime provided: combine target date + specified time (what user says it happened)
+  // - If not provided: use CURRENT timestamp (when user clicks "Log X meals")
+  let mealDatetime: string;
+  
+  if (mealTime) {
+    // Parse HH:MM and combine with the target date
+    const [hours, minutes] = mealTime.split(':').map(Number);
+    const mealDate = new Date(target);
+    mealDate.setHours(hours, minutes, 0, 0);
+    mealDatetime = mealDate.toISOString();
+  } else {
+    // No time provided, use ACTUAL current timestamp (NOW when logging)
+    mealDatetime = new Date().toISOString();
+  }
 
   const { error } = await supabase
     .from("meal_logs")
@@ -287,7 +304,8 @@ export async function logMeal(
       meal_type: mealType,
       description,
       photo_url: photoUrl,
-      meal_datetime: target.toISOString(), // UTC
+      meal_datetime: mealDatetime, // When user says it happened (or NOW if not specified)
+      // created_at is auto-set by DB - represents when row was inserted
     });
 
   if (error) {

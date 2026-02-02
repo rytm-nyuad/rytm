@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  const appUrl = process.env.NEXTAUTH_URL || new URL(request.url).origin;
   const code = searchParams.get('code');
   const next = searchParams.get('next') ?? '/dashboard';
 
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     
     if (error) {
       console.error('Auth callback error:', error);
-      return NextResponse.redirect(`${origin}/sign-in?error=auth_failed`);
+      return NextResponse.redirect(`${appUrl}/sign-in?error=auth_failed`);
     }
     
     if (data.user) {
@@ -49,13 +50,13 @@ export async function GET(request: NextRequest) {
 
       // Create response with proper cookie headers
       const response = consentData 
-        ? NextResponse.redirect(`${origin}/dashboard`)
-        : NextResponse.redirect(`${origin}/consent`);
+        ? NextResponse.redirect(`${appUrl}/dashboard`)
+        : NextResponse.redirect(`${appUrl}/consent`);
 
       return response;
     }
   }
 
   // Return the user to sign-in with error
-  return NextResponse.redirect(`${origin}/sign-in?error=no_code`);
+  return NextResponse.redirect(`${appUrl}/sign-in?error=no_code`);
 }
