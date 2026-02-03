@@ -68,14 +68,20 @@ async function getCanonicalTimeZone(userId: string): Promise<string> {
 
   if (fitbit?.user_timezone) return fitbit.user_timezone;
 
-  // 2) profiles.timezone
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("timezone")
-    .or(`id.eq.${userId},user_id.eq.${userId}`)
-    .maybeSingle();
+  // 2) profiles.timezone if present (skip if column doesn't exist)
+  // Note: profiles table may not have timezone column in all environments
+  try {
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("timezone")
+      .eq("user_id", userId)
+      .maybeSingle();
 
-  if (profile?.timezone) return profile.timezone;
+    const profileTz = !profileErr && profile?.timezone ? profile.timezone : null;
+    if (profileTz) return profileTz;
+  } catch {
+    // profiles.timezone column may not exist, continue to fallback
+  }
 
   // 3) browser fallback + persist into profiles as canonical fallback
   const browserTz = getBrowserTimeZone();
@@ -285,41 +291,70 @@ export async function getTodayMealsCount(userId: string, date?: Date): Promise<n
   return row.has_meal ? 1 : 0;
 }
 
-/**
- * CHANGE: logMeal uses RPC wrapper so backlog logs land in correct tz day window.
- * - p_at is passed only if selected day is todayLocal to preserve real time
- */
+// ============================================================
+// CHANGE: logMeal now uses ONLY the RPC wrapper (no direct insert)
+// - Supports backlogging via p_local_date
+// - Supports user-entered local time (e.g. "06:02 PM") via p_local_time
+// - Preserves exact timestamp for today via p_at when no mealTime provided
+// - RPC handles daily_summary refresh + timezone correctness
+// ============================================================
 export async function logMeal(
   userId: string,
   mealType: string,
   description?: string,
   photoUrl?: string,
-  date?: Date
+  date?: Date,
+  mealTime?: string // CHANGE: expects "06:02 PM" style string (or undefined)
 ): Promise<boolean> {
-  const snap = await getSnapshot(userId);
-  const tz = snap.tz;
-  const target = date ?? new Date();
-  const localDate = formatDateInTimeZone(target, tz);
-  const isTodayLocal = localDate === snap.todayLocal;
+  try {
+    // KEEP: snapshot gives canonical tz + todayLocal
+    const snap = await getSnapshot(userId);
+    const tz = snap.tz;
 
-  const { data, error } = await supabase.rpc("log_meal_for_date", {
-    p_user_id: userId,
-    p_local_date: localDate,
-    p_meal_type: mealType,
-    p_description: description ?? null,
-    p_photo_url: photoUrl ?? null,
-    p_at: isTodayLocal ? new Date().toISOString() : null,
-  });
-  console.log("log_meal_for_date rpc result:", { data, error });
+    // KEEP: target day is selectedDate (backlog) or today
+    const target = date ?? new Date();
+    const localDate = formatDateInTimeZone(target, tz); // "YYYY-MM-DD"
+    const isTodayLocal = localDate === snap.todayLocal;
 
-  if (error || data !== true) {
-    console.error("log_meal_for_date failed:", error);
+    // CHANGE: call the RPC wrapper (the ONLY write path)
+    const { data, error } = await supabase.rpc("log_meal_for_date", {
+      p_user_id: userId,
+      p_local_date: localDate, // YYYY-MM-DD in canonical tz
+
+      // KEEP: send mealType string; PostgREST will cast to enum if it matches
+      // (must match public.meal_type values exactly)
+      p_meal_type: mealType,
+
+      p_description: description ?? null,
+      p_photo_url: photoUrl ?? null,
+
+      // CHANGE: NEW — optional local time string like "06:02 PM"
+      // If provided, SQL will parse and compute the correct UTC timestamp.
+      p_local_time: mealTime ?? null,
+
+      // CHANGE: only pass "now" timestamp when:
+      // - user is logging for TODAY in canonical tz
+      // - and they did NOT provide an explicit mealTime
+      // Otherwise keep null -> SQL will fallback to noon local for backlogs.
+      p_at: isTodayLocal && !mealTime ? new Date().toISOString() : null,
+    });
+
+    console.log("log_meal_for_date rpc result:", { data, error });
+
+    if (error || data !== true) {
+      console.error("log_meal_for_date failed:", error);
+      return false;
+    }
+
+    // KEEP: invalidate snapshot so dashboard refresh reflects the new daily_summary state
+    invalidateSnapshot(userId);
+    return true;
+  } catch (e) {
+    console.error("logMeal exception:", e);
     return false;
   }
-
-  invalidateSnapshot(userId);
-  return true;
 }
+
 
 export async function hasWaterLoggedToday(userId: string, date?: Date): Promise<boolean> {
   if (!date) {

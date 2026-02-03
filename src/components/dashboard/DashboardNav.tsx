@@ -32,8 +32,15 @@ export function DashboardNav() {
   ];
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push("/sign-in");
+    try {
+      await supabase.auth.signOut();
+      // Use window.location for full page navigation to clear all client state
+      window.location.href = "/sign-in";
+    } catch (error) {
+      console.error("Sign out error:", error);
+      // Still redirect even if there's an error
+      window.location.href = "/sign-in";
+    }
   };
 
   return (

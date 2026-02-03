@@ -223,11 +223,12 @@ function DashboardContent() {
   const handleMealSubmit = async (
     mealType: string,
     description?: string,
-    photoUrl?: string
+    photoUrl?: string,
+    mealTime?: string
   ) => {
     
-    console.log("handleMealSubmit called", { mealType, description });
-    const success = await logMeal(userId, mealType, description, photoUrl, selectedDate);
+    console.log("handleMealSubmit called", { mealType, description, mealTime });
+    const success = await logMeal(userId, mealType, description, photoUrl, selectedDate, mealTime);
     console.log("logMeal returned:", success);
     if (success) {
       setProgress((prev) => ({ ...prev, mealLogged: true }));
