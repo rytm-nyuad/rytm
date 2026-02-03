@@ -32,6 +32,7 @@ export interface WeeklyLeaderboardEntry {
   rank: number;
   avatarUrl?: string;
   lastSyncedAt: string | null;
+  fitbitStatus: string | null; // 'active' or 'needs_reauth'
 }
 
 export interface WeeklyLeaderboardData {
@@ -106,6 +107,16 @@ export async function getWeeklyLeaderboard(): Promise<WeeklyLeaderboardData | nu
       console.error("Error fetching profiles:", profilesError);
     }
 
+    // Get Fitbit status for all users
+    const { data: fitbitCreds, error: fitbitError } = await supabase
+      .from("fitbit_credentials")
+      .select("app_user_id, status")
+      .in("app_user_id", userIds);
+
+    if (fitbitError) {
+      console.error("Error fetching fitbit credentials:", fitbitError);
+    }
+
     // Create a map for quick profile lookup
     const profileMap = new Map<string, { first_name: string; last_name: string }>();
     if (profiles) {
@@ -117,11 +128,20 @@ export async function getWeeklyLeaderboard(): Promise<WeeklyLeaderboardData | nu
       }
     }
 
+    // Create a map for Fitbit status lookup
+    const fitbitStatusMap = new Map<string, string>();
+    if (fitbitCreds) {
+      for (const cred of fitbitCreds) {
+        fitbitStatusMap.set(cred.app_user_id, cred.status);
+      }
+    }
+
     // Build leaderboard entries
     const entries: WeeklyLeaderboardEntry[] = stats.map((stat, index) => {
       const profile = profileMap.get(stat.app_user_id);
       const firstName = profile?.first_name || "Unknown";
       const lastName = profile?.last_name || "";
+      const fitbitStatus = fitbitStatusMap.get(stat.app_user_id) || null;
 
       return {
         userId: stat.app_user_id,
@@ -132,6 +152,7 @@ export async function getWeeklyLeaderboard(): Promise<WeeklyLeaderboardData | nu
         rank: index + 1,
         avatarUrl: undefined,
         lastSyncedAt: stat.last_synced_at,
+        fitbitStatus,
       };
     });
 

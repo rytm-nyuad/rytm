@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react"; 
+import { useState, useEffect } from "react"; 
 import { usePathname, useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
@@ -23,12 +23,16 @@ import { useTheme } from "@/contexts/ThemeContext";
 // CHANGE: DEV flag (temporary, for UI work)
 const DEV_MODE = false;
 
+// Fitbit connection status type
+type FitbitStatus = "loading" | "connected" | "needs_reauth" | "not_connected";
+
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
 
  const [mobileOpen, setMobileOpen] = useState(false);
+ const [fitbitStatus, setFitbitStatus] = useState<FitbitStatus>("loading");
 
 // CHANGE: only create Supabase client in non-DEV mode
   const supabase = DEV_MODE
@@ -37,6 +41,59 @@ export function TopNav() {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
+
+  // Check Fitbit connection status on mount
+  useEffect(() => {
+    async function checkFitbitStatus() {
+      if (!supabase) {
+        setFitbitStatus("not_connected");
+        return;
+      }
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.log("[TopNav] No user found, setting fitbit status to not_connected");
+          setFitbitStatus("not_connected");
+          return;
+        }
+
+        console.log("[TopNav] Checking Fitbit status for user:", user.id);
+        
+        const { data: creds, error } = await supabase
+          .from("fitbit_credentials")
+          .select("status")
+          .eq("app_user_id", user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error("[TopNav] Error fetching Fitbit credentials:", error);
+          setFitbitStatus("not_connected");
+          return;
+        }
+
+        if (!creds) {
+          console.log("[TopNav] No Fitbit credentials found, status: not_connected");
+          setFitbitStatus("not_connected");
+          return;
+        }
+
+        console.log("[TopNav] Fitbit credentials status:", creds.status);
+        
+        // Check the status field
+        if (creds.status === "needs_reauth") {
+          setFitbitStatus("needs_reauth");
+        } else {
+          setFitbitStatus("connected");
+        }
+      } catch (err) {
+        console.error("[TopNav] Error checking Fitbit status:", err);
+        setFitbitStatus("not_connected");
+      }
+    }
+
+    checkFitbitStatus();
+  }, [supabase]);
 
   const navItems = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -103,11 +160,41 @@ export function TopNav() {
         {/* Connect Fitbit button (desktop) */}
         <button
           onClick={handleConnectFitbit}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition-all"
-          title="Connect Fitbit"
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            fitbitStatus === "connected"
+              ? "text-emerald-500 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+              : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+              ? "text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+              : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+          }`}
+          title={
+            fitbitStatus === "connected"
+              ? "Fitbit Connected"
+              : fitbitStatus === "needs_reauth"
+              ? "Fitbit needs reconnection - click to reconnect"
+              : fitbitStatus === "loading"
+              ? "Checking Fitbit status..."
+              : "Connect Fitbit"
+          }
         >
           <Activity className="w-4 h-4" />
-          <span>Fitbit</span>
+          <span>
+            {fitbitStatus === "connected"
+              ? "Fitbit ✓"
+              : fitbitStatus === "needs_reauth"
+              ? "Reconnect"
+              : "Fitbit"}
+          </span>
+          {/* Status indicator dot */}
+          <span
+            className={`w-2 h-2 rounded-full ${
+              fitbitStatus === "connected"
+                ? "bg-emerald-500"
+                : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                ? "bg-red-500 animate-pulse"
+                : "bg-zinc-500"
+            }`}
+          />
         </button>
 
         {/* Theme toggle button */}
@@ -124,7 +211,7 @@ export function TopNav() {
         {/* KEEP: Sign out (desktop) */}
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition-all"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-red-500 dark:hover:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition-all"
         >
           <LogOut className="w-4 h-4" />
           <span>Sign Out</span>
@@ -174,10 +261,32 @@ export function TopNav() {
                 setMobileOpen(false);
                 handleConnectFitbit();
               }}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition"
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                fitbitStatus === "connected"
+                  ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                  : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                  ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                  : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+              }`}
             >
               <Activity className="w-4 h-4" />
-              <span>Connect Fitbit</span>
+              <span>
+                {fitbitStatus === "connected"
+                  ? "Fitbit Connected"
+                  : fitbitStatus === "needs_reauth"
+                  ? "Reconnect Fitbit"
+                  : "Connect Fitbit"}
+              </span>
+              {/* Status indicator dot */}
+              <span
+                className={`w-2 h-2 rounded-full ml-auto ${
+                  fitbitStatus === "connected"
+                    ? "bg-emerald-500"
+                    : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                    ? "bg-red-500 animate-pulse"
+                    : "bg-zinc-500"
+                }`}
+              />
             </button>
 
             {/* MOBILE THEME TOGGLE */}
@@ -192,7 +301,7 @@ export function TopNav() {
             {/* MOBILE SIGN OUT */}
             <button
               onClick={handleSignOut}
-              className="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition"
+              className="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 dark:text-zinc-400 light:text-cyan-100 hover:text-red-500 dark:hover:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 transition"
             >
               <LogOut className="w-4 h-4" />
               <span>Sign Out</span>

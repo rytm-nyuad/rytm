@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Crown, Trophy } from "lucide-react";
+import { ArrowLeft, Crown, Trophy, AlertCircle } from "lucide-react";
 import {
   getWeeklyLeaderboard,
   WeeklyLeaderboardData,
@@ -49,6 +49,23 @@ export default function LeaderboardPage() {
     return `This Week: ${formatMetricKey(leaderboardData.activeWeek.metric_key)}`;
   };
 
+  const formatWeekRange = (): string => {
+    if (!leaderboardData?.activeWeek) return "";
+    const start = new Date(leaderboardData.activeWeek.week_start);
+    const end = new Date(leaderboardData.activeWeek.week_end);
+    // Subtract 1 day from end since week_end is exclusive
+    end.setDate(end.getDate() - 1);
+    
+    const formatDate = (d: Date) => {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+    
+    return `${formatDate(start)} - ${formatDate(end)}`;
+  };
+
   const leaderboard = leaderboardData?.entries || [];
   const top3 = leaderboard.slice(0, 3);
   const rest = leaderboard.slice(3);
@@ -83,6 +100,7 @@ export default function LeaderboardPage() {
             {/* Dynamic Title */}
             <div className="mb-6 text-center">
               <h2 className="text-2xl font-bold text-white">{getTitle()}</h2>
+              <p className="text-base text-zinc-400 mt-1">{formatWeekRange()}</p>
               <p className="text-sm text-zinc-500 mt-1">
                 Last updated: {formatLastUpdated(leaderboardData.lastUpdated)}
               </p>
@@ -111,6 +129,9 @@ export default function LeaderboardPage() {
                       </div>
                       <div className="text-sm font-medium text-zinc-300 mb-1 text-center max-w-[80px] truncate">
                         {top3[1].firstName}
+                        {top3[1].fitbitStatus === 'needs_reauth' && (
+                          <AlertCircle className="inline w-3 h-3 ml-1 text-red-400" title="Out of sync - reconnect Fitbit" />
+                        )}
                       </div>
                       <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
                         <Trophy className="w-4 h-4 text-purple-400" />
@@ -141,6 +162,9 @@ export default function LeaderboardPage() {
                       </div>
                       <div className="text-base font-bold text-white mb-1 text-center max-w-[100px] truncate">
                         {top3[0].firstName}
+                        {top3[0].fitbitStatus === 'needs_reauth' && (
+                          <AlertCircle className="inline w-3 h-3 ml-1 text-red-400" title="Out of sync - reconnect Fitbit" />
+                        )}
                       </div>
                       <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
                         <Trophy className="w-4 h-4 text-purple-400" />
@@ -171,6 +195,9 @@ export default function LeaderboardPage() {
                       </div>
                       <div className="text-sm font-medium text-zinc-300 mb-1 text-center max-w-[80px] truncate">
                         {top3[2].firstName}
+                        {top3[2].fitbitStatus === 'needs_reauth' && (
+                          <AlertCircle className="inline w-3 h-3 ml-1 text-red-400" title="Out of sync - reconnect Fitbit" />
+                        )}
                       </div>
                       <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
                         <Trophy className="w-4 h-4 text-purple-400" />
@@ -204,7 +231,12 @@ export default function LeaderboardPage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-white truncate">{entry.fullName}</div>
+                      <div className="font-medium text-white truncate flex items-center gap-1">
+                        {entry.fullName}
+                        {entry.fitbitStatus === 'needs_reauth' && (
+                          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" title="Out of sync - reconnect Fitbit" />
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
                       <Trophy className="w-4 h-4 text-purple-400" />
