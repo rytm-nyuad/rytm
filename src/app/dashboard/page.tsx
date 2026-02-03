@@ -61,8 +61,10 @@ function DashboardContent() {
   });
   const [canonicalTz, setCanonicalTz] = useState<string>("UTC");
 
+  const loadSeqRef = useRef(0);
 
   // Modal states
+  const [showOverallModal, setShowOverallModal] = useState(false);
   const [showMealModal, setShowMealModal] = useState(false);
   const [showWaterModal, setShowWaterModal] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
@@ -143,48 +145,65 @@ function DashboardContent() {
     await loadDashboardData(session.user.id, new Date());
   };
 
-  const loadDashboardData = async (userId: string, date: Date) => {
-    // 1) Overall gate (locks dashboard until overall is logged)
-    // This will call the snapshot and refresh today’s daily_summary row once.
-    const todayOverall = await getTodayOverall(userId); // CHANGE: no date arg
-    setIsLocked(!todayOverall);
+  const loadDashboardData = async (userId: string, date: Date, opts?: { forceWeekly?: boolean }) => {
+    const seq = ++loadSeqRef.current; // NEW request id
 
-    // 2) Progress flags (all backed by daily_summary snapshot)
-    const mealsCount = await getTodayMealsCount(userId); // CHANGE: no date arg
-    const waterLogged = await hasWaterLoggedToday(userId); // CHANGE: no date arg
-    const checkInDone = await hasCheckInToday(userId); // CHANGE: no date arg
+    // optional: show loading spinner only for first load, not every date change
+    setLoading(true);
 
-    // 3) Journal completion (see section below)
-    // Recommended: replace journal-check with daily_summary.has_journal
-    // For now, keep existing:
-    const journalDone = await import("@/lib/db/journal-check").then((m) =>
-      m.hasJournaledToday(userId) // CHANGE: no date arg, if you refactor journal-check too
-    );
+    // canonical tz + local comparisons
+    const { getDashboardTimeZone, getDailySummaryForDate, getStreakData, getWeeklyActivity } =
+      await import("@/lib/db/dashboard");
+
+    const tz = await getDashboardTimeZone(userId);
+    if (seq !== loadSeqRef.current) return; // ✅ guard
+    setCanonicalTz(tz);
+
+    const formatLocal = (d: Date) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(d);
+
+    const selectedLocal = formatLocal(date);
+    const todayLocal = formatLocal(new Date());
+
+    // 1) selected day row (checklist)
+    const dayRow = await getDailySummaryForDate(userId, date);
+    if (seq !== loadSeqRef.current) return; // ✅ guard
 
     setProgress({
-      overallQuestion: !!todayOverall,
-      mealLogged: mealsCount > 0,
-      waterLogged,
-      checkInCompleted: checkInDone,
-      journalCompleted: journalDone,
+      overallQuestion: dayRow.has_overall,
+      mealLogged: dayRow.has_meal,
+      waterLogged: dayRow.has_water,
+      checkInCompleted: dayRow.has_checkin,
+      journalCompleted: dayRow.has_journal,
     });
 
-    // 4) Streak + weekly (still only for "today view")
-    const isToday = date.toDateString() === new Date().toDateString();
-    if (isToday) {
-      const streakCount = await import("@/lib/db/dashboard").then((m) =>
-        m.getStreakData(userId)
-      );
-      setStreak(streakCount);
-      const tz = await import("@/lib/db/dashboard").then((m) => m.getDashboardTimeZone(userId));
-      setCanonicalTz(tz);
+    // 2) gate only for today
+    setIsLocked(selectedLocal === todayLocal ? !dayRow.has_overall : false);
 
-      const weekly = await getWeeklyActivity(userId);
+    // 3) streak + weekly only on today
+    const forceWeekly = opts?.forceWeekly ?? false;
+    
+    if (selectedLocal === todayLocal|| forceWeekly) {
+      const [streak, weekly] = await Promise.all([
+        getStreakData(userId),
+        getWeeklyActivity(userId),
+      ]);
+      if (seq !== loadSeqRef.current) return; // ✅ guard
+      setStreak(streak);
       setWeeklyData(weekly);
     }
 
+    if (seq !== loadSeqRef.current) return; // ✅ guard
     setLoading(false);
+    console.log("Loading daily_summary for:", { selectedDate: date.toISOString(), selectedLocal, tz });
+
   };
+
 
 
   const handleMorningGateSubmit = async (score: number) => {
@@ -195,6 +214,7 @@ function DashboardContent() {
     if (success) {
       setIsLocked(false);
       setProgress((prev) => ({ ...prev, overallQuestion: true }));
+      await loadDashboardData(userId, selectedDate, { forceWeekly: true });
     } else {
       console.error("Failed to submit overall score");
     }
@@ -222,7 +242,7 @@ function DashboardContent() {
     console.log("logWater returned:", success);
     if (success) {
       setProgress((prev) => ({ ...prev, waterLogged: true }));
-      await loadDashboardData(userId, selectedDate);
+      await loadDashboardData(userId, selectedDate, { forceWeekly: true });
     }
   };
 
@@ -230,7 +250,7 @@ function DashboardContent() {
   const handleJournalMessageSent = async () => {
     if (!userId) return;
     // reload from DB-backed daily_summary snapshot (fast: 1 RPC + 1 read)
-    await loadDashboardData(userId, selectedDate);
+    await loadDashboardData(userId, selectedDate, { forceWeekly: true });
   };
 
   const handleCheckInSubmit = async (data: {
@@ -265,7 +285,7 @@ function DashboardContent() {
     console.log("submitDailyCheckIn returned:", success);
     if (success) {
       setProgress((prev) => ({ ...prev, checkInCompleted: true }));
-      await loadDashboardData(userId, selectedDate);
+      await loadDashboardData(userId, selectedDate, { forceWeekly: true });
     }
   };
 
@@ -409,6 +429,7 @@ function DashboardContent() {
               currentDate={selectedDate}
               onDateChange={setSelectedDate}
               onAction={(action) => {
+                if (action === "overall") setShowOverallModal(true);
                 if (action === "meal") setShowMealModal(true);
                 if (action === "water") setShowWaterModal(true);
                 if (action === "checkin") setShowCheckInModal(true);
@@ -427,6 +448,8 @@ function DashboardContent() {
           <div className="w-full lg:flex-1 h-full dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col">
             <JournalChat autoFocus={journalAutoFocus} 
             onMessageSent={handleJournalMessageSent} // ADD
+            selectedDate={selectedDate}
+            canonicalTimeZone={canonicalTz}
           />
           </div>
           
@@ -467,6 +490,26 @@ function DashboardContent() {
         </>
       )}
       
+      {/* ADD: Overall Mood modal from checklist (independent from isLocked) */}
+      {showOverallModal && (
+        <>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <OverallSliderCard
+              onSubmit={async (score: number) => {
+                // IMPORTANT: use selectedDate for backlogging
+                const ok = await submitDailyOverall(userId, score, selectedDate);
+                if (ok) {
+                  setShowOverallModal(false);
+                  // reload to update checklist + weekly/streak if needed
+                  await loadDashboardData(userId, selectedDate, { forceWeekly: true });
+                }
+              }}
+            />
+          </div>
+        </>
+      )}
+
       {/* ======================================================= */}
       {/* KEEP: MODALS */}
       {/* ======================================================= */}

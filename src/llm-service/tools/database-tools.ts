@@ -12,33 +12,34 @@ export class JournalDatabaseTool {
   /**
    * Save a journal message to the database
    */
-  static async saveMessage(
-    supabase: SupabaseClient,
-    userId: string,
-    content: string,
-    mode: "free" | "guided",
-    role: "user" | "assistant",
-    threadId: string | null
-  ) {
-    const { data, error } = await supabase
-      .from("journal_messages")
-      .insert({
-        user_id: userId,
-        content,
-        mode,
-        role,
-        thread_id: threadId,
-      })
-      .select()
-      .single();
+  // CHANGE: saveMessage now uses RPC so it supports backlogging + updates daily_summary
+static async saveMessage(
+  supabase: any,
+  userId: string,
+  content: string,
+  mode: "free" | "guided",
+  role: "user" | "assistant",
+  threadId: string | null,
+  localDate?: string
+) {
+  const { data, error } = await supabase.rpc("log_journal_message_for_date", {
+    p_user_id: userId,
+    p_mode: mode,
+    p_role: role,
+    p_content: content,
+    p_local_date: localDate ?? null,      // null => server picks "today" in canonical tz
+    p_thread_id: threadId,
+    p_at: null,                           // let SQL pick now() vs noon
+  });
 
-    if (error) {
-      console.error("Error saving journal message:", error);
-      return null;
-    }
-
-    return data;
+  if (error) {
+    console.error("saveMessage RPC error:", error);
+    return null;
   }
+
+  return data;
+}
+
 
   /**
    * Get or create an active thread for the user
