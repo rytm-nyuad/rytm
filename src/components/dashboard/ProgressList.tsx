@@ -12,7 +12,7 @@ interface ProgressListProps {
   };
   currentDate: Date;
   onDateChange: (date: Date) => void;
-  onAction?: (action: 'meal' | 'water' | 'checkin' | 'journal') => void;
+  onAction?: (action: 'overall' | 'meal' | 'water' | 'checkin' | 'journal') => void;
 }
 
 export function ProgressList({ progress, currentDate, onDateChange, onAction }: ProgressListProps) {
@@ -23,23 +23,26 @@ export function ProgressList({ progress, currentDate, onDateChange, onAction }: 
     return `${day}/${month}/${year}`;
   };
 
+  const normalize = (d: Date) => {
+    // Noon avoids DST edge-cases
+    d.setHours(12, 0, 0, 0);
+    return d;
+  };
+
   const handlePreviousDay = () => {
-    const newDate = new Date(currentDate);
+    const newDate = normalize(new Date(currentDate));
     newDate.setDate(newDate.getDate() - 1);
     onDateChange(newDate);
   };
 
   const handleNextDay = () => {
-    const newDate = new Date(currentDate);
+    const newDate = normalize(new Date(currentDate));
     newDate.setDate(newDate.getDate() + 1);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    newDate.setHours(0, 0, 0, 0);
-    // Only allow navigation if the new date is not beyond today
-    if (newDate <= today) {
-      onDateChange(newDate);
-    }
+
+    const today = normalize(new Date());
+    if (newDate <= today) onDateChange(newDate);
   };
+
 
   const isToday = () => {
     const today = new Date();
@@ -50,7 +53,7 @@ export function ProgressList({ progress, currentDate, onDateChange, onAction }: 
   };
 
   const tasks = [
-    { label: "Overall mood", completed: progress.overallQuestion, action: null },
+    { label: "Overall mood", completed: progress.overallQuestion, action: 'overall' as const },
     { label: "Log a meal", completed: progress.mealLogged, action: 'meal' as const },
     { label: "Log water & nutrition", completed: progress.waterLogged, action: 'water' as const },
     { label: "Daily check-in", completed: progress.checkInCompleted, action: 'checkin' as const },

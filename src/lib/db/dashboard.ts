@@ -7,11 +7,11 @@ const supabase = createBrowserClient(
 );
 
 /* ============================================================
-   ADD: DailySummary row shape (matches public.daily_summary)
+   DailySummary row shape (matches public.daily_summary)
 ============================================================ */
-type DailySummaryRow = {
+export type DailySummaryRow = {
   user_id: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD (LOCAL date in canonical tz)
   timezone: string;
   has_overall: boolean;
   has_meal: boolean;
@@ -23,23 +23,20 @@ type DailySummaryRow = {
   updated_at: string;
 };
 
-/* ============================================================
-   ADD: Snapshot cache to achieve:
-   - 1 RPC refresh (today)
-   - 1 read query (last 7 days)
-   Then all functions use the snapshot (no extra queries).
-============================================================ */
 type DashboardSnapshot = {
-  tz: string;                 // canonical tz used
-  todayLocal: string;         // YYYY-MM-DD in canonical tz
+  tz: string;
+  todayLocal: string; // YYYY-MM-DD in canonical tz
   todaySummary: DailySummaryRow;
-  weeklyDates: string[];      // 7 dates, oldest->newest
+  weeklyDates: string[];      // 7 dates oldest->newest in canonical tz
   weeklyComplete: boolean[];  // aligned with weeklyDates
-  streak: number;             // streak shown on dashboard (today if complete else yesterday)
+  streak: number;             // shown streak
 };
 
-const snapshotCache = new Map<string, { expiresAt: number; promise: Promise<DashboardSnapshot> }>();
-const SNAPSHOT_TTL_MS = 15_000; // 15s is enough to dedupe load bursts
+const snapshotCache = new Map<
+  string,
+  { expiresAt: number; promise: Promise<DashboardSnapshot> }
+>();
+const SNAPSHOT_TTL_MS = 15_000;
 
 function cacheKey(userId: string) {
   return userId;
@@ -59,22 +56,17 @@ function formatDateInTimeZone(date: Date, timeZone: string): string {
 }
 
 /* ============================================================
-   ADD: Canonical timezone resolution (Option A)
-   Priority:
-   1) fitbit_profile.user_timezone
-   2) profiles.timezone
-   3) browser timezone (and we persist it into profiles via RPC ensure_profile_timezone)
+   Canonical timezone resolution
 ============================================================ */
 async function getCanonicalTimeZone(userId: string): Promise<string> {
-  // 1) Fitbit timezone if present
-  const { data: fitbit, error: fitbitErr } = await supabase
+  // 1) Fitbit timezone
+  const { data: fitbit } = await supabase
     .from("fitbit_profile")
     .select("user_timezone")
     .eq("app_user_id", userId)
     .maybeSingle();
 
-  const fitbitTz = !fitbitErr && fitbit?.user_timezone ? fitbit.user_timezone : null;
-  if (fitbitTz) return fitbitTz;
+  if (fitbit?.user_timezone) return fitbit.user_timezone;
 
   // 2) profiles.timezone if present (skip if column doesn't exist)
   // Note: profiles table may not have timezone column in all environments
@@ -91,10 +83,8 @@ async function getCanonicalTimeZone(userId: string): Promise<string> {
     // profiles.timezone column may not exist, continue to fallback
   }
 
-  // 3) fallback: browser timezone, persist to DB as canonical fallback
+  // 3) browser fallback + persist into profiles as canonical fallback
   const browserTz = getBrowserTimeZone();
-
-  // store once via RPC (safe even if rerun; only sets if missing)
   await supabase.rpc("ensure_profile_timezone", {
     p_user_id: userId,
     p_timezone: browserTz,
@@ -104,9 +94,12 @@ async function getCanonicalTimeZone(userId: string): Promise<string> {
 }
 
 /* ============================================================
-   ADD: Refresh daily summary via RPC for a specific local date
+   Refresh daily_summary via RPC for a local date
 ============================================================ */
-async function refreshDailySummary(userId: string, localDate?: string): Promise<DailySummaryRow> {
+async function refreshDailySummary(
+  userId: string,
+  localDate?: string
+): Promise<DailySummaryRow> {
   const { data, error } = await supabase.rpc("refresh_daily_summary", {
     p_user_id: userId,
     p_target_date: localDate ?? null,
@@ -114,7 +107,6 @@ async function refreshDailySummary(userId: string, localDate?: string): Promise<
 
   if (error) {
     console.error("refresh_daily_summary failed:", error);
-    // fail-safe: return a minimal row so UI doesn't crash
     return {
       user_id: userId,
       date: localDate ?? formatDateInTimeZone(new Date(), "UTC"),
@@ -133,13 +125,12 @@ async function refreshDailySummary(userId: string, localDate?: string): Promise<
   return data as DailySummaryRow;
 }
 
-/* ============================================================
-   ADD: Fetch 7-day window from daily_summary (one query)
-============================================================ */
 async function fetchWeeklySummaries(userId: string, start: string, end: string) {
   const { data, error } = await supabase
     .from("daily_summary")
-    .select("date,is_complete,streak_value,has_overall,has_meal,has_water,has_journal,has_checkin,timezone")
+    .select(
+      "date,is_complete,streak_value,has_overall,has_meal,has_water,has_journal,has_checkin,timezone"
+    )
     .eq("user_id", userId)
     .gte("date", start)
     .lte("date", end)
@@ -147,23 +138,23 @@ async function fetchWeeklySummaries(userId: string, start: string, end: string) 
 
   if (error) {
     console.error("fetchWeeklySummaries failed:", error);
-    return [] as Array<DailySummaryRow>;
+    return [] as DailySummaryRow[];
   }
-  return (data ?? []) as Array<DailySummaryRow>;
+  return (data ?? []) as DailySummaryRow[];
 }
 
 /* ============================================================
-   ADD: Build snapshot (ONE RPC + ONE read)
+   Snapshot builder (fast dashboard header: today + weekly)
 ============================================================ */
 async function buildDashboardSnapshot(userId: string): Promise<DashboardSnapshot> {
   const tz = await getCanonicalTimeZone(userId);
   const now = new Date();
   const todayLocal = formatDateInTimeZone(now, tz);
 
-  // 1) ONE RPC refresh for today
+  // ONE refresh for today
   const todaySummary = await refreshDailySummary(userId, todayLocal);
 
-  // 2) ONE read for last 7 local dates (6 days ago -> today)
+  // ONE read for last 7 days
   const weeklyDates: string[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
@@ -175,17 +166,14 @@ async function buildDashboardSnapshot(userId: string): Promise<DashboardSnapshot
 
   const rows = await fetchWeeklySummaries(userId, start, end);
   const rowMap = new Map(rows.map((r) => [r.date, r]));
-
   const weeklyComplete = weeklyDates.map((d) => rowMap.get(d)?.is_complete ?? false);
 
-  // Determine streak shown:
-  // - if today complete -> today streak_value
-  // - else -> yesterday streak_value if yesterday complete, else 0
+  // streak shown: today if complete else yesterday if complete else 0
   let streak = 0;
   if (todaySummary.is_complete) {
     streak = todaySummary.streak_value;
   } else {
-    const yesterday = weeklyDates[weeklyDates.length - 2]; // second to last
+    const yesterday = weeklyDates[weeklyDates.length - 2];
     const yRow = rowMap.get(yesterday);
     streak = yRow?.is_complete ? (yRow.streak_value ?? 0) : 0;
   }
@@ -200,9 +188,6 @@ async function buildDashboardSnapshot(userId: string): Promise<DashboardSnapshot
   };
 }
 
-/* ============================================================
-   ADD: Get snapshot with caching
-============================================================ */
 async function getSnapshot(userId: string): Promise<DashboardSnapshot> {
   const key = cacheKey(userId);
   const now = Date.now();
@@ -219,16 +204,34 @@ function invalidateSnapshot(userId: string) {
 }
 
 /* ============================================================
-   EXPORTS (same function names; now backed by snapshot + daily_summary)
+   NEW: date-aware summary read for checklist/backlogging
+   - Always refreshes that date so UI matches latest DB
+============================================================ */
+export async function getDailySummaryForDate(
+  userId: string,
+  date: Date
+): Promise<DailySummaryRow> {
+  const tz = await getCanonicalTimeZone(userId);
+  const localDate = formatDateInTimeZone(date, tz);
+  // refresh & return row (RPC already returns daily_summary)
+  const row = await refreshDailySummary(userId, localDate);
+  invalidateSnapshot(userId); // keep header consistent if yesterday/today changed
+  return row;
+}
+
+export async function getDashboardTimeZone(userId: string): Promise<string> {
+  const snap = await getSnapshot(userId);
+  return snap.tz;
+}
+
+/* ============================================================
+   EXPORTS (existing names, now support optional date)
 ============================================================ */
 
-/**
- * getTodayOverall:
- * - Still returns DailyOverall row (for compatibility)
- * - Uses canonical timezone date string to query daily_overall
- * - NOTE: dashboard can use snapshot.todaySummary.has_overall if it only needs boolean
- */
-export async function getTodayOverall(userId: string, date?: Date): Promise<DailyOverall | null> {
+export async function getTodayOverall(
+  userId: string,
+  date?: Date
+): Promise<DailyOverall | null> {
   const tz = await getCanonicalTimeZone(userId);
   const target = date ?? new Date();
   const dateStr = formatDateInTimeZone(target, tz);
@@ -244,87 +247,122 @@ export async function getTodayOverall(userId: string, date?: Date): Promise<Dail
     console.error("Error fetching daily_overall:", error);
     return null;
   }
-
   return data ?? null;
 }
 
-export async function submitDailyOverall(userId: string, score: number, date?: Date): Promise<boolean> {
+/**
+ * CHANGE: submitDailyOverall uses RPC wrapper so it can backlog safely.
+ */
+export async function submitDailyOverall(
+  userId: string,
+  score: number,
+  date?: Date
+): Promise<boolean> {
   const tz = await getCanonicalTimeZone(userId);
   const target = date ?? new Date();
   const localDate = formatDateInTimeZone(target, tz);
 
-  const { error } = await supabase
-    .from("daily_overall")
-    .insert({ user_id: userId, date: localDate, overall_score: score });
+  const { data, error } = await supabase.rpc("submit_overall_for_date", {
+    p_user_id: userId,
+    p_local_date: localDate,
+    p_score: score,
+  });
 
-  if (error) {
-    console.error("Error submitting daily overall:", error);
+  if (error || data !== true) {
+    console.error("submit_overall_for_date failed:", error);
     return false;
   }
 
-  // refresh + invalidate cache so next reads reflect updates immediately
-  await refreshDailySummary(userId, localDate);
   invalidateSnapshot(userId);
   return true;
 }
 
-export async function getTodayMealsCount(userId: string): Promise<number> {
-  const snap = await getSnapshot(userId);
-  return snap.todaySummary.has_meal ? 1 : 0;
+/**
+ * CHANGE: date-aware meals count:
+ * - no date => snapshot today
+ * - with date => daily_summary for that date
+ */
+export async function getTodayMealsCount(userId: string, date?: Date): Promise<number> {
+  if (!date) {
+    const snap = await getSnapshot(userId);
+    return snap.todaySummary.has_meal ? 1 : 0;
+  }
+  const row = await getDailySummaryForDate(userId, date);
+  return row.has_meal ? 1 : 0;
 }
 
+// ============================================================
+// CHANGE: logMeal now uses ONLY the RPC wrapper (no direct insert)
+// - Supports backlogging via p_local_date
+// - Supports user-entered local time (e.g. "06:02 PM") via p_local_time
+// - Preserves exact timestamp for today via p_at when no mealTime provided
+// - RPC handles daily_summary refresh + timezone correctness
+// ============================================================
 export async function logMeal(
   userId: string,
   mealType: string,
   description?: string,
   photoUrl?: string,
   date?: Date,
-  mealTime?: string // HH:MM format in 24h time
+  mealTime?: string // CHANGE: expects "06:02 PM" style string (or undefined)
 ): Promise<boolean> {
-  const tz = await getCanonicalTimeZone(userId);
-  const target = date ?? new Date();
-  const localDate = formatDateInTimeZone(target, tz);
+  try {
+    // KEEP: snapshot gives canonical tz + todayLocal
+    const snap = await getSnapshot(userId);
+    const tz = snap.tz;
 
-  // Calculate meal_datetime:
-  // - If mealTime provided: combine target date + specified time (what user says it happened)
-  // - If not provided: use CURRENT timestamp (when user clicks "Log X meals")
-  let mealDatetime: string;
-  
-  if (mealTime) {
-    // Parse HH:MM and combine with the target date
-    const [hours, minutes] = mealTime.split(':').map(Number);
-    const mealDate = new Date(target);
-    mealDate.setHours(hours, minutes, 0, 0);
-    mealDatetime = mealDate.toISOString();
-  } else {
-    // No time provided, use ACTUAL current timestamp (NOW when logging)
-    mealDatetime = new Date().toISOString();
-  }
+    // KEEP: target day is selectedDate (backlog) or today
+    const target = date ?? new Date();
+    const localDate = formatDateInTimeZone(target, tz); // "YYYY-MM-DD"
+    const isTodayLocal = localDate === snap.todayLocal;
 
-  const { error } = await supabase
-    .from("meal_logs")
-    .insert({
-      user_id: userId,
-      meal_type: mealType,
-      description,
-      photo_url: photoUrl,
-      meal_datetime: mealDatetime, // When user says it happened (or NOW if not specified)
-      // created_at is auto-set by DB - represents when row was inserted
+    // CHANGE: call the RPC wrapper (the ONLY write path)
+    const { data, error } = await supabase.rpc("log_meal_for_date", {
+      p_user_id: userId,
+      p_local_date: localDate, // YYYY-MM-DD in canonical tz
+
+      // KEEP: send mealType string; PostgREST will cast to enum if it matches
+      // (must match public.meal_type values exactly)
+      p_meal_type: mealType,
+
+      p_description: description ?? null,
+      p_photo_url: photoUrl ?? null,
+
+      // CHANGE: NEW — optional local time string like "06:02 PM"
+      // If provided, SQL will parse and compute the correct UTC timestamp.
+      p_local_time: mealTime ?? null,
+
+      // CHANGE: only pass "now" timestamp when:
+      // - user is logging for TODAY in canonical tz
+      // - and they did NOT provide an explicit mealTime
+      // Otherwise keep null -> SQL will fallback to noon local for backlogs.
+      p_at: isTodayLocal && !mealTime ? new Date().toISOString() : null,
     });
 
-  if (error) {
-    console.error("Error logging meal:", error);
+    console.log("log_meal_for_date rpc result:", { data, error });
+
+    if (error || data !== true) {
+      console.error("log_meal_for_date failed:", error);
+      return false;
+    }
+
+    // KEEP: invalidate snapshot so dashboard refresh reflects the new daily_summary state
+    invalidateSnapshot(userId);
+    return true;
+  } catch (e) {
+    console.error("logMeal exception:", e);
     return false;
   }
-
-  await refreshDailySummary(userId, localDate);
-  invalidateSnapshot(userId);
-  return true;
 }
 
-export async function hasWaterLoggedToday(userId: string): Promise<boolean> {
-  const snap = await getSnapshot(userId);
-  return snap.todaySummary.has_water;
+
+export async function hasWaterLoggedToday(userId: string, date?: Date): Promise<boolean> {
+  if (!date) {
+    const snap = await getSnapshot(userId);
+    return snap.todaySummary.has_water;
+  }
+  const row = await getDailySummaryForDate(userId, date);
+  return row.has_water;
 }
 
 export async function logWater(
@@ -333,32 +371,36 @@ export async function logWater(
   source: string,
   date?: Date
 ): Promise<boolean> {
-  const tz = await getCanonicalTimeZone(userId);
+  const snap = await getSnapshot(userId);
+  const tz = snap.tz;
   const target = date ?? new Date();
   const localDate = formatDateInTimeZone(target, tz);
+  const isTodayLocal = localDate === snap.todayLocal;
 
-  const { error } = await supabase
-    .from("water_intake_logs")
-    .insert({
-      user_id: userId,
-      amount_ml: amountMl,
-      source,
-      intake_datetime: target.toISOString(), // UTC
-    });
+  const { data, error } = await supabase.rpc("log_water_for_date", {
+    p_user_id: userId,
+    p_local_date: localDate,
+    p_amount_ml: amountMl,
+    p_source: source,
+    p_at: isTodayLocal ? new Date().toISOString() : null,
+  });
 
-  if (error) {
-    console.error("Error logging water:", error);
+  if (error || data !== true) {
+    console.error("log_water_for_date failed:", error);
     return false;
   }
 
-  await refreshDailySummary(userId, localDate);
   invalidateSnapshot(userId);
   return true;
 }
 
-export async function hasCheckInToday(userId: string): Promise<boolean> {
-  const snap = await getSnapshot(userId);
-  return snap.todaySummary.has_checkin;
+export async function hasCheckInToday(userId: string, date?: Date): Promise<boolean> {
+  if (!date) {
+    const snap = await getSnapshot(userId);
+    return snap.todaySummary.has_checkin;
+  }
+  const row = await getDailySummaryForDate(userId, date);
+  return row.has_checkin;
 }
 
 export async function submitDailyCheckIn(
@@ -376,34 +418,34 @@ export async function submitDailyCheckIn(
   emotions: string[],
   date?: Date
 ): Promise<boolean> {
-  const tz = await getCanonicalTimeZone(userId);
+  const snap = await getSnapshot(userId);
+  const tz = snap.tz;
   const target = date ?? new Date();
   const localDate = formatDateInTimeZone(target, tz);
+  const isTodayLocal = localDate === snap.todayLocal;
 
-  const { error } = await supabase
-    .from("daily_checkins")
-    .insert({
-      user_id: userId,
-      sleep_quality: sleepQuality,
-      energy_score: energy,
-      focus_score: focus,
-      workload_score: workload,
-      coping_capacity_score: copingCapacity,
-      stress_score: stress,
-      stress_unexpected_score: stressUnexpected,
-      social_score: social,
-      mood_score: mood,
-      mood_stability_score: moodStability,
-      mood_emotions: emotions,
-      created_at: target.toISOString(), // UTC
-    });
+  const { data, error } = await supabase.rpc("submit_checkin_for_date", {
+    p_user_id: userId,
+    p_local_date: localDate,
+    p_sleep_quality: sleepQuality,
+    p_energy_score: energy,
+    p_focus_score: focus,
+    p_workload_score: workload,
+    p_coping_capacity_score: copingCapacity,
+    p_stress_score: stress,
+    p_stress_unexpected_score: stressUnexpected,
+    p_social_score: social,
+    p_mood_score: mood,
+    p_mood_stability_score: moodStability,
+    p_mood_emotions: emotions,
+    p_at: isTodayLocal ? new Date().toISOString() : null,
+  });
 
-  if (error) {
-    console.error("Error submitting check-in:", error);
+  if (error || data !== true) {
+    console.error("submit_checkin_for_date failed:", error);
     return false;
   }
 
-  await refreshDailySummary(userId, localDate);
   invalidateSnapshot(userId);
   return true;
 }
@@ -412,15 +454,7 @@ export async function getStreakData(userId: string): Promise<number> {
   const snap = await getSnapshot(userId);
   return snap.streak;
 }
-export async function getDashboardTimeZone(userId: string): Promise<string> {
-  const snap = await getSnapshot(userId);
-  return snap.tz;
-}
-/**
- * Weekly activity:
- * UI expects boolean[7] = last 7 days (oldest -> newest)
- * Uses snapshot.weeklyComplete (no extra queries beyond the snapshot load).
- */
+
 export async function getWeeklyActivity(userId: string): Promise<boolean[]> {
   const snap = await getSnapshot(userId);
   return snap.weeklyComplete;

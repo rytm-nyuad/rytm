@@ -9,6 +9,7 @@ import { JournalDatabaseTool } from "../tools/database-tools";
 
 export interface JournalAgentInput extends AgentInput {
   mode: "free" | "guided";
+  localDate?: string;
 }
 
 export interface JournalAgentOutput extends AgentOutput {
@@ -90,7 +91,8 @@ export class JournalAgent {
       input.content,
       "free",
       "user",
-      null
+      null,
+      input.localDate
     );
 
     if (!savedMessage) {
@@ -134,7 +136,8 @@ export class JournalAgent {
       input.content,
       "guided",
       "user",
-      threadId
+      threadId,
+      input.localDate
     );
 
     // Step 3: Load conversation history (limited to recent messages)
@@ -170,7 +173,8 @@ export class JournalAgent {
       aiContent,
       "guided",
       "assistant",
-      threadId
+      threadId,
+      input.localDate
     );
 
     console.log("✅ AI message saved:", !!aiMessage);
