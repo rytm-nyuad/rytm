@@ -8,11 +8,25 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    environment: production
+
+
     steps:
       - name: Call Supabase Edge Function
         run: |
-          curl -sS -X POST "https://szvtaultgixkfzpkquwo.functions.supabase.co/leaderboard-sync" \
+          STATUS=$(curl -o response.json -w "%{http_code}" -X POST \
+            "https://szvtaultgixkfzpkquwo.functions.supabase.co/leaderboard-sync" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_JWT }}" \
             -H "x-cron-secret: ${{ secrets.LEADERBOARD_CRON_SECRET }}" \
             -H "Content-Type: application/json" \
-            -d "{}"
+            -d "{}")
+
+          echo "Response:"
+          cat response.json
+
+          if [ "$STATUS" -ne 200 ]; then
+            echo "❌ Request failed with status $STATUS"
+            exit 1
+          fi
+
+          echo "✅ Leaderboard sync triggered successfully!"
