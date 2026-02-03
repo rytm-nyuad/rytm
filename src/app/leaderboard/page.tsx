@@ -3,12 +3,18 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Crown, Trophy } from "lucide-react";
-import { getLeaderboard, LeaderboardEntry } from "@/lib/db/leaderboard";
+import {
+  getWeeklyLeaderboard,
+  WeeklyLeaderboardData,
+  WeeklyLeaderboardEntry,
+  formatMetricKey,
+  formatMetricValue,
+} from "@/lib/db/leaderboard";
 
 export default function LeaderboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardData, setLeaderboardData] = useState<WeeklyLeaderboardData | null>(null);
   const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
@@ -18,15 +24,36 @@ export default function LeaderboardPage() {
   const loadLeaderboard = async () => {
     setLoading(true);
     console.log("Loading leaderboard...");
-    const data = await getLeaderboard();
-    console.log("Leaderboard loaded:", data.length, "entries");
-    setLeaderboard(data);
+    const data = await getWeeklyLeaderboard();
+    console.log("Leaderboard loaded:", data?.entries.length || 0, "entries");
+    setLeaderboardData(data);
     setLoading(false);
   };
 
+  const formatLastUpdated = (timestamp: string | null): string => {
+    if (!timestamp) return "—";
+    const date = new Date(timestamp);
+    return date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const getTitle = (): string => {
+    if (!leaderboardData?.activeWeek) return "";
+    if (leaderboardData.activeWeek.title) {
+      return leaderboardData.activeWeek.title;
+    }
+    return `This Week: ${formatMetricKey(leaderboardData.activeWeek.metric_key)}`;
+  };
+
+  const leaderboard = leaderboardData?.entries || [];
   const top3 = leaderboard.slice(0, 3);
   const rest = leaderboard.slice(3);
   const displayedRest = showAll ? rest : rest.slice(0, 2);
+  const metricKey = leaderboardData?.activeWeek?.metric_key || "steps";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
@@ -47,8 +74,20 @@ export default function LeaderboardPage() {
       <div className="max-w-4xl mx-auto px-4 py-6">
         {loading ? (
           <div className="text-center py-12 text-zinc-500">Loading...</div>
+        ) : !leaderboardData?.activeWeek ? (
+          <div className="text-center py-12 text-zinc-500">
+            No active competition
+          </div>
         ) : (
           <>
+            {/* Dynamic Title */}
+            <div className="mb-6 text-center">
+              <h2 className="text-2xl font-bold text-white">{getTitle()}</h2>
+              <p className="text-sm text-zinc-500 mt-1">
+                Last updated: {formatLastUpdated(leaderboardData.lastUpdated)}
+              </p>
+            </div>
+
             {/* Top 3 Podium */}
             {top3.length > 0 && (
               <div className="mb-8">
@@ -75,7 +114,7 @@ export default function LeaderboardPage() {
                       </div>
                       <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
                         <Trophy className="w-4 h-4 text-purple-400" />
-                        <span className="text-sm font-bold text-white">{top3[1].streak}</span>
+                        <span className="text-sm font-bold text-white">{formatMetricValue(top3[1].value, metricKey)}</span>
                       </div>
                       <div className="mt-3 w-28 h-32 rounded-t-xl bg-zinc-800 flex items-center justify-center text-6xl font-bold text-zinc-700">
                         2
@@ -105,7 +144,7 @@ export default function LeaderboardPage() {
                       </div>
                       <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
                         <Trophy className="w-4 h-4 text-purple-400" />
-                        <span className="text-base font-bold text-white">{top3[0].streak}</span>
+                        <span className="text-base font-bold text-white">{formatMetricValue(top3[0].value, metricKey)}</span>
                       </div>
                       <div className="mt-3 w-32 h-44 rounded-t-xl bg-zinc-800 flex items-center justify-center text-8xl font-bold text-zinc-700">
                         1
@@ -135,7 +174,7 @@ export default function LeaderboardPage() {
                       </div>
                       <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
                         <Trophy className="w-4 h-4 text-purple-400" />
-                        <span className="text-sm font-bold text-white">{top3[2].streak}</span>
+                        <span className="text-sm font-bold text-white">{formatMetricValue(top3[2].value, metricKey)}</span>
                       </div>
                       <div className="mt-3 w-28 h-24 rounded-t-xl bg-zinc-800 flex items-center justify-center text-5xl font-bold text-zinc-700">
                         3
@@ -169,7 +208,7 @@ export default function LeaderboardPage() {
                     </div>
                     <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
                       <Trophy className="w-4 h-4 text-purple-400" />
-                      <span className="text-sm font-bold text-white">{entry.streak}</span>
+                      <span className="text-sm font-bold text-white">{formatMetricValue(entry.value, metricKey)}</span>
                     </div>
                   </div>
                 ))}

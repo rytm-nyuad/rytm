@@ -76,16 +76,20 @@ async function getCanonicalTimeZone(userId: string): Promise<string> {
   const fitbitTz = !fitbitErr && fitbit?.user_timezone ? fitbit.user_timezone : null;
   if (fitbitTz) return fitbitTz;
 
-  // 2) profiles.timezone if present
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("timezone")
-    // some schemas use id, some use user_id; OR works if both exist in PostgREST
-    .or(`id.eq.${userId},user_id.eq.${userId}`)
-    .maybeSingle();
+  // 2) profiles.timezone if present (skip if column doesn't exist)
+  // Note: profiles table may not have timezone column in all environments
+  try {
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("timezone")
+      .eq("user_id", userId)
+      .maybeSingle();
 
-  const profileTz = !profileErr && profile?.timezone ? profile.timezone : null;
-  if (profileTz) return profileTz;
+    const profileTz = !profileErr && profile?.timezone ? profile.timezone : null;
+    if (profileTz) return profileTz;
+  } catch {
+    // profiles.timezone column may not exist, continue to fallback
+  }
 
   // 3) fallback: browser timezone, persist to DB as canonical fallback
   const browserTz = getBrowserTimeZone();
