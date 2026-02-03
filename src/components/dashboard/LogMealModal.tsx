@@ -86,17 +86,19 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
   // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
-      // Cleanup all object URLs inline
-      mealDrafts.forEach(draft => {
-        if (draft.previewUrl && draft.previewUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(draft.previewUrl);
-        }
+      setMealDrafts(prev => {
+        // Cleanup all object URLs
+        prev.forEach(draft => {
+          if (draft.previewUrl && draft.previewUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(draft.previewUrl);
+          }
+        });
+        return [];
       });
-      setMealDrafts([]);
       setCurrentIndex(0);
       setError(null);
     }
-  }, [isOpen, mealDrafts]);
+  }, [isOpen]);
 
   // Reset animation state after transition
   useEffect(() => {
