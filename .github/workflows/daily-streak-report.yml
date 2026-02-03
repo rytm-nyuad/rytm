@@ -1,0 +1,41 @@
+name: Daily streak report
+
+on:
+  schedule:
+    # Runs at 00:00 UTC each day -> 04:00 Asia/Dubai (UAE)
+    - cron: '0 0 * * *'
+  # Allow manual runs from Actions tab
+  workflow_dispatch: {}
+
+jobs:
+  run-report:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run daily streak report
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          REPORT_TO_EMAIL: ${{ secrets.REPORT_TO_EMAIL }}
+          REPORT_FROM_EMAIL: ${{ secrets.REPORT_FROM_EMAIL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          # Run at 00:00 UTC == 04:00 Asia/Dubai; default fallback timezone for users missing profile timezone
+          REPORT_TIMEZONE: 'Asia/Dubai'
+          REPORT_CUTOFF_HOUR: ${{ secrets.REPORT_CUTOFF_HOUR }}
+          REPORT_CUTOFF_MIN: ${{ secrets.REPORT_CUTOFF_MIN }}
+        run: node scripts/daily_streak_report.js
