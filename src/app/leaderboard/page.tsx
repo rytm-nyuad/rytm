@@ -130,7 +130,7 @@ export default function LeaderboardPage() {
                       <div className="text-sm font-medium text-zinc-300 mb-1 text-center max-w-[80px] truncate">
                         {top3[1].firstName}
                         {top3[1].fitbitStatus === 'needs_reauth' && (
-                          <AlertCircle className="inline w-3 h-3 ml-1 text-red-400" title="Out of sync - reconnect Fitbit" />
+                          <AlertCircle className="inline w-3 h-3 ml-1 text-red-400" aria-label="Out of sync - reconnect Fitbit" />
                         )}
                       </div>
                       <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
@@ -163,7 +163,7 @@ export default function LeaderboardPage() {
                       <div className="text-base font-bold text-white mb-1 text-center max-w-[100px] truncate">
                         {top3[0].firstName}
                         {top3[0].fitbitStatus === 'needs_reauth' && (
-                          <AlertCircle className="inline w-3 h-3 ml-1 text-red-400" title="Out of sync - reconnect Fitbit" />
+                          <AlertCircle className="inline w-3 h-3 ml-1 text-red-400" aria-label="Out of sync - reconnect Fitbit" />
                         )}
                       </div>
                       <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
@@ -196,7 +196,7 @@ export default function LeaderboardPage() {
                       <div className="text-sm font-medium text-zinc-300 mb-1 text-center max-w-[80px] truncate">
                         {top3[2].firstName}
                         {top3[2].fitbitStatus === 'needs_reauth' && (
-                          <AlertCircle className="inline w-3 h-3 ml-1 text-red-400" title="Out of sync - reconnect Fitbit" />
+                          <AlertCircle className="inline w-3 h-3 ml-1 text-red-400" aria-label="Out of sync - reconnect Fitbit" />
                         )}
                       </div>
                       <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-600/20">
@@ -234,7 +234,7 @@ export default function LeaderboardPage() {
                       <div className="font-medium text-white truncate flex items-center gap-1">
                         {entry.fullName}
                         {entry.fitbitStatus === 'needs_reauth' && (
-                          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" title="Out of sync - reconnect Fitbit" />
+                          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" aria-label="Out of sync - reconnect Fitbit" />
                         )}
                       </div>
                     </div>
