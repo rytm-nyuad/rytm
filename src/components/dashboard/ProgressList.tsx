@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface ProgressListProps {
+  canonicalTimeZone: string;
   progress: {
     overallQuestion: boolean;
     mealLogged: boolean;
@@ -15,13 +16,22 @@ interface ProgressListProps {
   onAction?: (action: 'overall' | 'meal' | 'water' | 'checkin' | 'journal') => void;
 }
 
-export function ProgressList({ progress, currentDate, onDateChange, onAction }: ProgressListProps) {
-  const formatDate = (date: Date) => {
+export function ProgressList({ canonicalTimeZone, progress, currentDate, onDateChange, onAction }: ProgressListProps) {
+  /*const formatDate = (date: Date) => {
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
     return `${day}/${month}/${year}`;
-  };
+  };*/
+  const formatDate = (date: Date) => {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: canonicalTimeZone,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+};
+
 
   const normalize = (d: Date) => {
     // Noon avoids DST edge-cases

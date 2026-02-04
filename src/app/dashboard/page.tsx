@@ -142,6 +142,18 @@ function DashboardContent() {
     await loadDashboardData(session.user.id, new Date());
   };
 
+  const getLocalHourInTimeZone = (tz: string) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+
+  const hourStr = parts.find((p) => p.type === "hour")?.value ?? "0";
+  return Number(hourStr);
+  };
+
+
   const loadDashboardData = async (userId: string, date: Date, opts?: { forceWeekly?: boolean }) => {
     const seq = ++loadSeqRef.current; // NEW request id
 
@@ -179,8 +191,18 @@ function DashboardContent() {
       journalCompleted: dayRow.has_journal,
     });
 
-    // 2) gate only for today
-    setIsLocked(selectedLocal === todayLocal ? !dayRow.has_overall : false);
+    
+    const hourLocal = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "2-digit",
+      hour12: false,
+    }).format(new Date())
+    );
+
+    const shouldGate = hourLocal >= 4;
+    setIsLocked(selectedLocal === todayLocal ? (shouldGate && !dayRow.has_overall) : false);
+
 
     // 3) streak + weekly only on today
     const forceWeekly = opts?.forceWeekly ?? false;
@@ -198,6 +220,11 @@ function DashboardContent() {
     if (seq !== loadSeqRef.current) return; // ✅ guard
     setLoading(false);
     console.log("Loading daily_summary for:", { selectedDate: date.toISOString(), selectedLocal, tz });
+    console.log("TZ:", tz);
+    console.log("selectedDate ISO:", date.toISOString());
+    console.log("selectedLocal:", selectedLocal);
+    console.log("todayLocal:", todayLocal);
+    console.log("dayRow.date:", dayRow.date, "has_overall:", dayRow.has_overall);
 
   };
 
@@ -425,6 +452,7 @@ function DashboardContent() {
               <ProgressList
               progress={progress}
               currentDate={selectedDate}
+              canonicalTimeZone={canonicalTz}
               onDateChange={setSelectedDate}
               onAction={(action) => {
                 if (action === "overall") setShowOverallModal(true);
