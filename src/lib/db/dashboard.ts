@@ -60,6 +60,7 @@ function formatDateInTimeZone(date: Date, timeZone: string): string {
 ============================================================ */
 async function getCanonicalTimeZone(userId: string): Promise<string> {
   // 1) Fitbit timezone
+  
   const { data: fitbit } = await supabase
     .from("fitbit_profile")
     .select("user_timezone")
