@@ -1,8 +1,10 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import Link from "next/link";
 import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/browser";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field";
@@ -14,10 +16,7 @@ export default function SignInPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createClient();
   
 
   const handleEmailLogin = async (e: React.FormEvent) => {
@@ -25,33 +24,27 @@ export default function SignInPage() {
     setLoading(true);
     setError(null);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else if (data.user) {
-      // Check if user has signed consent
-      const { data: consentData, error: consentError } = await supabase
-        .from("consent_signatures")
-        .select("id")
-        .eq("user_id", data.user.id)
-        .maybeSingle(); // Use maybeSingle() to avoid error when no record
-
-      console.log("Consent check:", { 
-        hasConsent: !!consentData, 
-        consentError: consentError?.message, 
-        userId: data.user.id 
+    try {
+      // Call server endpoint so cookies are set server-side
+      const resp = await fetch('/api/auth/sign-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (consentData) {
-        window.location.href = "/dashboard";
-      } else {
-        window.location.href = "/consent";
+      const json = await resp.json();
+
+      if (!resp.ok) {
+        setError(json.error || 'Sign in failed');
+        setLoading(false);
+        return;
       }
+
+      // Redirect to appropriate page
+      window.location.href = json.redirectTo || '/dashboard';
+    } catch (err: any) {
+      setError(err.message || 'Sign in failed');
+      setLoading(false);
     }
   };
 

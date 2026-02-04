@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/browser";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field";
@@ -16,10 +16,7 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createClient();
   const appUrl = process.env.NEXTAUTH_URL || window.location.origin;
   
   const handleEmailSignUp = async (e: React.FormEvent) => {
@@ -52,13 +49,19 @@ export default function SignUpPage() {
       }
       
       // Check if the user has a session (auto-confirmed)
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session) {
-        // User is signed in and registered, redirect to consent form
-        window.location.href = "/consent";
-      } else {
-        // Email confirmation required - show message
+      try {
+        const resp = await fetch('/api/auth/session');
+        const json = await resp.json();
+        const session = json?.session;
+        if (session) {
+          // User is signed in and registered, redirect to consent form
+          window.location.href = '/consent';
+        } else {
+          // Email confirmation required - show message
+          setError("Please check your email to confirm your account. After confirming, sign in and you'll be directed to the consent form.");
+          setLoading(false);
+        }
+      } catch (err) {
         setError("Please check your email to confirm your account. After confirming, sign in and you'll be directed to the consent form.");
         setLoading(false);
       }

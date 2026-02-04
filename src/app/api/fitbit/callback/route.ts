@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+export const dynamic = 'force-dynamic';
+
 const TOKEN_URL = "https://api.fitbit.com/oauth2/token";
 const PROFILE_URL = "https://api.fitbit.com/1/user/-/profile.json";
 

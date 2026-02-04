@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/browser";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -17,17 +17,16 @@ export default function ResetPasswordPage() {
   const [success, setSuccess] = useState(false);
   const router = useRouter();
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createClient();
 
   useEffect(() => {
     // Check if user has a valid session (came from reset link)
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch('/api/auth/session');
+      const json = await resp.json();
+      const session = json?.session;
       if (!session) {
-        setError("Invalid or expired reset link. Please request a new one.");
+        setError('Invalid or expired reset link. Please request a new one.');
       }
     };
     checkSession();

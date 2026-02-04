@@ -8,6 +8,8 @@ import { cookies } from "next/headers";
 import { JournalAgent } from "@/llm-service/agents";
 import { AgentContext } from "@/llm-service/types";
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = cookies();

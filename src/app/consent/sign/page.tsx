@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/browser";
 import {
 	Card,
 	CardContent,
@@ -23,37 +23,35 @@ export default function ConsentSignPage() {
 	const [error, setError] = useState<string | null>(null);
 	const router = useRouter();
 
-	const supabase = createBrowserClient(
-		process.env.NEXT_PUBLIC_SUPABASE_URL!,
-		process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-	);
+	const supabase = createClient();
 
 	useEffect(() => {
 		checkAuth();
 	}, []);
 
 	const checkAuth = async () => {
-		const {
-			data: { session },
-		} = await supabase.auth.getSession();
+		// Use server endpoint to respect HTTP-only cookies
+		const resp = await fetch('/api/auth/session');
+		const json = await resp.json();
+		const session = json?.session;
 
 		if (!session) {
-			router.push("/sign-in");
+			router.push('/sign-in');
 			return;
 		}
 
-		setUserEmail(session.user.email || "");
+		setUserEmail(session.user.email || '');
 
 		// Check if user has already signed consent
 		const { data: existingSignature } = await supabase
-			.from("consent_signatures")
-			.select("id")
-			.eq("user_id", session.user.id)
+			.from('consent_signatures')
+			.select('id')
+			.eq('user_id', session.user.id)
 			.single();
 
 		if (existingSignature) {
 			// Already signed, redirect to dashboard
-			router.push("/dashboard");
+			router.push('/dashboard');
 			return;
 		}
 
@@ -75,13 +73,13 @@ export default function ConsentSignPage() {
 		setSubmitting(true);
 
 		try {
-			const {
-				data: { session },
-			} = await supabase.auth.getSession();
+			const resp = await fetch('/api/auth/session');
+			const json = await resp.json();
+			const session = json?.session;
 
 			if (!session) {
-				setError("Session expired. Please sign in again.");
-				router.push("/sign-in");
+				setError('Session expired. Please sign in again.');
+				router.push('/sign-in');
 				return;
 			}
 

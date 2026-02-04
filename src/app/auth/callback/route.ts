@@ -1,6 +1,8 @@
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -18,10 +20,15 @@ export async function GET(request: NextRequest) {
           getAll() {
             return cookieStore.getAll();
           },
-          setAll(cookiesToSet: Array<{ name: string; value: string; options?: object }>) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
+          setAll(cookiesToSet: Array<{ name: string; value: string; options?: CookieOptions }>) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              // Set 7-day session max age (604800 seconds)
+              const enhancedOptions = {
+                ...options,
+                maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
+              };
+              cookieStore.set(name, value, enhancedOptions);
+            });
           },
         },
       }

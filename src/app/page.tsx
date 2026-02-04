@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 // Background Signal Flow Component
 function BackgroundSignalFlow() {
@@ -132,6 +136,25 @@ function AnimatedLogo() {
 }
 
 export default function HomePage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Check if user has a session
+    const checkSession = async () => {
+      try {
+        const resp = await fetch('/api/auth/session');
+        const json = await resp.json();
+        if (json?.session?.user) {
+          // User is logged in, redirect to dashboard
+          router.replace('/dashboard');
+        }
+      } catch (err) {
+        // Ignore errors, show home page
+      }
+    };
+    checkSession();
+  }, [router]);
+
   return (
     <main className="relative min-h-screen flex flex-col bg-white text-black overflow-hidden">
       {/* Subtle signal flow background */}

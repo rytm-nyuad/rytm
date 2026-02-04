@@ -110,12 +110,17 @@ export function JournalChat({
   // KEEP: Get user ID on mount
   useEffect(() => {
     const getUser = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        setUserId(session.user.id);
-        loadThreads(session.user.id);
+      // Use server endpoint so HTTP-only cookies are read by the server
+      try {
+        const resp = await fetch('/api/auth/session');
+        const json = await resp.json();
+        const session = json?.session;
+        if (session) {
+          setUserId(session.user.id);
+          loadThreads(session.user.id);
+        }
+      } catch (err) {
+        // ignore
       }
     };
     getUser();

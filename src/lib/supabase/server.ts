@@ -14,7 +14,12 @@ export async function createClient() {
         },
         set(name: string, value: string, options: CookieOptions) {
           try {
-            cookieStore.set({ name, value, ...options });
+            // Set 7-day session max age (604800 seconds)
+            const enhancedOptions = {
+              ...options,
+              maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
+            };
+            cookieStore.set({ name, value, ...enhancedOptions });
           } catch (error) {
             // The `set` method was called from a Server Component.
             // This can be ignored if you have middleware refreshing

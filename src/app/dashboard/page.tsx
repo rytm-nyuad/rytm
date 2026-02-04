@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/browser";
 
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { OverallSliderCard } from "@/components/dashboard/OverallSliderCard";
@@ -75,10 +75,7 @@ function DashboardContent() {
   const router = useRouter();
   const [showScrollArrow, setShowScrollArrow] = useState(true);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createClient();
 
   useEffect(() => {
     checkAuth();
@@ -105,13 +102,13 @@ function DashboardContent() {
   }, [userId, selectedDate]);
 
   const checkAuth = async () => {
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    // Use server session endpoint to read HTTP-only cookies set by Supabase
+    const resp = await fetch('/api/auth/session');
+    const json = await resp.json();
+    const session = json?.session;
 
     if (!session) {
-      router.push("/sign-in");
+      router.push('/sign-in');
       return;
     }
 
