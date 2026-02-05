@@ -238,7 +238,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="py-6 text-center border-t border-zinc-200">
         <p className="text-xs text-zinc-500">
-          Built for NYUAD Capstone • Privacy-first • Research study
+          Master your flow • Privacy-first • Built for performance
         </p>
       </footer>
     </main>

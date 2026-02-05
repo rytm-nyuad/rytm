@@ -296,10 +296,15 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
           photoUrl = await uploadImage(draft.selectedFile);
         }
 
-        const finalMealType = draft.mealType === "other" ? draft.otherMealType : draft.mealType;
+        // Map 'other' to 'Snack' for backend, prepend custom meal type to description
+        const finalMealType = draft.mealType === "other" ? "snack" : draft.mealType;
+        const finalDescription = draft.mealType === "other" 
+          ? `${draft.otherMealType}: ${draft.description}`.trim()
+          : draft.description;
+        
         await onSubmit(
           finalMealType,
-          draft.description || undefined,
+          finalDescription || undefined,
           photoUrl,
           draft.mealTime || undefined
         );
@@ -424,7 +429,6 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
                   <option value="lunch">Lunch</option>
                   <option value="dinner">Dinner</option>
                   <option value="snack">Snack</option>
-                  <option value="drink">Drink</option>
                   <option value="other">Other</option>
                 </select>
               </Field>

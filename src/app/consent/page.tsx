@@ -77,7 +77,7 @@ export default function ConsentPage() {
 
           <div className="mb-4 text-zinc-400 text-sm">
             <p className="mb-1"><strong>Investigators:</strong> Ameena Zewail • Mariam Hafez • Renata Espinosa Gonzalez • Youssof Saleh</p>
-            <p className="mb-1"><strong>Faculty Advisors:</strong> Muhammad Shafique • Farah Shamout • Muhammad Abdullah Hanif</p>
+            {/* <p className="mb-1"><strong>Faculty Advisors:</strong> Muhammad Shafique • Farah Shamout • Muhammad Abdullah Hanif</p> */}
             <p><strong>Institution:</strong> New York University Abu Dhabi</p>
           </div>
         </div>
@@ -309,9 +309,9 @@ export default function ConsentPage() {
               <p>Youssof Saleh — <a href="mailto:yms8589@nyu.edu" className="text-purple-400 hover:text-purple-300">yms8589@nyu.edu</a></p>
               
               <p className="mt-4"><strong>Faculty Advisors:</strong></p>
-              <p>Muhammad Shafique — <a href="mailto:ms12713@nyu.edu" className="text-purple-400 hover:text-purple-300">ms12713@nyu.edu</a></p>
+              {/* <p>Muhammad Shafique — <a href="mailto:ms12713@nyu.edu" className="text-purple-400 hover:text-purple-300">ms12713@nyu.edu</a></p>
               <p>Farah Shamout — <a href="mailto:fs999@nyu.edu" className="text-purple-400 hover:text-purple-300">fs999@nyu.edu</a></p>
-              <p>Muhammad Abdullah Hanif — <a href="mailto:mh6117@nyu.edu" className="text-purple-400 hover:text-purple-300">mh6117@nyu.edu</a></p>
+              <p>Muhammad Abdullah Hanif — <a href="mailto:mh6117@nyu.edu" className="text-purple-400 hover:text-purple-300">mh6117@nyu.edu</a></p> */}
             </div>
           </section>
         </div>

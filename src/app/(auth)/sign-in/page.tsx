@@ -160,13 +160,13 @@ export default function SignInPage() {
           </CardContent>
         </Card>
 
-        <FieldDescription className="px-6 text-center">
+        {/* <FieldDescription className="px-6 text-center">
           By clicking continue, you agree to our{" "}
           <Link href="/consent" className="underline underline-offset-4 hover:text-zinc-900">
             Consent Form
           </Link>
           .
-        </FieldDescription>
+        </FieldDescription> */}
       </div>
     </div>
   );
