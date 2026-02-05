@@ -66,7 +66,7 @@ export function StreakRing({
         <div className="absolute inset-0 pointer-events-none -translate-y-20">
           {/* LEFT BARS */}
           <div
-            className="absolute bottom-0 flex items-end gap-2"
+            className="absolute bottom-0 flex items-end gap-1 sm:gap-2"
             style={{
               right: `calc(50% + ${ringClearance}px)`,
               width: "40%", // controls how far bars extend outward
@@ -88,7 +88,7 @@ export function StreakRing({
               return (
                 <div
                   key={`left-${i}`}
-                  className={`w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
+                  className={`w-3 sm:w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
                     isComplete
                       ? "bg-gradient-to-t from-blue-400 via-green-400 to-yellow-300"
                       : "dark:border dark:border-zinc-600 dark:opacity-60 light:bg-slate-200 light:border light:border-slate-300"
@@ -101,7 +101,7 @@ export function StreakRing({
 
           {/* RIGHT BARS */}
           <div
-            className="absolute bottom-0 flex items-end gap-2"
+            className="absolute bottom-0 flex items-end gap-1 sm:gap-2"
             style={{
               left: `calc(50% + ${ringClearance}px)`,
               width: "40%", // SAME width = perfect symmetry
@@ -123,7 +123,7 @@ export function StreakRing({
               return (
                 <div
                   key={`right-${i}`}
-                  className={`w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
+                  className={`w-3 sm:w-4 flex-shrink-0 rounded-full transition-[height] duration-200 ease-out ${
                     isComplete
                       ? "bg-gradient-to-t from-blue-400 via-green-400 to-yellow-300"
                       : "dark:border dark:border-zinc-600 dark:opacity-60 light:bg-slate-200 light:border light:border-slate-300"

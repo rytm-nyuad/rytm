@@ -334,8 +334,8 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
   const currentDraft = mealDrafts[currentIndex] || createEmptyDraft();
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
-      <div className="relative w-full max-w-lg dark:bg-zinc-900 light:bg-gradient-to-b light:from-cyan-700 light:via-cyan-600 light:to-cyan-800 dark:border dark:border-zinc-800 light:border-none rounded-xl shadow-2xl p-6">
+    <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6">
+      <div className="relative w-full max-w-lg max-h-[85dvh] sm:max-h-none overflow-y-auto sm:overflow-visible dark:bg-zinc-900 light:bg-gradient-to-b light:from-cyan-700 light:via-cyan-600 light:to-cyan-800 dark:border dark:border-zinc-800 light:border-none rounded-xl shadow-2xl p-4 sm:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-6">
         {/* Top Right Buttons */}
         <div className="absolute top-4 right-4 flex items-center gap-2">
           {/* Delete Meal Button - Only show if more than 1 meal */}
