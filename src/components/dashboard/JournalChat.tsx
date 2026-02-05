@@ -47,6 +47,7 @@ export function JournalChat({
   const [threads, setThreads] = useState<JournalThread[]>([]);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [showMobileSessions, setShowMobileSessions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const supabase = createBrowserClient(
@@ -355,13 +356,69 @@ export function JournalChat({
     }
   };
 
+  // Helper to load thread and close mobile overlay
+  const handleLoadThreadMobile = (threadId: string) => {
+    loadThreadMessages(threadId);
+    setShowMobileSessions(false);
+  };
+
   return (
     <div
       className={`h-full bg-zinc-900 border border-zinc-800 rounded-xl flex ${className}`}
     >
-      {/* Sidebar */}
+      {/* Mobile Sessions Overlay - Full screen on mobile only */}
+      {showMobileSessions && (
+        <div className="fixed inset-0 z-50 bg-zinc-900 flex flex-col sm:hidden">
+          <div className="flex items-center justify-between p-4 border-b border-zinc-800">
+            <h3 className="font-semibold text-white">Previous Sessions</h3>
+            <button
+              onClick={() => setShowMobileSessions(false)}
+              className="p-2 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            <div className="space-y-1">
+              {threads.map((thread) => (
+                <div
+                  key={thread.id}
+                  className={`w-full flex items-start gap-2 p-3 rounded-lg hover:bg-zinc-800 transition-colors group cursor-pointer ${
+                    currentThreadId === thread.id ? "bg-zinc-800" : ""
+                  }`}
+                  onClick={() => handleLoadThreadMobile(thread.id)}
+                >
+                  <div className="flex-shrink-0 mt-0.5">
+                    {thread.journal_type === "guided" ? (
+                      <Lightbulb className="w-4 h-4 text-purple-400" />
+                    ) : (
+                      <BookOpen className="w-4 h-4 text-blue-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">
+                      {thread.title}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {new Date(thread.last_message_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => deleteThread(thread.id, e)}
+                    className="p-1 hover:bg-zinc-700 rounded transition-all text-red-400"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar - Hidden on mobile, visible on desktop */}
       <div
-        className={`border-r border-zinc-800 flex flex-col transition-all duration-300 ${
+        className={`hidden sm:flex border-r border-zinc-800 flex-col transition-all duration-300 ${
           showSidebar ? "w-56" : "w-0"
         } overflow-hidden`}
       >
@@ -421,18 +478,34 @@ export function JournalChat({
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Desktop: Toggle sidebar */}
             <button
               onClick={() => setShowSidebar(!showSidebar)}
-              className="p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
+              className="hidden sm:block p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
             >
               <MessageSquare className="w-4 h-4 text-zinc-400" />
             </button>
-            <h3 className="font-semibold text-white">Journal</h3>
+            {/* Mobile: Previous Sessions button */}
+            <button
+              onClick={() => setShowMobileSessions(true)}
+              className="sm:hidden p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              <MessageSquare className="w-4 h-4 text-zinc-400" />
+            </button>
+            <h3 className="font-semibold text-white text-sm sm:text-base">Journal</h3>
+            {/* Mobile: New Session button */}
+            <button
+              onClick={handleNewSession}
+              className="sm:hidden p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
+              title="New Session"
+            >
+              <Plus className="w-4 h-4 text-zinc-400" />
+            </button>
           </div>
 
           {/* Toggle */}
-          <div className="flex gap-3 items-center">
+          <div className="flex gap-2 sm:gap-3 items-center">
             <div className="flex bg-zinc-800 rounded-full p-0.5 border border-zinc-700">
               <button
                 onClick={() => handleModeChange("unstructured")}

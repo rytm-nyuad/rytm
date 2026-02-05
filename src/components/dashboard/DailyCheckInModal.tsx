@@ -141,7 +141,7 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
           )}
 
           {/* VAS Questions - All Inline */}
-          <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
             {/* Sleep Quality */}
             <div>
               <FieldLabel className="text-sm mb-8">When you woke up, how rested did you feel?</FieldLabel>
@@ -307,7 +307,7 @@ export function DailyCheckInModal({ isOpen, onClose, onSubmit }: DailyCheckInMod
           <div className="pt-2">
             <FieldLabel className="mb-3">Which of the following emotions did you feel at any point today?</FieldLabel>
             <p className="text-xs dark:text-zinc-400 light:text-white/80 mb-3">Select all that apply</p>
-            <div className="grid grid-cols-6 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {emotionOptions.map((emotion) => (
                 <button
                   key={emotion}
