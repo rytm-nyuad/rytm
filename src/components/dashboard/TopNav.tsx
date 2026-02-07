@@ -26,6 +26,9 @@ const DEV_MODE = false;
 // Fitbit connection status type
 type FitbitStatus = "loading" | "connected" | "needs_reauth" | "not_connected";
 
+// Add Calendar connection status type (same states as Fitbit)
+type CalendarStatus = "loading" | "connected" | "needs_reauth" | "not_connected";
+
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
@@ -33,8 +36,9 @@ export function TopNav() {
 
  const [mobileOpen, setMobileOpen] = useState(false);
  const [fitbitStatus, setFitbitStatus] = useState<FitbitStatus>("loading");
+ const [calendarStatus, setCalendarStatus] = useState<CalendarStatus>("loading");
 
-// CHANGE: only create Supabase client in non-DEV mode
+  // CHANGE: only create Supabase client in non-DEV mode
   const supabase = DEV_MODE
   ? null
   : createBrowserClient(
@@ -95,6 +99,43 @@ export function TopNav() {
     checkFitbitStatus();
   }, [supabase]);
 
+  // Check Calendar connection status on mount (mirrors Fitbit logic)
+  useEffect(() => {
+    async function checkCalendarStatus() {
+      if (!supabase) {
+        setCalendarStatus("not_connected");
+        return;
+      }
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setCalendarStatus("not_connected");
+          return;
+        }
+
+        const { data: creds, error } = await supabase
+          .from("calendar_credentials")
+          .select("status")
+          .eq("app_user_id", user.id)
+          .maybeSingle();
+
+        if (error || !creds) {
+          setCalendarStatus("not_connected");
+          return;
+        }
+
+        if (creds.status === "needs_reauth") setCalendarStatus("needs_reauth");
+        else setCalendarStatus("connected");
+      } catch (err) {
+        console.error("[TopNav] Error checking Calendar status:", err);
+        setCalendarStatus("not_connected");
+      }
+    }
+
+    checkCalendarStatus();
+  }, [supabase]);
+
   const navItems = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
     // { href: "/calendar", icon: Calendar, label: "Calendar" },
@@ -122,6 +163,11 @@ export function TopNav() {
     // Start the Fitbit OAuth flow:
     // This hits /api/fitbit/connect, which redirects to Fitbit
     window.location.href = "/api/fitbit/connect";
+  };
+
+  const handleConnectCalendar = () => {
+    // Start the Calendar OAuth flow (server route will redirect to provider)
+    window.location.href = "/api/calendar/connect";
   };
 
   return (
@@ -191,6 +237,42 @@ export function TopNav() {
               fitbitStatus === "connected"
                 ? "bg-emerald-500"
                 : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                ? "bg-red-500 animate-pulse"
+                : "bg-zinc-500"
+            }`}
+          />
+        </button>
+
+        {/* Connect Calendar button (desktop) */}
+        <button
+          onClick={handleConnectCalendar}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            calendarStatus === "connected"
+              ? "text-emerald-500 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+              : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
+              ? "text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+              : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+          }`}
+          title={
+            calendarStatus === "connected"
+              ? "Calendar Connected"
+              : calendarStatus === "needs_reauth"
+              ? "Calendar needs reconnection - click to reconnect"
+              : calendarStatus === "loading"
+              ? "Checking Calendar status..."
+              : "Connect Calendar"
+          }
+        >
+          <Calendar className="w-4 h-4" />
+          <span>
+            {calendarStatus === "connected" ? "Calendar ✓" : calendarStatus === "needs_reauth" ? "Reconnect" : "Calendar"}
+          </span>
+          {/* Status indicator dot */}
+          <span
+            className={`w-2 h-2 rounded-full ${
+              calendarStatus === "connected"
+                ? "bg-emerald-500"
+                : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
                 ? "bg-red-500 animate-pulse"
                 : "bg-zinc-500"
             }`}
@@ -283,6 +365,36 @@ export function TopNav() {
                   fitbitStatus === "connected"
                     ? "bg-emerald-500"
                     : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                    ? "bg-red-500 animate-pulse"
+                    : "bg-zinc-500"
+                }`}
+              />
+            </button>
+
+            {/* MOBILE CONNECT CALENDAR */}
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                handleConnectCalendar();
+              }}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                calendarStatus === "connected"
+                  ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                  : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
+                  ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                  : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span>
+                {calendarStatus === "connected" ? "Calendar Connected" : calendarStatus === "needs_reauth" ? "Reconnect Calendar" : "Connect Calendar"}
+              </span>
+              {/* Status indicator dot */}
+              <span
+                className={`w-2 h-2 rounded-full ml-auto ${
+                  calendarStatus === "connected"
+                    ? "bg-emerald-500"
+                    : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
                     ? "bg-red-500 animate-pulse"
                     : "bg-zinc-500"
                 }`}
