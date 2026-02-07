@@ -39,6 +39,9 @@ jobs:
             export FITBIT_CLIENT_ID='${{ secrets.FITBIT_CLIENT_ID }}'
             export FITBIT_CLIENT_SECRET='${{ secrets.FITBIT_CLIENT_SECRET }}'
             export FITBIT_REDIRECT_URI='${{ secrets.FITBIT_REDIRECT_URI }}'
+            export GOOGLE_CLIENT_ID='${{ secrets.GOOGLE_CLIENT_ID }}'
+            export GOOGLE_CLIENT_SECRET='${{ secrets.GOOGLE_CLIENT_SECRET }}'
+            export GOOGLE_REDIRECT_URI='${{ secrets.GOOGLE_REDIRECT_URI }}'
             # Report/email configuration removed — reporting runs from GitHub Actions (secrets remain in Actions only)
             export BUILD_TIME="$(date +%s)"
 
