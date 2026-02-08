@@ -1,16 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import {
-  Send,
-  Plus,
-  MessageSquare,
-  Trash2,
-  BookOpen,
-  Lightbulb,
-} from "lucide-react";
+import { Send, Plus, MessageSquare, Trash2, BookOpen, Lightbulb } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import type { ChatMessage } from "@/types/dashboard";
+import { formatLocalDate } from "@/lib/time";
 
 interface JournalThread {
   id: string;
@@ -22,10 +16,8 @@ interface JournalThread {
 
 interface JournalChatProps {
   className?: string;
-  onMessageSent?: () => void;
+  onMessageSent?: () => void; // Parent should reload dashboard on this
   autoFocus?: boolean;
-
-  // KEEP: required to backlog correctly
   selectedDate: Date;
   canonicalTimeZone: string;
 }
@@ -39,9 +31,7 @@ export function JournalChat({
 }: JournalChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState<"unstructured" | "structured">(
-    "unstructured"
-  );
+  const [mode, setMode] = useState<"unstructured" | "structured">("unstructured");
   const [userId, setUserId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [threads, setThreads] = useState<JournalThread[]>([]);
@@ -55,43 +45,15 @@ export function JournalChat({
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  /* =========================
-     CHANGE: single date formatter for canonical tz
-     - avoids duplicate helpers / accidental wrong tz
-  ========================== */
-  const formatLocalDate = useMemo(() => {
-    const tz =
-      canonicalTimeZone ||
-      Intl.DateTimeFormat().resolvedOptions().timeZone ||
-      "UTC";
+  // Single source of truth: local dates in canonical tz
+  const tz = useMemo(() => canonicalTimeZone || "UTC", [canonicalTimeZone]);
 
-    return (d: Date) =>
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: tz,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(d); // YYYY-MM-DD
-  }, [canonicalTimeZone]);
+  const selectedLocalDate = useMemo(() => formatLocalDate(selectedDate, tz), [selectedDate, tz]);
+  const todayLocalDate = useMemo(() => formatLocalDate(new Date(), tz), [tz]);
 
-  /* =========================
-     ADD: stable localDate strings for selected day + today (in canonical tz)
-  ========================== */
-  const selectedLocalDate = useMemo(
-    () => formatLocalDate(selectedDate),
-    [formatLocalDate, selectedDate]
-  );
-
-  const todayLocalDate = useMemo(
-    () => formatLocalDate(new Date()),
-    [formatLocalDate]
-  );
-
-  // KEEP: Focus input when autoFocus prop changes to true
+  // Focus input when requested
   useEffect(() => {
-    if (autoFocus && inputRef.current) {
-      inputRef.current.focus();
-    }
+    if (autoFocus && inputRef.current) inputRef.current.focus();
   }, [autoFocus]);
 
   const loadThreads = async (uid: string) => {
@@ -104,29 +66,43 @@ export function JournalChat({
       console.error("Error loading threads:", error);
       return;
     }
-
     setThreads(data || []);
   };
 
-  // KEEP: Get user ID on mount
+  // Get user session on mount
   useEffect(() => {
     const getUser = async () => {
-      // Use server endpoint so HTTP-only cookies are read by the server
       try {
-        const resp = await fetch('/api/auth/session');
+        // If you don't actually have /api/auth/session, replace this with supabase.auth.getSession()
+        const resp = await fetch("/api/auth/session");
         const json = await resp.json();
         const session = json?.session;
-        if (session) {
+        if (session?.user?.id) {
           setUserId(session.user.id);
           loadThreads(session.user.id);
         }
-      } catch (err) {
-        // ignore
+      } catch {
+        // fallback
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          setUserId(session.user.id);
+          loadThreads(session.user.id);
+        }
       }
     };
     getUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // IMPORTANT: when selectedDate changes, clear current thread/messages so user doesn't see mixed-day confusion
+  // (you can remove this if you intentionally want continuity across days)
+  useEffect(() => {
+    setMessages([]);
+    setCurrentThreadId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLocalDate, mode]);
 
   const loadThreadMessages = async (threadId: string) => {
     const { data, error } = await supabase.rpc("get_thread_messages", {
@@ -139,35 +115,29 @@ export function JournalChat({
       return;
     }
 
-    const formattedMessages: ChatMessage[] = (data || []).map((msg: any) => ({
+    const formatted: ChatMessage[] = (data || []).map((msg: any) => ({
       id: msg.id,
       role: msg.role,
       content: msg.content,
       timestamp: new Date(msg.created_at),
     }));
 
-    setMessages(formattedMessages);
+    setMessages(formatted);
     setCurrentThreadId(threadId);
   };
 
-  /* =========================
-     CHANGE: refresh summary for the *selected day*
-     - fixes "journal doesn't update checklist until reload"
-     - fixes "always refreshes today" bug when backlogging
-  ========================== */
-  const refreshSummaryAndNotify = async (localDate: string) => {
+  // Refresh daily_summary for the selectedLocalDate and notify parent
+  const refreshSummaryAndNotify = async () => {
     if (!userId) return;
 
-    const { error: refreshErr } = await supabase.rpc("refresh_daily_summary", {
+    const { error } = await supabase.rpc("refresh_daily_summary", {
       p_user_id: userId,
-      p_target_date: localDate, // CHANGE: not null
+      p_target_date: selectedLocalDate, 
     });
 
-    if (refreshErr) {
-      console.error("refresh_daily_summary failed:", refreshErr);
-    }
+    if (error) console.error("refresh_daily_summary failed:", error);
 
-    // KEEP: parent will call loadDashboardData(userId, selectedDate)
+    console.log("JournalChat calling onMessageSent", { selectedLocalDate });
     onMessageSent?.();
   };
 
@@ -184,16 +154,14 @@ export function JournalChat({
       return;
     }
 
-    // KEEP
-    loadThreads(userId);
+    await loadThreads(userId);
 
     if (currentThreadId === threadId) {
       setMessages([]);
       setCurrentThreadId(null);
     }
 
-    // CHANGE: refresh *selected* day summary (not always today)
-    await refreshSummaryAndNotify(selectedLocalDate);
+    await refreshSummaryAndNotify();
   };
 
   const handleModeChange = (newMode: "unstructured" | "structured") => {
@@ -224,12 +192,12 @@ export function JournalChat({
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
-      } catch (error) {
-        console.error("Error creating new thread:", error);
+      } catch (err) {
+        console.error("Error creating new thread:", err);
       }
     }
 
-    loadThreads(userId);
+    await loadThreads(userId);
   };
 
   const handleSend = async () => {
@@ -245,29 +213,23 @@ export function JournalChat({
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
 
-    // Determine whether we should preserve the exact timestamp
-    // CHANGE: only keep real time when selected day == today in canonical tz
-    const clientAt =
-      selectedLocalDate === todayLocalDate ? new Date().toISOString() : null;
+    // Only preserve exact time if the selected date is "today" in canonical tz
+    const clientAt = selectedLocalDate === todayLocalDate ? new Date().toISOString() : null;
 
-    // ==========================================================
+    // =========================
     // FREE MODE (RPC insert)
-    // ==========================================================
+    // =========================
     if (mode === "unstructured") {
       try {
         let threadIdToUse = currentThreadId;
 
-        // KEEP: Get or create thread for free mode
         if (!threadIdToUse) {
-          const { data: threadId, error: threadError } = await supabase.rpc(
-            "get_or_create_active_thread",
-            {
-              p_user_id: userId,
-              p_journal_type: "free",
-            }
-          );
+          const { data: threadId, error: threadError } = await supabase.rpc("get_or_create_active_thread", {
+            p_user_id: userId,
+            p_journal_type: "free",
+          });
 
-          if (threadError) {
+          if (threadError || !threadId) {
             console.error("Error creating thread:", threadError);
             return;
           }
@@ -276,40 +238,32 @@ export function JournalChat({
           setCurrentThreadId(threadIdToUse);
         }
 
-        // CHANGE: use RPC wrapper so local_date is correct + summary updates
-        const { data: ok, error: rpcErr } = await supabase.rpc(
-          "log_journal_message_for_date",
-          {
-            p_user_id: userId,
-            p_local_date: selectedLocalDate,
-            p_thread_id: threadIdToUse,
-            p_mode: "free",
-            p_role: "user",
-            p_content: userMessage.content,
-            p_at: clientAt, // null => noon fallback in RPC
-          }
-        );
+        const { data: ok, error: rpcErr } = await supabase.rpc("log_journal_message_for_date", {
+          p_user_id: userId,
+          p_local_date: selectedLocalDate,
+          p_thread_id: threadIdToUse,
+          p_mode: "free",
+          p_role: "user",
+          p_content: userMessage.content,
+          p_at: clientAt,
+        });
 
         if (rpcErr || ok !== true) {
           console.error("log_journal_message_for_date failed:", rpcErr);
           return;
         }
 
-        // CHANGE: refresh selected day + notify parent
-        await refreshSummaryAndNotify(selectedLocalDate);
-
-        // KEEP: update sidebar
-        loadThreads(userId);
-      } catch (error) {
-        console.error("Error in free-mode send:", error);
+        await refreshSummaryAndNotify();
+        await loadThreads(userId);
+      } catch (err) {
+        console.error("Error in free-mode send:", err);
       }
-
       return;
     }
 
-    // ==========================================================
-    // GUIDED MODE (API route does inserts via RPC)
-    // ==========================================================
+    // =========================
+    // GUIDED MODE (API inserts via RPC)
+    // =========================
     setLoading(true);
 
     try {
@@ -319,9 +273,7 @@ export function JournalChat({
         body: JSON.stringify({
           content: userMessage.content,
           mode: "guided",
-          // CHANGE: pass selected day localDate so API can backlog correctly
           localDate: selectedLocalDate,
-          // CHANGE: pass timestamp only for "today" in canonical tz
           clientAt,
         }),
       });
@@ -333,7 +285,6 @@ export function JournalChat({
         return;
       }
 
-      // KEEP: Add AI response to chat (UI only)
       if (data.response) {
         const aiMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
@@ -344,29 +295,23 @@ export function JournalChat({
         setMessages((prev) => [...prev, aiMessage]);
       }
 
-      // CHANGE: refresh selected day + notify parent
-      await refreshSummaryAndNotify(selectedLocalDate);
-
-      // KEEP: update sidebar counts
-      loadThreads(userId);
-    } catch (error) {
-      console.error("Error sending message:", error);
+      await refreshSummaryAndNotify();
+      await loadThreads(userId);
+    } catch (err) {
+      console.error("Error sending message:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Helper to load thread and close mobile overlay
   const handleLoadThreadMobile = (threadId: string) => {
     loadThreadMessages(threadId);
     setShowMobileSessions(false);
   };
 
   return (
-    <div
-      className={`h-full bg-zinc-900 border border-zinc-800 rounded-xl flex ${className}`}
-    >
-      {/* Mobile Sessions Overlay - Full screen on mobile only */}
+    <div className={`h-full bg-zinc-900 border border-zinc-800 rounded-xl flex ${className}`}>
+      {/* Mobile Sessions Overlay */}
       {showMobileSessions && (
         <div className="fixed inset-0 z-50 bg-zinc-900 flex flex-col sm:hidden">
           <div className="flex items-center justify-between p-4 border-b border-zinc-800">
@@ -396,12 +341,8 @@ export function JournalChat({
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white truncate">
-                      {thread.title}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      {new Date(thread.last_message_at).toLocaleDateString()}
-                    </p>
+                    <p className="text-sm text-white truncate">{thread.title}</p>
+                    <p className="text-xs text-zinc-500">{new Date(thread.last_message_at).toLocaleDateString()}</p>
                   </div>
                   <button
                     onClick={(e) => deleteThread(thread.id, e)}
@@ -416,7 +357,7 @@ export function JournalChat({
         </div>
       )}
 
-      {/* Sidebar - Hidden on mobile, visible on desktop */}
+      {/* Sidebar - desktop */}
       <div
         className={`hidden sm:flex border-r border-zinc-800 flex-col transition-all duration-300 ${
           showSidebar ? "w-56" : "w-0"
@@ -434,9 +375,7 @@ export function JournalChat({
 
         <div className="flex-1 overflow-y-auto">
           <div className="p-3">
-            <h4 className="text-xs font-medium text-zinc-500 uppercase mb-2">
-              Previous Sessions
-            </h4>
+            <h4 className="text-xs font-medium text-zinc-500 uppercase mb-2">Previous Sessions</h4>
             <div className="space-y-1">
               {threads.map((thread) => (
                 <div
@@ -454,12 +393,8 @@ export function JournalChat({
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white truncate">
-                      {thread.title}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      {new Date(thread.last_message_at).toLocaleDateString()}
-                    </p>
+                    <p className="text-sm text-white truncate">{thread.title}</p>
+                    <p className="text-xs text-zinc-500">{new Date(thread.last_message_at).toLocaleDateString()}</p>
                   </div>
                   <button
                     onClick={(e) => deleteThread(thread.id, e)}
@@ -474,27 +409,25 @@ export function JournalChat({
         </div>
       </div>
 
-      {/* Main Chat Area */}
+      {/* Main Chat */}
       <div className="flex-1 flex flex-col">
-        {/* Header */}
         <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Desktop: Toggle sidebar */}
             <button
               onClick={() => setShowSidebar(!showSidebar)}
               className="hidden sm:block p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
             >
               <MessageSquare className="w-4 h-4 text-zinc-400" />
             </button>
-            {/* Mobile: Previous Sessions button */}
             <button
               onClick={() => setShowMobileSessions(true)}
               className="sm:hidden p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
             >
               <MessageSquare className="w-4 h-4 text-zinc-400" />
             </button>
-            <h3 className="font-semibold text-white text-sm sm:text-base">Journal</h3>
-            {/* Mobile: New Session button */}
+            <h3 className="font-semibold text-white text-sm sm:text-base">
+              Journal • {selectedLocalDate}
+            </h3>
             <button
               onClick={handleNewSession}
               className="sm:hidden p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
@@ -504,15 +437,12 @@ export function JournalChat({
             </button>
           </div>
 
-          {/* Toggle */}
           <div className="flex gap-2 sm:gap-3 items-center">
             <div className="flex bg-zinc-800 rounded-full p-0.5 border border-zinc-700">
               <button
                 onClick={() => handleModeChange("unstructured")}
                 className={`px-3 py-1 text-xs rounded-full transition-all ${
-                  mode === "unstructured"
-                    ? "bg-white text-black"
-                    : "text-zinc-400 hover:text-white"
+                  mode === "unstructured" ? "bg-white text-black" : "text-zinc-400 hover:text-white"
                 }`}
               >
                 Free
@@ -520,9 +450,7 @@ export function JournalChat({
               <button
                 onClick={() => handleModeChange("structured")}
                 className={`px-3 py-1 text-xs rounded-full transition-all ${
-                  mode === "structured"
-                    ? "bg-white text-black"
-                    : "text-zinc-400 hover:text-white"
+                  mode === "structured" ? "bg-white text-black" : "text-zinc-400 hover:text-white"
                 }`}
               >
                 Guided
@@ -531,7 +459,6 @@ export function JournalChat({
           </div>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 p-4 overflow-y-auto space-y-3 min-h-[120px]">
           {messages.length === 0 ? (
             <div className="text-center text-zinc-500 text-sm pt-8">
@@ -544,15 +471,11 @@ export function JournalChat({
               <div
                 key={msg.id}
                 className={`rounded-lg p-3 ${
-                  msg.role === "user"
-                    ? "bg-zinc-800 ml-8"
-                    : "bg-purple-600/20 border border-purple-600/30 mr-8"
+                  msg.role === "user" ? "bg-zinc-800 ml-8" : "bg-purple-600/20 border border-purple-600/30 mr-8"
                 }`}
               >
                 <p className="text-white text-sm">{msg.content}</p>
-                <p className="text-xs text-zinc-500 mt-1">
-                  {msg.timestamp.toLocaleTimeString()}
-                </p>
+                <p className="text-xs text-zinc-500 mt-1">{msg.timestamp.toLocaleTimeString()}</p>
               </div>
             ))
           )}
@@ -563,7 +486,6 @@ export function JournalChat({
           )}
         </div>
 
-        {/* Input */}
         <div className="p-4 border-t border-zinc-800">
           <div className="flex gap-2">
             <input

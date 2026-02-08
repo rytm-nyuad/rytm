@@ -16,6 +16,7 @@ import { DailyCheckInModal } from "@/components/dashboard/DailyCheckInModal";
 import { JournalChat } from "@/components/dashboard/JournalChat";
 import { CoachPromptBar } from "@/components/dashboard/CoachPromptBar";
 import { FullScreenCoach } from "@/components/dashboard/FullScreenCoach";
+import { formatLocalDate, getLocalHourInTimeZone } from "@/lib/time";
 //import { CoachChat } from "@/components/dashboard/CoachChat";
 import { TopNav } from "@/components/dashboard/TopNav";
 import { TodaysFocus } from "@/components/dashboard/TodaysFocus";
@@ -142,18 +143,6 @@ function DashboardContent() {
     await loadDashboardData(session.user.id, new Date());
   };
 
-  const getLocalHourInTimeZone = (tz: string) => {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hour: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-
-  const hourStr = parts.find((p) => p.type === "hour")?.value ?? "0";
-  return Number(hourStr);
-  };
-
-
   const loadDashboardData = async (userId: string, date: Date, opts?: { forceWeekly?: boolean }) => {
     const seq = ++loadSeqRef.current; // NEW request id
 
@@ -165,23 +154,15 @@ function DashboardContent() {
       await import("@/lib/db/dashboard");
 
     const tz = await getDashboardTimeZone(userId);
-    if (seq !== loadSeqRef.current) return; // ✅ guard
+    if (seq !== loadSeqRef.current) return; 
     setCanonicalTz(tz);
 
-    const formatLocal = (d: Date) =>
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: tz,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(d);
-
-    const selectedLocal = formatLocal(date);
-    const todayLocal = formatLocal(new Date());
+    const selectedLocal = formatLocalDate(date, tz);
+    const todayLocal = formatLocalDate(new Date(), tz);
 
     // 1) selected day row (checklist)
     const dayRow = await getDailySummaryForDate(userId, date);
-    if (seq !== loadSeqRef.current) return; // ✅ guard
+    if (seq !== loadSeqRef.current) return; 
 
     setProgress({
       overallQuestion: dayRow.has_overall,
@@ -191,19 +172,11 @@ function DashboardContent() {
       journalCompleted: dayRow.has_journal,
     });
 
-    
-    const hourLocal = Number(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      hour: "2-digit",
-      hour12: false,
-    }).format(new Date())
-    );
-
+    const hourLocal = getLocalHourInTimeZone(tz);
     const shouldGate = hourLocal >= 4;
     setIsLocked(selectedLocal === todayLocal ? (shouldGate && !dayRow.has_overall) : false);
 
-
+    
     // 3) streak + weekly only on today
     const forceWeekly = opts?.forceWeekly ?? false;
     
@@ -212,20 +185,13 @@ function DashboardContent() {
         getStreakData(userId),
         getWeeklyActivity(userId),
       ]);
-      if (seq !== loadSeqRef.current) return; // ✅ guard
+      if (seq !== loadSeqRef.current) return; 
       setStreak(streak);
       setWeeklyData(weekly);
     }
 
-    if (seq !== loadSeqRef.current) return; // ✅ guard
+    if (seq !== loadSeqRef.current) return; 
     setLoading(false);
-    console.log("Loading daily_summary for:", { selectedDate: date.toISOString(), selectedLocal, tz });
-    console.log("TZ:", tz);
-    console.log("selectedDate ISO:", date.toISOString());
-    console.log("selectedLocal:", selectedLocal);
-    console.log("todayLocal:", todayLocal);
-    console.log("dayRow.date:", dayRow.date, "has_overall:", dayRow.has_overall);
-
   };
 
 
@@ -274,7 +240,6 @@ function DashboardContent() {
   // ADD: journal callback so streak/checklist refresh immediately after journaling
   const handleJournalMessageSent = async () => {
     if (!userId) return;
-    // reload from DB-backed daily_summary snapshot (fast: 1 RPC + 1 read)
     await loadDashboardData(userId, selectedDate, { forceWeekly: true });
   };
 

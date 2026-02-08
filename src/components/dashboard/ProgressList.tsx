@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { formatLocalDate, formatLocalDisplayDate, isSameLocalDay, normalizeToNoon } from "@/lib/time";
 
 interface ProgressListProps {
   canonicalTimeZone: string;
@@ -17,50 +18,25 @@ interface ProgressListProps {
 }
 
 export function ProgressList({ canonicalTimeZone, progress, currentDate, onDateChange, onAction }: ProgressListProps) {
-  /*const formatDate = (date: Date) => {
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };*/
-  const formatDate = (date: Date) => {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: canonicalTimeZone,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
-};
-
-
-  const normalize = (d: Date) => {
-    // Noon avoids DST edge-cases
-    d.setHours(12, 0, 0, 0);
-    return d;
-  };
+  // Use shared display formatter from src/lib/time.ts
 
   const handlePreviousDay = () => {
-    const newDate = normalize(new Date(currentDate));
+    const newDate = normalizeToNoon(currentDate);
     newDate.setDate(newDate.getDate() - 1);
     onDateChange(newDate);
   };
 
   const handleNextDay = () => {
-    const newDate = normalize(new Date(currentDate));
+    const newDate = normalizeToNoon(currentDate);
     newDate.setDate(newDate.getDate() + 1);
 
-    const today = normalize(new Date());
-    if (newDate <= today) onDateChange(newDate);
+    const newLocal = formatLocalDate(newDate, canonicalTimeZone);
+    const todayLocal = formatLocalDate(new Date(), canonicalTimeZone);
+
+    if (newLocal <= todayLocal) onDateChange(newDate);
   };
 
-
-  const isToday = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const current = new Date(currentDate);
-    current.setHours(0, 0, 0, 0);
-    return current.getTime() === today.getTime();
-  };
+  const isToday = () => isSameLocalDay(currentDate, new Date(), canonicalTimeZone);
 
   const tasks = [
     { label: "Overall mood", completed: progress.overallQuestion, action: 'overall' as const },
@@ -85,7 +61,7 @@ export function ProgressList({ canonicalTimeZone, progress, currentDate, onDateC
             <ChevronLeft className="w-4 h-4" />
           </button>
           <h3 className="text-base font-semibold dark:text-white light:text-slate-900 min-w-[100px] text-center">
-            {formatDate(currentDate)}
+            {formatLocalDisplayDate(currentDate, canonicalTimeZone)}
           </h3>
           <button
             onClick={handleNextDay}

@@ -1,5 +1,8 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { DailyOverall } from "@/types/dashboard";
+import { formatLocalDate, getBrowserTimeZone } from "@/lib/time";
+import { getCanonicalTimeZone } from "@/lib/time";
+
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,58 +45,6 @@ function cacheKey(userId: string) {
   return userId;
 }
 
-function getBrowserTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-}
-
-function formatDateInTimeZone(date: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date); // YYYY-MM-DD
-}
-
-/* ============================================================
-   Canonical timezone resolution
-============================================================ */
-async function getCanonicalTimeZone(userId: string): Promise<string> {
-  // 1) Fitbit timezone
-  
-  const { data: fitbit } = await supabase
-    .from("fitbit_profile")
-    .select("user_timezone")
-    .eq("app_user_id", userId)
-    .maybeSingle();
-
-  if (fitbit?.user_timezone) return fitbit.user_timezone;
-
-  // 2) profiles.timezone if present (skip if column doesn't exist)
-  // Note: profiles table may not have timezone column in all environments
-  try {
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("timezone")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    const profileTz = !profileErr && profile?.timezone ? profile.timezone : null;
-    if (profileTz) return profileTz;
-  } catch {
-    // profiles.timezone column may not exist, continue to fallback
-  }
-
-  // 3) browser fallback + persist into profiles as canonical fallback
-  const browserTz = getBrowserTimeZone();
-  await supabase.rpc("ensure_profile_timezone", {
-    p_user_id: userId,
-    p_timezone: browserTz,
-  });
-
-  return browserTz;
-}
-
 /* ============================================================
    Refresh daily_summary via RPC for a local date
 ============================================================ */
@@ -110,7 +61,7 @@ async function refreshDailySummary(
     console.error("refresh_daily_summary failed:", error);
     return {
       user_id: userId,
-      date: localDate ?? formatDateInTimeZone(new Date(), "UTC"),
+      date: localDate ?? formatLocalDate(new Date(), "UTC"),
       timezone: "UTC",
       has_overall: false,
       has_meal: false,
@@ -148,9 +99,9 @@ async function fetchWeeklySummaries(userId: string, start: string, end: string) 
    Snapshot builder (fast dashboard header: today + weekly)
 ============================================================ */
 async function buildDashboardSnapshot(userId: string): Promise<DashboardSnapshot> {
-  const tz = await getCanonicalTimeZone(userId);
+  const tz = await getCanonicalTimeZone(supabase, userId);
   const now = new Date();
-  const todayLocal = formatDateInTimeZone(now, tz);
+  const todayLocal = formatLocalDate(now, tz);
 
   // ONE refresh for today
   const todaySummary = await refreshDailySummary(userId, todayLocal);
@@ -160,7 +111,7 @@ async function buildDashboardSnapshot(userId: string): Promise<DashboardSnapshot
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    weeklyDates.push(formatDateInTimeZone(d, tz));
+    weeklyDates.push(formatLocalDate(d, tz));
   }
   const start = weeklyDates[0];
   const end = weeklyDates[weeklyDates.length - 1];
@@ -204,6 +155,7 @@ function invalidateSnapshot(userId: string) {
   snapshotCache.delete(cacheKey(userId));
 }
 
+
 /* ============================================================
    NEW: date-aware summary read for checklist/backlogging
    - Always refreshes that date so UI matches latest DB
@@ -212,8 +164,8 @@ export async function getDailySummaryForDate(
   userId: string,
   date: Date
 ): Promise<DailySummaryRow> {
-  const tz = await getCanonicalTimeZone(userId);
-  const localDate = formatDateInTimeZone(date, tz);
+  const tz = await getCanonicalTimeZone(supabase, userId);
+  const localDate = formatLocalDate(date, tz);
   // refresh & return row (RPC already returns daily_summary)
   const row = await refreshDailySummary(userId, localDate);
   invalidateSnapshot(userId); // keep header consistent if yesterday/today changed
@@ -233,9 +185,9 @@ export async function getTodayOverall(
   userId: string,
   date?: Date
 ): Promise<DailyOverall | null> {
-  const tz = await getCanonicalTimeZone(userId);
+  const tz = await getCanonicalTimeZone(supabase, userId);
   const target = date ?? new Date();
-  const dateStr = formatDateInTimeZone(target, tz);
+  const dateStr = formatLocalDate(target, tz);
 
   const { data, error } = await supabase
     .from("daily_overall")
@@ -259,9 +211,9 @@ export async function submitDailyOverall(
   score: number,
   date?: Date
 ): Promise<boolean> {
-  const tz = await getCanonicalTimeZone(userId);
+  const tz = await getCanonicalTimeZone(supabase, userId);
   const target = date ?? new Date();
-  const localDate = formatDateInTimeZone(target, tz);
+  const localDate = formatLocalDate(target, tz);
 
   const { data, error } = await supabase.rpc("submit_overall_for_date", {
     p_user_id: userId,
@@ -314,7 +266,7 @@ export async function logMeal(
 
     // KEEP: target day is selectedDate (backlog) or today
     const target = date ?? new Date();
-    const localDate = formatDateInTimeZone(target, tz); // "YYYY-MM-DD"
+    const localDate = formatLocalDate(target, tz); // "YYYY-MM-DD"
     const isTodayLocal = localDate === snap.todayLocal;
 
     // CHANGE: call the RPC wrapper (the ONLY write path)
@@ -375,7 +327,7 @@ export async function logWater(
   const snap = await getSnapshot(userId);
   const tz = snap.tz;
   const target = date ?? new Date();
-  const localDate = formatDateInTimeZone(target, tz);
+  const localDate = formatLocalDate(target, tz);
   const isTodayLocal = localDate === snap.todayLocal;
 
   const { data, error } = await supabase.rpc("log_water_for_date", {
@@ -422,7 +374,7 @@ export async function submitDailyCheckIn(
   const snap = await getSnapshot(userId);
   const tz = snap.tz;
   const target = date ?? new Date();
-  const localDate = formatDateInTimeZone(target, tz);
+  const localDate = formatLocalDate(target, tz);
   const isTodayLocal = localDate === snap.todayLocal;
 
   const { data, error } = await supabase.rpc("submit_checkin_for_date", {
