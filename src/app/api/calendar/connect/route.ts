@@ -10,7 +10,6 @@ const GOOGLE_SCOPES = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/calendar.events.readonly",
-  "https://www.googleapis.com/auth/calendar",
 ];
 
 function generateRandomString(length: number): string {
