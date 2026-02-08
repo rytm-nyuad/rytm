@@ -87,13 +87,9 @@ export async function loadThreadMessages(supabase: SupabaseClient, threadId: str
 /**
  * Load today's free-form journal messages
  */
-export async function loadTodayFreeMessages(supabase: SupabaseClient, userId: string): Promise<JournalMessage[]> {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  const dateStr = `${year}-${month}-${day}`;
-
+export async function loadTodayFreeMessages(supabase: SupabaseClient, userId: string, canonicalTz: string): Promise<JournalMessage[]> {
+  const { formatLocalDate } = await import("@/lib/time");
+  const dateStr = formatLocalDate(new Date(), canonicalTz);
   const { data, error } = await supabase
     .from("journal_messages")
     .select("*")
