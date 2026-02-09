@@ -10,6 +10,7 @@ import { AgentContext } from "@/llm-service/types";
 
 export const dynamic = 'force-dynamic';
 
+
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = cookies();
@@ -40,6 +41,8 @@ export async function POST(req: NextRequest) {
     const mode = "guided" ; 
     const localDate = body.localDate;
     const clientAt: string | null = body.clientAt ?? null;   // ISO string for today (optional)
+    const threadIdFromClient: string | null = body.threadId ?? null;
+    const sessionTimeZone: string | null = body.sessionTimeZone ?? null;
 
     if (!content || typeof content !== "string") {
       return NextResponse.json({ error: "Missing content" }, { status: 400 });

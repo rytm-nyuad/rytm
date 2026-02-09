@@ -46,7 +46,10 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedJournalThreadId, setSelectedJournalThreadId] = useState<string | null>(null);
+  const [selectedJournalType, setSelectedJournalType] = useState<"free" | "guided">("free");
   const [isLocked, setIsLocked] = useState(false);
   const [userId, setUserId] = useState<string>("");
   const [firstName, setFirstName] = useState<string>("there");
@@ -144,55 +147,59 @@ function DashboardContent() {
   };
 
   const loadDashboardData = async (userId: string, date: Date, opts?: { forceWeekly?: boolean }) => {
-    const seq = ++loadSeqRef.current; // NEW request id
+    const seq = ++loadSeqRef.current;
 
-    // optional: show loading spinner only for first load, not every date change
-    setLoading(true);
-
-    // canonical tz + local comparisons
-    const { getDashboardTimeZone, getDailySummaryForDate, getStreakData, getWeeklyActivity } =
-      await import("@/lib/db/dashboard");
-
-    const tz = await getDashboardTimeZone(userId);
-    if (seq !== loadSeqRef.current) return; 
-    setCanonicalTz(tz);
-
-    const selectedLocal = formatLocalDate(date, tz);
-    const todayLocal = formatLocalDate(new Date(), tz);
-
-    // 1) selected day row (checklist)
-    const dayRow = await getDailySummaryForDate(userId, date);
-    if (seq !== loadSeqRef.current) return; 
-
-    setProgress({
-      overallQuestion: dayRow.has_overall,
-      mealLogged: dayRow.has_meal,
-      waterLogged: dayRow.has_water,
-      checkInCompleted: dayRow.has_checkin,
-      journalCompleted: dayRow.has_journal,
-    });
-
-    const hourLocal = getLocalHourInTimeZone(tz);
-    const shouldGate = hourLocal >= 4;
-    setIsLocked(selectedLocal === todayLocal ? (shouldGate && !dayRow.has_overall) : false);
-
-    
-    // 3) streak + weekly only on today
-    const forceWeekly = opts?.forceWeekly ?? false;
-    
-    if (selectedLocal === todayLocal|| forceWeekly) {
-      const [streak, weekly] = await Promise.all([
-        getStreakData(userId),
-        getWeeklyActivity(userId),
-      ]);
-      if (seq !== loadSeqRef.current) return; 
-      setStreak(streak);
-      setWeeklyData(weekly);
+    // Only show full screen loading on first load
+    if (initialLoading) {
+      // keep initialLoading true
+    } else {
+      setRefreshing(true);
     }
 
-    if (seq !== loadSeqRef.current) return; 
-    setLoading(false);
+    try {
+      const { getDashboardTimeZone, getDailySummaryForDate, getStreakData, getWeeklyActivity } =
+        await import("@/lib/db/dashboard");
+
+      const tz = await getDashboardTimeZone(userId);
+      if (seq !== loadSeqRef.current) return;
+      setCanonicalTz(tz);
+
+      const selectedLocal = formatLocalDate(date, tz);
+      const todayLocal = formatLocalDate(new Date(), tz);
+
+      const dayRow = await getDailySummaryForDate(userId, date);
+      if (seq !== loadSeqRef.current) return;
+
+      setProgress({
+        overallQuestion: dayRow.has_overall,
+        mealLogged: dayRow.has_meal,
+        waterLogged: dayRow.has_water,
+        checkInCompleted: dayRow.has_checkin,
+        journalCompleted: dayRow.has_journal,
+      });
+
+      const hourLocal = getLocalHourInTimeZone(tz);
+      const shouldGate = hourLocal >= 4;
+      setIsLocked(selectedLocal === todayLocal ? (shouldGate && !dayRow.has_overall) : false);
+
+      const forceWeekly = opts?.forceWeekly ?? false;
+
+      if (selectedLocal === todayLocal || forceWeekly) {
+        const [streakVal, weekly] = await Promise.all([
+          getStreakData(userId),
+          getWeeklyActivity(userId),
+        ]);
+        if (seq !== loadSeqRef.current) return;
+        setStreak(streakVal);
+        setWeeklyData(weekly);
+      }
+    } finally {
+      if (seq !== loadSeqRef.current) return;
+      setRefreshing(false);
+      setInitialLoading(false);
+    }
   };
+
 
 
 
@@ -247,12 +254,13 @@ function DashboardContent() {
    * Handle navigation to a past journal session
    * Navigate the dashboard to the session date and restore journal mode
    */
-  const handleSessionSelected = (date: Date, mode: "free" | "guided") => {
-    // Update dashboard to show the selected date
+  const handleSessionSelected = (threadId: string, date: Date, mode: "free" | "guided") => {
+    setSelectedJournalThreadId(threadId);
+    setSelectedJournalType(mode);
     setSelectedDate(date);
-    // Don't auto-focus since we're navigating to an existing thread
     setJournalAutoFocus(false);
   };
+
 
   const handleCheckInSubmit = async (data: {
     sleepQuality: number;
@@ -293,10 +301,17 @@ function DashboardContent() {
   const completedTasks = Object.values(progress).filter(Boolean).length;
   const totalTasks = 5;
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="min-h-screen bg-black dark:bg-black light:bg-gradient-to-br light:from-cyan-600 light:to-cyan-700 flex items-center justify-center">
         <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
+  if (refreshing) {
+    return (
+      <div className="min-h-screen bg-black dark:bg-black light:bg-gradient-to-br light:from-cyan-600 light:to-cyan-700 flex items-center justify-center">
+        <div className="text-white">Refreshing...</div>
       </div>
     );
   }
@@ -449,12 +464,15 @@ function DashboardContent() {
           {/* =================================================== */}
           <div className="w-full lg:flex-1 h-full dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col">
             <JournalChat 
-              autoFocus={journalAutoFocus} 
+              autoFocus={journalAutoFocus}
               onMessageSent={handleJournalMessageSent}
               onSessionSelected={handleSessionSelected}
               selectedDate={selectedDate}
               canonicalTimeZone={canonicalTz}
+              activeThreadId={selectedJournalThreadId}
+              activeJournalType={selectedJournalType}
             />
+
           </div>
           
         </div>
