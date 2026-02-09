@@ -43,16 +43,27 @@ static async saveMessage(
 
   /**
    * Get or create an active thread for the user
+   * 
+   * @param supabase Supabase client
+   * @param userId User ID
+   * @param journalType 'free' or 'guided'
+   * @param sessionDateLocal Optional: local date (YYYY-MM-DD) to scope thread to specific day
+   * @param sessionTimezone Optional: canonical timezone; server computes if not provided
+   * @returns thread UUID or null on error
    */
   static async getOrCreateThread(
     supabase: SupabaseClient,
     userId: string,
-    journalType: 'free' | 'guided' = 'guided'
+    journalType: 'free' | 'guided' = 'free',
+    sessionDateLocal?: string,
+    sessionTimezone?: string
   ): Promise<string | null> {
     // Use the RPC function to get or create thread with proper type isolation
-    const { data: threadId, error } = await supabase.rpc('get_or_create_active_thread', {
+    const { data, error } = await supabase.rpc('get_or_create_active_thread', {
       p_user_id: userId,
-      p_journal_type: journalType
+      p_journal_type: journalType,
+      p_session_date_local: sessionDateLocal || null,
+      p_session_timezone: sessionTimezone || null
     });
 
     if (error) {
@@ -60,7 +71,7 @@ static async saveMessage(
       return null;
     }
 
-    return threadId;
+    return data;
   }
 
   /**

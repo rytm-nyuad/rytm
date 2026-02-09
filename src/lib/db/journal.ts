@@ -13,7 +13,13 @@ export interface JournalMessage {
 }
 
 /**
- * Save a journal message (user or assistant)
+ * DEPRECATED: Save a journal message directly to the database
+ * 
+ * ⚠️ This function bypasses timezone and backlog detection.
+ * Use the RPC `log_journal_message_for_date()` instead for all new code.
+ * See: supabase/function_rpcs.sql
+ * 
+ * This function is retained for backward compatibility only.
  */
 export async function saveJournalMessage(
   supabase: SupabaseClient,
@@ -44,14 +50,32 @@ export async function saveJournalMessage(
 }
 
 /**
- * Get or create a thread for guided mode
- * Returns existing thread from today or creates new one
+ * Get or create a thread for journaling
+ * 
+ * Returns existing thread for the session date/type, or creates a new one.
+ * Automatically computes session date and timezone server-side if not provided.
+ * 
+ * @param supabase Supabase client
+ * @param userId User ID
+ * @param journalType 'free' or 'guided'
+ * @param sessionDateLocal Optional: local date in user's timezone (YYYY-MM-DD)
+ * @param sessionTimezone Optional: canonical timezone; server computes if not provided
+ * @returns thread UUID or null on error
  */
-export async function getOrCreateThread(supabase: SupabaseClient, userId: string): Promise<string | null> {
+export async function getOrCreateThread(
+  supabase: SupabaseClient,
+  userId: string,
+  journalType: 'free' | 'guided' = 'free',
+  sessionDateLocal?: string,
+  sessionTimezone?: string
+): Promise<string | null> {
   try {
-    // Call Supabase function to get/create thread
+    // Call Supabase function to get/create thread with session metadata
     const { data, error } = await supabase.rpc("get_or_create_active_thread", {
       p_user_id: userId,
+      p_journal_type: journalType,
+      p_session_date_local: sessionDateLocal || null,
+      p_session_timezone: sessionTimezone || null,
     });
 
     if (error) {

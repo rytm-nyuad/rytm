@@ -80,46 +80,45 @@ export class JournalAgent {
 
   /**
    * Handle free-form journaling (no AI response)
+   * NOTE: Agent only validates mode is free. Caller (JournalChat component)
+   * is responsible for saving the message via RPC for timezone+backlog awareness.
    */
   private async handleFreeMode(
     input: JournalAgentInput,
     context: AgentContext
   ): Promise<JournalAgentOutput> {
-    const savedMessage = await JournalDatabaseTool.saveMessage(
-      context.supabase,
-      context.userId,
-      input.content,
-      "free",
-      "user",
-      null,
-      input.localDate
-    );
-
-    if (!savedMessage) {
+    // Validate content exists
+    if (!input.content || input.content.trim().length === 0) {
       return {
         success: false,
-        error: "Failed to save journal entry",
+        error: "Journal entry cannot be empty",
       };
     }
 
+    // Agent is compute-only; caller will save via RPC
     return {
       success: true,
-      message: savedMessage,
+      message: { content: input.content },
     };
   }
 
   /**
    * Handle guided journaling with AI conversation
+   * NOTE: Agent only generates AI response. Caller (API route) is responsible
+   * for saving BOTH user and assistant messages via RPC for timezone+backlog awareness.
    */
   private async handleGuidedMode(
     input: JournalAgentInput,
     context: AgentContext
   ): Promise<JournalAgentOutput> {
     // Step 1: Get or create thread for guided mode
+    // Pass session date/timezone so RPC stores metadata and prevents double-counting
     const threadId = await JournalDatabaseTool.getOrCreateThread(
       context.supabase,
       context.userId,
-      "guided"
+      "guided",
+      input.localDate,  // YYYY-MM-DD in user's canonical timezone
+      undefined         // timezone: let RPC compute from user profile
     );
 
     if (!threadId) {
@@ -129,18 +128,8 @@ export class JournalAgent {
       };
     }
 
-    // Step 2: Save user's message
-    await JournalDatabaseTool.saveMessage(
-      context.supabase,
-      context.userId,
-      input.content,
-      "guided",
-      "user",
-      threadId,
-      input.localDate
-    );
-
-    // Step 3: Load conversation history (limited to recent messages)
+    // Step 2: Load conversation history (limited to recent messages)
+    // NOTE: Does not include the current message being sent (not yet saved)
     const allHistory = await JournalDatabaseTool.loadThreadMessages(
       context.supabase,
       threadId,
@@ -148,7 +137,8 @@ export class JournalAgent {
     );
     const history = allHistory.slice(-this.maxHistoryMessages);
 
-    // Step 4: Build messages for LLM
+    // Step 3: Build messages for LLM
+    // Include the current user message and history (history doesn't include current msg yet)
     const messages = [
       new SystemMessage(JOURNAL_SYSTEM_PROMPT),
       ...history.map((msg) =>
@@ -156,42 +146,24 @@ export class JournalAgent {
           ? new HumanMessage(msg.content)
           : new AIMessage(msg.content)
       ),
+      // Add the current user message so LLM can respond to it
+      new HumanMessage(input.content),
     ];
 
-    // Step 5: Get AI response
+    // Step 4: Get AI response
     const llm = getJournalLLM();
     const response = await llm.invoke(messages);
     const aiContent = response.content.toString();
 
     console.log("💬 AI Response:", aiContent.substring(0, 100));
-    console.log("🔖 Saving to threadId:", threadId);
+    console.log("🔖 Thread ID:", threadId);
+    console.log("✅ Agent computed response (not saved yet)");
 
-    // Step 6: Save AI response
-    const aiMessage = await JournalDatabaseTool.saveMessage(
-      context.supabase,
-      context.userId,
-      aiContent,
-      "guided",
-      "assistant",
-      threadId,
-      input.localDate
-    );
-
-    console.log("✅ AI message saved:", !!aiMessage);
-    console.log("📝 Saved message ID:", aiMessage?.id);
-
-    if (!aiMessage) {
-      return {
-        success: false,
-        error: "Failed to save AI response",
-      };
-    }
-
+    // Agent is compute-only; caller will save both user + AI messages via RPC
     return {
       success: true,
       aiResponse: aiContent,
       threadId,
-      message: aiMessage,
       metadata: {
         historyLength: history.length,
         model: "gpt-4o-mini",
