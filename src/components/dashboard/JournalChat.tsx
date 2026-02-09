@@ -12,11 +12,14 @@ interface JournalThread {
   journal_type: "free" | "guided";
   last_message_at: string;
   message_count: number;
+  session_date_local: string | null;  // YYYY-MM-DD local date in user's timezone
+  session_timezone: string | null;    // Canonical timezone of user at session creation
 }
 
 interface JournalChatProps {
   className?: string;
   onMessageSent?: () => void; // Parent should reload dashboard on this
+  onSessionSelected?: (date: Date, mode: "free" | "guided") => void; // Parent navigates to session date + restores mode
   autoFocus?: boolean;
   selectedDate: Date;
   canonicalTimeZone: string;
@@ -25,6 +28,7 @@ interface JournalChatProps {
 export function JournalChat({
   className = "",
   onMessageSent,
+  onSessionSelected,
   autoFocus = false,
   selectedDate,
   canonicalTimeZone,
@@ -97,16 +101,29 @@ export function JournalChat({
   }, []);
 
   // IMPORTANT: when selectedDate changes, clear current thread/messages so user doesn't see mixed-day confusion
-  // (you can remove this if you intentionally want continuity across days)
+  // Preserve messages when the selected date change is caused by loading the currently-open thread's session
   useEffect(() => {
+    // If we have a current thread and its session_date_local matches the newly selected date,
+    // this was a programmatic navigation to the same session — do not clear messages.
+    if (currentThreadId) {
+      const cur = threads.find((t) => t.id === currentThreadId);
+      if (cur && cur.session_date_local === selectedLocalDate) {
+        return;
+      }
+    }
+
     setMessages([]);
     setCurrentThreadId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLocalDate, mode]);
+  }, [selectedLocalDate]);
 
-  const loadThreadMessages = async (threadId: string) => {
+  /**
+   * Load messages from a thread and navigate parent dashboard to session date if needed
+   * @param thread The journal thread metadata including session_date_local and journal_type
+   */
+  const loadThreadMessages = async (thread: JournalThread) => {
     const { data, error } = await supabase.rpc("get_thread_messages", {
-      p_thread_id: threadId,
+      p_thread_id: thread.id,
       p_user_id: userId,
     });
 
@@ -123,7 +140,19 @@ export function JournalChat({
     }));
 
     setMessages(formatted);
-    setCurrentThreadId(threadId);
+    setCurrentThreadId(thread.id);
+
+    // Restore the journal mode (free vs guided) from the thread
+    const restoredMode = thread.journal_type === "guided" ? "structured" : "unstructured";
+    setMode(restoredMode);
+
+    // Navigate parent dashboard to the session date if thread has session metadata
+    if (thread.session_date_local && onSessionSelected) {
+      const sessionDate = new Date(thread.session_date_local);
+      // Restore to appropriate mode: 'free' or 'guided'
+      const threadMode: "free" | "guided" = thread.journal_type === "guided" ? "guided" : "free";
+      onSessionSelected(sessionDate, threadMode);
+    }
   };
 
   // Refresh daily_summary for the selectedLocalDate and notify parent
@@ -227,6 +256,8 @@ export function JournalChat({
           const { data: threadId, error: threadError } = await supabase.rpc("get_or_create_active_thread", {
             p_user_id: userId,
             p_journal_type: "free",
+            p_session_date_local: selectedLocalDate,
+            p_session_timezone: tz,
           });
 
           if (threadError || !threadId) {
@@ -238,7 +269,7 @@ export function JournalChat({
           setCurrentThreadId(threadIdToUse);
         }
 
-        const { data: ok, error: rpcErr } = await supabase.rpc("log_journal_message_for_date", {
+        const { data: userMsg, error: rpcErr } = await supabase.rpc("log_journal_message_for_date", {
           p_user_id: userId,
           p_local_date: selectedLocalDate,
           p_thread_id: threadIdToUse,
@@ -248,7 +279,7 @@ export function JournalChat({
           p_at: clientAt,
         });
 
-        if (rpcErr || ok !== true) {
+        if (rpcErr || !userMsg?.id) {
           console.error("log_journal_message_for_date failed:", rpcErr);
           return;
         }
@@ -304,8 +335,11 @@ export function JournalChat({
     }
   };
 
-  const handleLoadThreadMobile = (threadId: string) => {
-    loadThreadMessages(threadId);
+  /**
+   * Handle thread selection on mobile - navigate to thread with session metadata
+   */
+  const handleLoadThreadMobile = (thread: JournalThread) => {
+    loadThreadMessages(thread);
     setShowMobileSessions(false);
   };
 
@@ -331,7 +365,7 @@ export function JournalChat({
                   className={`w-full flex items-start gap-2 p-3 rounded-lg hover:bg-zinc-800 transition-colors group cursor-pointer ${
                     currentThreadId === thread.id ? "bg-zinc-800" : ""
                   }`}
-                  onClick={() => handleLoadThreadMobile(thread.id)}
+                  onClick={() => handleLoadThreadMobile(thread)}
                 >
                   <div className="flex-shrink-0 mt-0.5">
                     {thread.journal_type === "guided" ? (
@@ -383,7 +417,7 @@ export function JournalChat({
                   className={`w-full flex items-start gap-2 p-2 rounded-lg hover:bg-zinc-800 transition-colors group cursor-pointer ${
                     currentThreadId === thread.id ? "bg-zinc-800" : ""
                   }`}
-                  onClick={() => loadThreadMessages(thread.id)}
+                  onClick={() => loadThreadMessages(thread)}
                 >
                   <div className="flex-shrink-0 mt-0.5">
                     {thread.journal_type === "guided" ? (

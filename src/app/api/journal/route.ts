@@ -91,8 +91,8 @@ export async function POST(req: NextRequest) {
     // (Assumes agent is NOT already inserting into journal_messages)
     const threadId = result.threadId;
 
-    // user message
-    const { data: okUser, error: rpcErrUser } = await supabase.rpc(
+    // user message (RPC returns journal_messages record)
+    const { data: userMsg, error: rpcErrUser } = await supabase.rpc(
       "log_journal_message_for_date",
       {
         p_user_id: user.id,
@@ -105,15 +105,16 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    if (rpcErrUser || okUser !== true) {
+    if (rpcErrUser || !userMsg?.id) {
+      console.error("RPC error storing user message:", rpcErrUser);
       return NextResponse.json(
         { error: "Failed to store user journal message" },
         { status: 500 }
       );
     }
 
-    // assistant message
-    const { data: okAi, error: rpcErrAi } = await supabase.rpc(
+    // assistant message (RPC returns journal_messages record)
+    const { data: aiMsg, error: rpcErrAi } = await supabase.rpc(
       "log_journal_message_for_date",
       {
         p_user_id: user.id,
@@ -127,7 +128,8 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    if (rpcErrAi || okAi !== true) {
+    if (rpcErrAi || !aiMsg?.id) {
+      console.error("RPC error storing assistant message:", rpcErrAi);
       return NextResponse.json(
         { error: "Failed to store assistant journal message" },
         { status: 500 }

@@ -733,3 +733,240 @@ $$;
 
 REVOKE ALL ON FUNCTION public.submit_checkin_for_date(UUID, DATE, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, TEXT[], TIMESTAMPTZ) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_checkin_for_date(UUID, DATE, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER, TEXT[], TIMESTAMPTZ) TO authenticated;
+
+-- =====================================================
+-- JOURNAL THREAD MANAGEMENT
+-- =====================================================
+
+/**
+ * get_or_create_active_thread
+ * 
+ * Gets an existing active thread for the user on the given session date and type,
+ * or creates a new one if none exists.
+ * 
+ * Key design: Ensures only ONE active thread per user per session_date_local per journal_type.
+ * This prevents double-counting when user navigates to past sessions.
+ * 
+ * Args:
+ *   p_user_id: User making the request
+ *   p_journal_type: 'free' or 'guided'
+ *   p_session_date_local: Local date (in user's timezone) for this session
+ *   p_session_timezone: Canonical timezone of the user at session creation
+ * 
+ * Returns: thread_id (UUID)
+ */
+CREATE OR REPLACE FUNCTION public.get_or_create_active_thread(
+  p_user_id UUID,
+  p_journal_type TEXT DEFAULT 'free',
+  p_session_date_local DATE DEFAULT NULL,
+  p_session_timezone TEXT DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_thread_id UUID;
+  v_session_date DATE;
+  v_session_tz TEXT;
+  v_tz TEXT;
+BEGIN
+  -- Guard: only allow user to access their own threads
+  IF auth.uid() IS NULL OR auth.uid() <> p_user_id THEN
+    RAISE EXCEPTION 'Not allowed';
+  END IF;
+
+  -- Determine session date and timezone
+  -- If caller didn't provide them, compute canonical ones
+  IF p_session_date_local IS NULL THEN
+    -- Resolve canonical timezone: Fitbit -> profiles -> UTC
+    SELECT fp.user_timezone INTO v_tz
+      FROM public.fitbit_profile fp
+      WHERE fp.app_user_id = p_user_id
+      LIMIT 1;
+
+    IF v_tz IS NULL OR length(trim(v_tz)) = 0 THEN
+      v_tz := public.get_profile_timezone(p_user_id);
+    END IF;
+
+    IF v_tz IS NULL OR length(trim(v_tz)) = 0 THEN
+      v_tz := 'UTC';
+    END IF;
+
+    v_session_date := (now() AT TIME ZONE v_tz)::date;
+  ELSE
+    v_session_date := p_session_date_local;
+  END IF;
+
+  IF p_session_timezone IS NULL THEN
+    SELECT fp.user_timezone INTO v_session_tz
+      FROM public.fitbit_profile fp
+      WHERE fp.app_user_id = p_user_id
+      LIMIT 1;
+
+    IF v_session_tz IS NULL OR length(trim(v_session_tz)) = 0 THEN
+      v_session_tz := public.get_profile_timezone(p_user_id);
+    END IF;
+
+    IF v_session_tz IS NULL OR length(trim(v_session_tz)) = 0 THEN
+      v_session_tz := 'UTC';
+    END IF;
+  ELSE
+    v_session_tz := p_session_timezone;
+  END IF;
+
+  -- Try to find an active thread for this user, date, and type
+  -- Key: Check session_date_local instead of DATE(created_at) to prevent double-counting
+  --       when user navigates to old sessions
+  SELECT id INTO v_thread_id
+  FROM journal_threads
+  WHERE user_id = p_user_id
+    AND status = 'active'
+    AND journal_type = p_journal_type
+    AND session_date_local = v_session_date
+  ORDER BY last_message_at DESC
+  LIMIT 1;
+
+  -- If no thread exists, create one with session metadata
+  IF v_thread_id IS NULL THEN
+    INSERT INTO journal_threads (
+      user_id, 
+      title, 
+      journal_type, 
+      session_date_local, 
+      session_timezone
+    )
+    VALUES (
+      p_user_id, 
+      CASE 
+        WHEN p_journal_type = 'guided' THEN 'Guided Journal - ' || TO_CHAR(v_session_date, 'YYYY-MM-DD')
+        ELSE 'Free Journal - ' || TO_CHAR(v_session_date, 'YYYY-MM-DD')
+      END,
+      p_journal_type,
+      v_session_date,
+      v_session_tz
+    )
+    RETURNING id INTO v_thread_id;
+  END IF;
+
+  RETURN v_thread_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_or_create_active_thread(UUID, TEXT, DATE, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_or_create_active_thread(UUID, TEXT, DATE, TEXT) TO authenticated;
+
+/**
+ * get_user_journal_threads
+ * 
+ * Returns list of journal threads for a user, sorted by most recent activity.
+ * Includes session metadata (session_date_local, session_timezone) for proper
+ * navigation to past sessions.
+ * 
+ * Args:
+ *   p_user_id: User requesting their threads
+ *   p_limit: Max number of threads to return (default 50)
+ * 
+ * Returns: Table with thread details, message count, and session metadata
+ */
+CREATE OR REPLACE FUNCTION public.get_user_journal_threads(
+  p_user_id UUID,
+  p_limit INT DEFAULT 50
+)
+RETURNS TABLE (
+  id UUID,
+  title TEXT,
+  journal_type TEXT,
+  status TEXT,
+  last_message_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ,
+  message_count BIGINT,
+  session_date_local DATE,
+  session_timezone TEXT
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- Guard: only allow user to access their own threads
+  IF auth.uid() IS NULL OR auth.uid() <> p_user_id THEN
+    RAISE EXCEPTION 'Not allowed';
+  END IF;
+
+  RETURN QUERY
+  SELECT 
+    t.id,
+    t.title,
+    t.journal_type,
+    t.status,
+    t.last_message_at,
+    t.created_at,
+    COUNT(m.id)::BIGINT as message_count,
+    t.session_date_local,
+    t.session_timezone
+  FROM journal_threads t
+  LEFT JOIN journal_messages m ON m.thread_id = t.id
+  WHERE t.user_id = p_user_id
+  GROUP BY t.id, t.title, t.journal_type, t.status, t.last_message_at, t.created_at, t.session_date_local, t.session_timezone
+  ORDER BY t.last_message_at DESC
+  LIMIT p_limit;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_user_journal_threads(UUID, INT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_user_journal_threads(UUID, INT) TO authenticated;
+
+/**
+ * delete_journal_thread
+ * 
+ * Deletes a journal thread and all associated messages.
+ * Requires ownership (user must be the thread owner).
+ * 
+ * Args:
+ *   p_thread_id: ID of thread to delete
+ *   p_user_id: User requesting deletion (must own the thread)
+ * 
+ * Returns: TRUE if deleted, FALSE if not found or unauthorized
+ */
+CREATE OR REPLACE FUNCTION public.delete_journal_thread(
+  p_thread_id UUID,
+  p_user_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count INT;
+BEGIN
+  -- Guard: only allow user to delete their own threads
+  IF auth.uid() IS NULL OR auth.uid() <> p_user_id THEN
+    RAISE EXCEPTION 'Not allowed';
+  END IF;
+
+  -- Verify ownership
+  SELECT COUNT(*) INTO v_count
+  FROM journal_threads
+  WHERE id = p_thread_id AND user_id = p_user_id;
+  
+  IF v_count = 0 THEN
+    RETURN FALSE;
+  END IF;
+  
+  -- Delete messages first (CASCADE should handle this, but being explicit)
+  DELETE FROM journal_messages
+  WHERE thread_id = p_thread_id AND user_id = p_user_id;
+  
+  -- Delete thread
+  DELETE FROM journal_threads
+  WHERE id = p_thread_id AND user_id = p_user_id;
+  
+  RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.delete_journal_thread(UUID, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.delete_journal_thread(UUID, UUID) TO authenticated;

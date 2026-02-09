@@ -243,6 +243,17 @@ function DashboardContent() {
     await loadDashboardData(userId, selectedDate, { forceWeekly: true });
   };
 
+  /**
+   * Handle navigation to a past journal session
+   * Navigate the dashboard to the session date and restore journal mode
+   */
+  const handleSessionSelected = (date: Date, mode: "free" | "guided") => {
+    // Update dashboard to show the selected date
+    setSelectedDate(date);
+    // Don't auto-focus since we're navigating to an existing thread
+    setJournalAutoFocus(false);
+  };
+
   const handleCheckInSubmit = async (data: {
     sleepQuality: number;
     energy: number;
@@ -437,11 +448,13 @@ function DashboardContent() {
           {/* RIGHT: JOURNAL */}
           {/* =================================================== */}
           <div className="w-full lg:flex-1 h-full dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col">
-            <JournalChat autoFocus={journalAutoFocus} 
-            onMessageSent={handleJournalMessageSent} // ADD
-            selectedDate={selectedDate}
-            canonicalTimeZone={canonicalTz}
-          />
+            <JournalChat 
+              autoFocus={journalAutoFocus} 
+              onMessageSent={handleJournalMessageSent}
+              onSessionSelected={handleSessionSelected}
+              selectedDate={selectedDate}
+              canonicalTimeZone={canonicalTz}
+            />
           </div>
           
         </div>
