@@ -311,7 +311,7 @@ function DashboardContent() {
   if (refreshing) {
     return (
       <div className="min-h-screen bg-black dark:bg-black light:bg-gradient-to-br light:from-cyan-600 light:to-cyan-700 flex items-center justify-center">
-        <div className="text-white">Refreshing...</div>
+        <div className="text-white">Loading...</div>
       </div>
     );
   }
