@@ -12,17 +12,23 @@ interface JournalThread {
   journal_type: "free" | "guided";
   last_message_at: string;
   message_count: number;
-  session_date_local: string | null;  // YYYY-MM-DD local date in user's timezone
-  session_timezone: string | null;    // Canonical timezone of user at session creation
+  session_date_local: string | null; // YYYY-MM-DD local date in user's timezone
+  session_timezone: string | null; // Canonical timezone of user at session creation
 }
 
 interface JournalChatProps {
   className?: string;
   onMessageSent?: () => void; // Parent should reload dashboard on this
-  onSessionSelected?: (date: Date, mode: "free" | "guided") => void; // Parent navigates to session date + restores mode
   autoFocus?: boolean;
   selectedDate: Date;
   canonicalTimeZone: string;
+
+  // Parent-selected session (single source of truth)
+  activeThreadId?: string | null;
+  activeJournalType?: "free" | "guided";
+
+  // Notify parent when user selects a session in the sidebar
+  onSessionSelected?: (threadId: string, date: Date, mode: "free" | "guided") => void;
 }
 
 export function JournalChat({
@@ -32,6 +38,8 @@ export function JournalChat({
   autoFocus = false,
   selectedDate,
   canonicalTimeZone,
+  activeThreadId = null,
+  activeJournalType,
 }: JournalChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -44,14 +52,17 @@ export function JournalChat({
   const [showMobileSessions, setShowMobileSessions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const supabase = useMemo(
+    () =>
+      createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      ),
+    []
   );
 
   // Single source of truth: local dates in canonical tz
   const tz = useMemo(() => canonicalTimeZone || "UTC", [canonicalTimeZone]);
-
   const selectedLocalDate = useMemo(() => formatLocalDate(selectedDate, tz), [selectedDate, tz]);
   const todayLocalDate = useMemo(() => formatLocalDate(new Date(), tz), [tz]);
 
@@ -73,57 +84,11 @@ export function JournalChat({
     setThreads(data || []);
   };
 
-  // Get user session on mount
-  useEffect(() => {
-    const getUser = async () => {
-      try {
-        // If you don't actually have /api/auth/session, replace this with supabase.auth.getSession()
-        const resp = await fetch("/api/auth/session");
-        const json = await resp.json();
-        const session = json?.session;
-        if (session?.user?.id) {
-          setUserId(session.user.id);
-          loadThreads(session.user.id);
-        }
-      } catch {
-        // fallback
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.user?.id) {
-          setUserId(session.user.id);
-          loadThreads(session.user.id);
-        }
-      }
-    };
-    getUser();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const loadThreadMessagesById = async (threadId: string) => {
+    if (!userId) return;
 
-  // IMPORTANT: when selectedDate changes, clear current thread/messages so user doesn't see mixed-day confusion
-  // Preserve messages when the selected date change is caused by loading the currently-open thread's session
-  useEffect(() => {
-    // If we have a current thread and its session_date_local matches the newly selected date,
-    // this was a programmatic navigation to the same session — do not clear messages.
-    if (currentThreadId) {
-      const cur = threads.find((t) => t.id === currentThreadId);
-      if (cur && cur.session_date_local === selectedLocalDate) {
-        return;
-      }
-    }
-
-    setMessages([]);
-    setCurrentThreadId(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLocalDate]);
-
-  /**
-   * Load messages from a thread and navigate parent dashboard to session date if needed
-   * @param thread The journal thread metadata including session_date_local and journal_type
-   */
-  const loadThreadMessages = async (thread: JournalThread) => {
     const { data, error } = await supabase.rpc("get_thread_messages", {
-      p_thread_id: thread.id,
+      p_thread_id: threadId,
       p_user_id: userId,
     });
 
@@ -140,19 +105,57 @@ export function JournalChat({
     }));
 
     setMessages(formatted);
-    setCurrentThreadId(thread.id);
+    setCurrentThreadId(threadId);
+  };
 
-    // Restore the journal mode (free vs guided) from the thread
-    const restoredMode = thread.journal_type === "guided" ? "structured" : "unstructured";
-    setMode(restoredMode);
+  // Get user session on mount
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const resp = await fetch("/api/auth/session");
+        const json = await resp.json();
+        const session = json?.session;
+        if (session?.user?.id) {
+          setUserId(session.user.id);
+          await loadThreads(session.user.id);
+        }
+      } catch {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          setUserId(session.user.id);
+          await loadThreads(session.user.id);
+        }
+      }
+    };
+    getUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    // Navigate parent dashboard to the session date if thread has session metadata
-    if (thread.session_date_local && onSessionSelected) {
-      const sessionDate = new Date(thread.session_date_local);
-      // Restore to appropriate mode: 'free' or 'guided'
-      const threadMode: "free" | "guided" = thread.journal_type === "guided" ? "guided" : "free";
-      onSessionSelected(sessionDate, threadMode);
+  /**
+   * Parent-controlled selection:
+   * - When activeJournalType changes, set UI mode accordingly
+   * - When activeThreadId changes, load messages for that exact thread
+   */
+  useEffect(() => {
+    if (!userId) return;
+
+    if (activeJournalType) {
+      setMode(activeJournalType === "guided" ? "structured" : "unstructured");
     }
+
+    if (activeThreadId) {
+      loadThreadMessagesById(activeThreadId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThreadId, activeJournalType, userId]);
+
+  // Session picker used by both desktop + mobile
+  const selectThread = (thread: JournalThread) => {
+    const pickedMode: "free" | "guided" = thread.journal_type === "guided" ? "guided" : "free";
+    const pickedDate = thread.session_date_local ? new Date(thread.session_date_local) : selectedDate;
+    onSessionSelected?.(thread.id, pickedDate, pickedMode);
   };
 
   // Refresh daily_summary for the selectedLocalDate and notify parent
@@ -161,12 +164,11 @@ export function JournalChat({
 
     const { error } = await supabase.rpc("refresh_daily_summary", {
       p_user_id: userId,
-      p_target_date: selectedLocalDate, 
+      p_target_date: selectedLocalDate,
     });
 
     if (error) console.error("refresh_daily_summary failed:", error);
 
-    console.log("JournalChat calling onMessageSent", { selectedLocalDate });
     onMessageSent?.();
   };
 
@@ -185,6 +187,7 @@ export function JournalChat({
 
     await loadThreads(userId);
 
+    // If we deleted the currently loaded thread, clear UI
     if (currentThreadId === threadId) {
       setMessages([]);
       setCurrentThreadId(null);
@@ -195,6 +198,9 @@ export function JournalChat({
 
   const handleModeChange = (newMode: "unstructured" | "structured") => {
     setMode(newMode);
+
+    // When explicitly switching modes, clear the current session in this component.
+    // (Parent may optionally also clear selected thread)
     setMessages([]);
     setInput("");
     setCurrentThreadId(null);
@@ -203,26 +209,32 @@ export function JournalChat({
   const handleNewSession = async () => {
     if (!userId) return;
 
+    // Clear everything to start a fresh session in this component.
     setMessages([]);
     setInput("");
     setCurrentThreadId(null);
 
     const journalType = mode === "structured" ? "guided" : "free";
+
+    // Close current active thread(s) of this type (your status values should match your DB constraints)
     await supabase
       .from("journal_threads")
-      .update({ status: "closed" })
+      .update({ status: "completed" })
       .eq("user_id", userId)
       .eq("status", "active")
       .eq("journal_type", journalType);
 
+    // Guided: you may be creating a new guided thread via API
     if (mode === "structured") {
       try {
         await fetch("/api/journal/new-thread", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // Recommended: include localDate + timezone if your route supports it
+          // body: JSON.stringify({ localDate: selectedLocalDate, sessionTimeZone: tz }),
         });
       } catch (err) {
-        console.error("Error creating new thread:", err);
+        console.error("Error creating new guided thread:", err);
       }
     }
 
@@ -306,6 +318,9 @@ export function JournalChat({
           mode: "guided",
           localDate: selectedLocalDate,
           clientAt,
+          // IMPORTANT: pass the currently loaded threadId so the backend can append deterministically
+          threadId: currentThreadId,
+          sessionTimeZone: tz,
         }),
       });
 
@@ -314,6 +329,11 @@ export function JournalChat({
       if (!response.ok) {
         console.error("Failed to get AI response:", data.error);
         return;
+      }
+
+      // If server returns threadId and we didn't have one, capture it
+      if (!currentThreadId && data.threadId) {
+        setCurrentThreadId(data.threadId);
       }
 
       if (data.response) {
@@ -335,14 +355,6 @@ export function JournalChat({
     }
   };
 
-  /**
-   * Handle thread selection on mobile - navigate to thread with session metadata
-   */
-  const handleLoadThreadMobile = (thread: JournalThread) => {
-    loadThreadMessages(thread);
-    setShowMobileSessions(false);
-  };
-
   return (
     <div className={`h-full bg-zinc-900 border border-zinc-800 rounded-xl flex ${className}`}>
       {/* Mobile Sessions Overlay */}
@@ -357,6 +369,7 @@ export function JournalChat({
               ✕
             </button>
           </div>
+
           <div className="flex-1 overflow-y-auto p-3">
             <div className="space-y-1">
               {threads.map((thread) => (
@@ -365,7 +378,10 @@ export function JournalChat({
                   className={`w-full flex items-start gap-2 p-3 rounded-lg hover:bg-zinc-800 transition-colors group cursor-pointer ${
                     currentThreadId === thread.id ? "bg-zinc-800" : ""
                   }`}
-                  onClick={() => handleLoadThreadMobile(thread)}
+                  onClick={() => {
+                    selectThread(thread);
+                    setShowMobileSessions(false);
+                  }}
                 >
                   <div className="flex-shrink-0 mt-0.5">
                     {thread.journal_type === "guided" ? (
@@ -374,10 +390,12 @@ export function JournalChat({
                       <BookOpen className="w-4 h-4 text-blue-400" />
                     )}
                   </div>
+
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white truncate">{thread.title}</p>
                     <p className="text-xs text-zinc-500">{new Date(thread.last_message_at).toLocaleDateString()}</p>
                   </div>
+
                   <button
                     onClick={(e) => deleteThread(thread.id, e)}
                     className="p-1 hover:bg-zinc-700 rounded transition-all text-red-400"
@@ -417,7 +435,7 @@ export function JournalChat({
                   className={`w-full flex items-start gap-2 p-2 rounded-lg hover:bg-zinc-800 transition-colors group cursor-pointer ${
                     currentThreadId === thread.id ? "bg-zinc-800" : ""
                   }`}
-                  onClick={() => loadThreadMessages(thread)}
+                  onClick={() => selectThread(thread)}
                 >
                   <div className="flex-shrink-0 mt-0.5">
                     {thread.journal_type === "guided" ? (
@@ -426,10 +444,12 @@ export function JournalChat({
                       <BookOpen className="w-4 h-4 text-blue-400" />
                     )}
                   </div>
+
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white truncate">{thread.title}</p>
                     <p className="text-xs text-zinc-500">{new Date(thread.last_message_at).toLocaleDateString()}</p>
                   </div>
+
                   <button
                     onClick={(e) => deleteThread(thread.id, e)}
                     className="opacity-0 group-hover:opacity-100 p-1 hover:bg-zinc-700 rounded transition-all"
@@ -453,15 +473,16 @@ export function JournalChat({
             >
               <MessageSquare className="w-4 h-4 text-zinc-400" />
             </button>
+
             <button
               onClick={() => setShowMobileSessions(true)}
               className="sm:hidden p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
             >
               <MessageSquare className="w-4 h-4 text-zinc-400" />
             </button>
-            <h3 className="font-semibold text-white text-sm sm:text-base">
-              Journal • {selectedLocalDate}
-            </h3>
+
+            <h3 className="font-semibold text-white text-sm sm:text-base">Journal • {selectedLocalDate}</h3>
+
             <button
               onClick={handleNewSession}
               className="sm:hidden p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
@@ -513,6 +534,7 @@ export function JournalChat({
               </div>
             ))
           )}
+
           {loading && (
             <div className="bg-purple-600/20 border border-purple-600/30 rounded-lg p-3 mr-8">
               <p className="text-white text-sm">Thinking...</p>
