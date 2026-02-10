@@ -1,22 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react"; 
-import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react"; 
+import { usePathname } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   LayoutDashboard,
   Activity,
   Calendar,
-  Dumbbell,
   BarChart3,
   Trophy,
-  Settings,
   LogOut,
   Menu,      
   X,
   Moon,
   Sun,
+  Zap,
+  ChevronRight,
+  Plug,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -29,14 +30,20 @@ type FitbitStatus = "loading" | "connected" | "needs_reauth" | "not_connected";
 // Add Calendar connection status type (same states as Fitbit)
 type CalendarStatus = "loading" | "connected" | "needs_reauth" | "not_connected";
 
+// WHOOP connection status type
+type WhoopStatus = "loading" | "connected" | "needs_reauth" | "not_connected";
+
 export function TopNav() {
   const pathname = usePathname();
-  const router = useRouter();
   const { theme, toggleTheme } = useTheme();
 
  const [mobileOpen, setMobileOpen] = useState(false);
  const [fitbitStatus, setFitbitStatus] = useState<FitbitStatus>("loading");
  const [calendarStatus, setCalendarStatus] = useState<CalendarStatus>("loading");
+ const [whoopStatus, setWhoopStatus] = useState<WhoopStatus>("loading");
+ const [integrationsOpen, setIntegrationsOpen] = useState(false);
+ const [wearablesOpen, setWearablesOpen] = useState(false);
+ const integrationsRef = useRef<HTMLDivElement>(null);
 
   // CHANGE: only create Supabase client in non-DEV mode
   const supabase = DEV_MODE
@@ -136,6 +143,43 @@ export function TopNav() {
     checkCalendarStatus();
   }, [supabase]);
 
+  // Check WHOOP connection status on mount (mirrors Fitbit logic)
+  useEffect(() => {
+    async function checkWhoopStatus() {
+      if (!supabase) {
+        setWhoopStatus("not_connected");
+        return;
+      }
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setWhoopStatus("not_connected");
+          return;
+        }
+
+        const { data: creds, error } = await supabase
+          .from("whoop_credentials")
+          .select("status")
+          .eq("app_user_id", user.id)
+          .maybeSingle();
+
+        if (error || !creds) {
+          setWhoopStatus("not_connected");
+          return;
+        }
+
+        if (creds.status === "needs_reauth") setWhoopStatus("needs_reauth");
+        else setWhoopStatus("connected");
+      } catch (err) {
+        console.error("[TopNav] Error checking WHOOP status:", err);
+        setWhoopStatus("not_connected");
+      }
+    }
+
+    checkWhoopStatus();
+  }, [supabase]);
+
   const navItems = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
     // { href: "/calendar", icon: Calendar, label: "Calendar" },
@@ -170,6 +214,56 @@ export function TopNav() {
     window.location.href = "/api/calendar/connect";
   };
 
+  const handleConnectWhoop = () => {
+    // Start the WHOOP OAuth flow
+    window.location.href = "/api/whoop/connect";
+  };
+
+  // Compute wearables status: green if at least one is green, red if both are red
+  const getWearablesStatus = () => {
+    const fitbitGreen = fitbitStatus === "connected";
+    const whoopGreen = whoopStatus === "connected";
+    const fitbitRed = fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected";
+    const whoopRed = whoopStatus === "needs_reauth" || whoopStatus === "not_connected";
+
+    if (fitbitGreen || whoopGreen) return "connected";
+    if (fitbitRed && whoopRed) return "needs_reauth";
+    return "loading";
+  };
+
+  // Compute integrations status: green if all are green, red if any is red
+  const getIntegrationsStatus = () => {
+    const wearablesStatus = getWearablesStatus();
+    const calendarGreen = calendarStatus === "connected";
+    const wearablesGreen = wearablesStatus === "connected";
+    const calendarRed = calendarStatus === "needs_reauth" || calendarStatus === "not_connected";
+    const wearablesRed = wearablesStatus === "needs_reauth";
+
+    if (calendarGreen && wearablesGreen) return "connected";
+    if (calendarRed || wearablesRed) return "needs_reauth";
+    return "loading";
+  };
+
+  const wearablesStatus = getWearablesStatus();
+  const integrationsStatus = getIntegrationsStatus();
+
+  // Close integrations dropdown when clicking outside
+  // Close integrations dropdown when clicking outside (DESKTOP ONLY)
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (integrationsRef.current && !integrationsRef.current.contains(event.target as Node)) {
+        setIntegrationsOpen(false);
+        setWearablesOpen(false);
+      }
+    }
+
+    // IMPORTANT: don't run this when mobile menu is open
+    if (integrationsOpen && !mobileOpen) {
+      document.addEventListener("click", handleClickOutside);
+      return () => document.removeEventListener("click", handleClickOutside);
+    }
+  }, [integrationsOpen, mobileOpen]);
+
   return (
     <nav className="relative h-14 dark:bg-zinc-950 light:bg-gradient-to-r light:from-cyan-600 light:to-cyan-700 dark:border-b dark:border-zinc-800 light:border-none flex items-center px-4 sm:px-6 dark:shadow-none light:shadow-none">
       {/* ================================================= */}
@@ -203,81 +297,176 @@ export function TopNav() {
           );
         })}
 
-        {/* Connect Fitbit button (desktop) */}
-        <button
-          onClick={handleConnectFitbit}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-            fitbitStatus === "connected"
-              ? "text-emerald-500 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-              : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
-              ? "text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-              : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-          }`}
-          title={
-            fitbitStatus === "connected"
-              ? "Fitbit Connected"
-              : fitbitStatus === "needs_reauth"
-              ? "Fitbit needs reconnection - click to reconnect"
-              : fitbitStatus === "loading"
-              ? "Checking Fitbit status..."
-              : "Connect Fitbit"
-          }
-        >
-          <Activity className="w-4 h-4" />
-          <span>
-            {fitbitStatus === "connected"
-              ? "Fitbit ✓"
-              : fitbitStatus === "needs_reauth"
-              ? "Reconnect"
-              : "Fitbit"}
-          </span>
-          {/* Status indicator dot */}
-          <span
-            className={`w-2 h-2 rounded-full ${
-              fitbitStatus === "connected"
-                ? "bg-emerald-500"
-                : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
-                ? "bg-red-500 animate-pulse"
-                : "bg-zinc-500"
+        {/* Integrations dropdown (desktop) */}
+        <div className="relative" ref={integrationsRef}>
+          <button
+            onClick={() => setIntegrationsOpen(!integrationsOpen)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              integrationsStatus === "connected"
+                ? "text-emerald-500 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                : integrationsStatus === "needs_reauth"
+                ? "text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
             }`}
-          />
-        </button>
+            title={
+              integrationsStatus === "connected"
+                ? "All integrations connected"
+                : integrationsStatus === "needs_reauth"
+                ? "Some integrations need attention"
+                : "Checking integrations..."
+            }
+          >
+            <Plug className="w-4 h-4" />
+            <span>Integrations</span>
+            {/* Status indicator dot */}
+            <span
+              className={`w-2 h-2 rounded-full ${
+                integrationsStatus === "connected"
+                  ? "bg-emerald-500"
+                  : integrationsStatus === "needs_reauth"
+                  ? "bg-red-500 animate-pulse"
+                  : "bg-zinc-500"
+              }`}
+            />
+          </button>
 
-        {/* Connect Calendar button (desktop) */}
-        <button
-          onClick={handleConnectCalendar}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-            calendarStatus === "connected"
-              ? "text-emerald-500 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-              : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
-              ? "text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-              : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-          }`}
-          title={
-            calendarStatus === "connected"
-              ? "Calendar Connected"
-              : calendarStatus === "needs_reauth"
-              ? "Calendar needs reconnection - click to reconnect"
-              : calendarStatus === "loading"
-              ? "Checking Calendar status..."
-              : "Connect Calendar"
-          }
-        >
-          <Calendar className="w-4 h-4" />
-          <span>
-            {calendarStatus === "connected" ? "Calendar ✓" : calendarStatus === "needs_reauth" ? "Reconnect" : "Calendar"}
-          </span>
-          {/* Status indicator dot */}
-          <span
-            className={`w-2 h-2 rounded-full ${
-              calendarStatus === "connected"
-                ? "bg-emerald-500"
-                : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
-                ? "bg-red-500 animate-pulse"
-                : "bg-zinc-500"
-            }`}
-          />
-        </button>
+          {/* Integrations dropdown menu */}
+          {integrationsOpen && (
+            <div className="absolute top-full mt-1 right-0 w-56 dark:bg-zinc-900 light:bg-white rounded-lg shadow-lg border dark:border-zinc-800 light:border-gray-200 py-1 z-50">
+              {/* Calendar */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIntegrationsOpen(false);
+                  handleConnectCalendar();
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-all ${
+                  calendarStatus === "connected"
+                    ? "text-emerald-500 dark:text-emerald-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                    : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
+                    ? "text-red-500 dark:text-red-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                    : "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-800 light:hover:bg-gray-100"
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span className="flex-1 text-left">
+                  {calendarStatus === "connected" ? "Calendar ✓" : "Calendar"}
+                </span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    calendarStatus === "connected"
+                      ? "bg-emerald-500"
+                      : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
+                      ? "bg-red-500 animate-pulse"
+                      : "bg-zinc-500"
+                  }`}
+                />
+              </button>
+
+              {/* Wearables (expandable) */}
+              <div className="relative">
+                <button
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setWearablesOpen(!wearablesOpen);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-all ${
+                    wearablesStatus === "connected"
+                      ? "text-emerald-500 dark:text-emerald-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                      : wearablesStatus === "needs_reauth"
+                      ? "text-red-500 dark:text-red-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                      : "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-800 light:hover:bg-gray-100"
+                  }`}
+                >
+                  <Activity className="w-4 h-4" />
+                  <span className="flex-1 text-left">Wearables</span>
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      wearablesStatus === "connected"
+                        ? "bg-emerald-500"
+                        : wearablesStatus === "needs_reauth"
+                        ? "bg-red-500 animate-pulse"
+                        : "bg-zinc-500"
+                    }`}
+                  />
+                  <ChevronRight
+                    className={`w-4 h-4 transition-transform ${
+                      wearablesOpen ? "rotate-90" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* Wearables submenu */}
+                {wearablesOpen && (
+                  <div className="pl-4 py-1">
+                    {/* Fitbit */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIntegrationsOpen(false);
+                        setWearablesOpen(false);
+                        handleConnectFitbit();
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-all ${
+                        fitbitStatus === "connected"
+                          ? "text-emerald-500 dark:text-emerald-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                          : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                          ? "text-red-500 dark:text-red-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                          : "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-800 light:hover:bg-gray-100"
+                      }`}
+                    >
+                      <Activity className="w-4 h-4" />
+                      <span className="flex-1 text-left">
+                        {fitbitStatus === "connected" ? "Fitbit ✓" : "Fitbit"}
+                      </span>
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          fitbitStatus === "connected"
+                            ? "bg-emerald-500"
+                            : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                            ? "bg-red-500 animate-pulse"
+                            : "bg-zinc-500"
+                        }`}
+                      />
+                    </button>
+
+                    {/* WHOOP */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIntegrationsOpen(false);
+                        setWearablesOpen(false);
+                        handleConnectWhoop();
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-all ${
+                        whoopStatus === "connected"
+                          ? "text-emerald-500 dark:text-emerald-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                          : whoopStatus === "needs_reauth" || whoopStatus === "not_connected"
+                          ? "text-red-500 dark:text-red-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                          : "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-800 light:hover:bg-gray-100"
+                      }`}
+                    >
+                      <Zap className="w-4 h-4" />
+                      <span className="flex-1 text-left">
+                        {whoopStatus === "connected" ? "WHOOP ✓" : "WHOOP"}
+                      </span>
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          whoopStatus === "connected"
+                            ? "bg-emerald-500"
+                            : whoopStatus === "needs_reauth" || whoopStatus === "not_connected"
+                            ? "bg-red-500 animate-pulse"
+                            : "bg-zinc-500"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Theme toggle button */}
         <button
@@ -337,69 +526,180 @@ export function TopNav() {
                 </Link>
               );
             })}
-            {/* MOBILE CONNECT FITBIT */}
-            <button
-              onClick={() => {
-                setMobileOpen(false);
-                handleConnectFitbit();
-              }}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                fitbitStatus === "connected"
-                  ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-                  : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
-                  ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-                  : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-              }`}
-            >
-              <Activity className="w-4 h-4" />
-              <span>
-                {fitbitStatus === "connected"
-                  ? "Fitbit Connected"
-                  : fitbitStatus === "needs_reauth"
-                  ? "Reconnect Fitbit"
-                  : "Connect Fitbit"}
-              </span>
-              {/* Status indicator dot */}
-              <span
-                className={`w-2 h-2 rounded-full ml-auto ${
-                  fitbitStatus === "connected"
-                    ? "bg-emerald-500"
-                    : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
-                    ? "bg-red-500 animate-pulse"
-                    : "bg-zinc-500"
+            
+            {/* MOBILE INTEGRATIONS SECTION */}
+            <div className="border-t dark:border-zinc-800 light:border-cyan-500 pt-2 mt-2">
+              {/* Integrations header */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIntegrationsOpen(!integrationsOpen);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                  integrationsStatus === "connected"
+                    ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                    : integrationsStatus === "needs_reauth"
+                    ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                    : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
                 }`}
-              />
-            </button>
+              >
+                <Plug className="w-4 h-4" />
+                <span className="flex-1 text-left">Integrations</span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    integrationsStatus === "connected"
+                      ? "bg-emerald-500"
+                      : integrationsStatus === "needs_reauth"
+                      ? "bg-red-500 animate-pulse"
+                      : "bg-zinc-500"
+                  }`}
+                />
+                <ChevronRight
+                  className={`w-4 h-4 transition-transform ${
+                    integrationsOpen ? "rotate-90" : ""
+                  }`}
+                />
+              </button>
 
-            {/* MOBILE CONNECT CALENDAR */}
-            <button
-              onClick={() => {
-                setMobileOpen(false);
-                handleConnectCalendar();
-              }}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                calendarStatus === "connected"
-                  ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-                  : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
-                  ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-                  : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-              }`}
-            >
-              <Calendar className="w-4 h-4" />
-              <span>
-                {calendarStatus === "connected" ? "Calendar Connected" : calendarStatus === "needs_reauth" ? "Reconnect Calendar" : "Connect Calendar"}
-              </span>
-              {/* Status indicator dot */}
-              <span
-                className={`w-2 h-2 rounded-full ml-auto ${
-                  calendarStatus === "connected"
-                    ? "bg-emerald-500"
-                    : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
-                    ? "bg-red-500 animate-pulse"
-                    : "bg-zinc-500"
-                }`}
-              />
-            </button>
+              {/* Integrations dropdown content */}
+              {integrationsOpen && (
+                <div className="pl-4 mt-1">
+                  {/* Calendar */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMobileOpen(false);
+                      setIntegrationsOpen(false);
+                      handleConnectCalendar();
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      calendarStatus === "connected"
+                        ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                        : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
+                        ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                        : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                    }`}
+                  >
+                    <Calendar className="w-4 h-4" />
+                    <span className="flex-1 text-left">
+                      {calendarStatus === "connected" ? "Calendar ✓" : "Calendar"}
+                    </span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        calendarStatus === "connected"
+                          ? "bg-emerald-500"
+                          : calendarStatus === "needs_reauth" || calendarStatus === "not_connected"
+                          ? "bg-red-500 animate-pulse"
+                          : "bg-zinc-500"
+                      }`}
+                    />
+                  </button>
+
+                  {/* Wearables */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setWearablesOpen(!wearablesOpen);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      wearablesStatus === "connected"
+                        ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                        : wearablesStatus === "needs_reauth"
+                        ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                        : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                    }`}
+                  >
+                    <Activity className="w-4 h-4" />
+                    <span className="flex-1 text-left">Wearables</span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        wearablesStatus === "connected"
+                          ? "bg-emerald-500"
+                          : wearablesStatus === "needs_reauth"
+                          ? "bg-red-500 animate-pulse"
+                          : "bg-zinc-500"
+                      }`}
+                    />
+                    <ChevronRight
+                      className={`w-4 h-4 transition-transform ${
+                        wearablesOpen ? "rotate-90" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {/* Wearables submenu */}
+                  {wearablesOpen && (
+                    <div className="pl-4 mt-1">
+                      {/* Fitbit */}
+                      <button
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMobileOpen(false);
+                          setIntegrationsOpen(false);
+                          setWearablesOpen(false);
+                          handleConnectFitbit();
+                        }}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                          fitbitStatus === "connected"
+                            ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                            : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                            ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                            : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                        }`}
+                      >
+                        <Activity className="w-4 h-4" />
+                        <span className="flex-1 text-left">
+                          {fitbitStatus === "connected" ? "Fitbit ✓" : "Fitbit"}
+                        </span>
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            fitbitStatus === "connected"
+                              ? "bg-emerald-500"
+                              : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                              ? "bg-red-500 animate-pulse"
+                              : "bg-zinc-500"
+                          }`}
+                        />
+                      </button>
+
+                      {/* WHOOP */}
+                      <button
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMobileOpen(false);
+                          setIntegrationsOpen(false);
+                          setWearablesOpen(false);
+                          handleConnectWhoop();
+                        }}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                          whoopStatus === "connected"
+                            ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                            : whoopStatus === "needs_reauth" || whoopStatus === "not_connected"
+                            ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                            : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                        }`}
+                      >
+                        <Zap className="w-4 h-4" />
+                        <span className="flex-1 text-left">
+                          {whoopStatus === "connected" ? "WHOOP ✓" : "WHOOP"}
+                        </span>
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            whoopStatus === "connected"
+                              ? "bg-emerald-500"
+                              : whoopStatus === "needs_reauth" || whoopStatus === "not_connected"
+                              ? "bg-red-500 animate-pulse"
+                              : "bg-zinc-500"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* MOBILE THEME TOGGLE */}
             <button
