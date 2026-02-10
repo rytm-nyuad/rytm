@@ -215,7 +215,10 @@ export async function GET(req: NextRequest) {
     // Not fatal, just log it
   }
 
+  const APP_URL =
+    process.env.NEXTAUTH_URL || req.nextUrl.origin;
+
   // 7) Redirect back to dashboard with success flag
-  const redirectUrl = new URL("/dashboard?whoop=connected", req.nextUrl.origin);
+  const redirectUrl = new URL("/dashboard?whoop=connected", APP_URL);
   return NextResponse.redirect(redirectUrl);
 }
