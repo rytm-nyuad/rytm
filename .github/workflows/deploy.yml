@@ -42,6 +42,11 @@ jobs:
             export GOOGLE_CLIENT_ID='${{ secrets.GOOGLE_CLIENT_ID }}'
             export GOOGLE_CLIENT_SECRET='${{ secrets.GOOGLE_CLIENT_SECRET }}'
             export GOOGLE_REDIRECT_URI='${{ secrets.GOOGLE_REDIRECT_URI }}'
+            export WHOOP_CLIENT_ID='${{ secrets.WHOOP_CLIENT_ID }}'
+            export WHOOP_CLIENT_SECRET='${{ secrets.WHOOP_CLIENT_SECRET }}'
+            export WHOOP_REDIRECT_URI='${{ secrets.WHOOP_REDIRECT_URI }}'
+            export WHOOP_AUTH_URL='${{ secrets.WHOOP_AUTH_URL }}'
+            export WHOOP_TOKEN_URL='${{ secrets.WHOOP_TOKEN_URL }}'
             # Report/email configuration removed — reporting runs from GitHub Actions (secrets remain in Actions only)
             export BUILD_TIME="$(date +%s)"
 
