@@ -6,7 +6,7 @@ on:
       days:
         description: "Number of days back to sync (daysBack)"
         required: false
-        default: "14"
+        default: "2"
       users:
         description: "Optional: comma-separated app_user_id list (leave empty to use script defaults)"
         required: false
