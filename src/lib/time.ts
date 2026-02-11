@@ -157,3 +157,24 @@ export function normalizeToNoon(d: Date): Date {
   copy.setHours(12, 0, 0, 0);
   return copy;
 }
+export function formatLocalTime(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
+/**
+ * Optional: date + time in one shot, if you want to show both.
+ */
+export function formatLocalDateTime(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}

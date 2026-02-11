@@ -32,6 +32,7 @@ create table if not exists public.fitbit_credentials (
   fitbit_user_id text not null,
   access_token text not null,
   refresh_token text not null,
+  last_synced_at timestamptz,
   scopes text[] default array[]::text[],
   updated_at timestamptz default now()
 );
@@ -155,6 +156,15 @@ create table if not exists public.fitbit_activity_daily (
   very_active_minutes integer,
   sedentary_minutes integer,
   resting_heart_rate integer,
+  created_at timestamptz default now(),
+  primary key (app_user_id, date)
+);
+
+create table if not exists public.fitbit_readiness_daily (
+  app_user_id uuid references public.profiles(user_id) on delete cascade,
+  date date not null,              -- local Fitbit date for the readiness score
+  readiness_score integer,         -- 0–100
+  readiness_level text,            -- e.g. "HIGH", "LOW", etc. if Fitbit provides
   created_at timestamptz default now(),
   primary key (app_user_id, date)
 );

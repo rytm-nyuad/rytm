@@ -20,6 +20,7 @@ import {
   Plug,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
+import { getCanonicalTimeZone, formatLocalTime } from "@/lib/time";
 
 // CHANGE: DEV flag (temporary, for UI work)
 const DEV_MODE = false;
@@ -44,7 +45,9 @@ export function TopNav() {
  const [integrationsOpen, setIntegrationsOpen] = useState(false);
  const [wearablesOpen, setWearablesOpen] = useState(false);
  const integrationsRef = useRef<HTMLDivElement>(null);
-
+  const [userTimeZone, setUserTimeZone] = useState<string | null>(null);
+  const [fitbitLastSynced, setFitbitLastSynced] = useState<Date | null>(null);
+  const [fitbitSyncing, setFitbitSyncing] = useState(false);
   // CHANGE: only create Supabase client in non-DEV mode
   const supabase = DEV_MODE
   ? null
@@ -54,6 +57,7 @@ export function TopNav() {
     );
 
   // Check Fitbit connection status on mount
+  // Check Fitbit connection status on mount
   useEffect(() => {
     async function checkFitbitStatus() {
       if (!supabase) {
@@ -62,15 +66,30 @@ export function TopNav() {
       }
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
         if (!user) {
           console.log("[TopNav] No user found, setting fitbit status to not_connected");
           setFitbitStatus("not_connected");
+          setFitbitLastSynced(null);
           return;
         }
 
         console.log("[TopNav] Checking Fitbit status for user:", user.id);
-        
+
+        // 1) Get canonical timezone for this user (Fitbit > profile > browser)
+        try {
+          const tz = await getCanonicalTimeZone(supabase, user.id);
+          setUserTimeZone(tz);
+        } catch (tzErr) {
+          console.error("[TopNav] Error getting canonical timezone:", tzErr);
+          // fallback: leave userTimeZone as null; UI will just omit time label
+        }
+
+        // 2) ORIGINAL STATUS LOGIC (unchanged semantics)
+        //    Only ask for "status" like before.
         const { data: creds, error } = await supabase
           .from("fitbit_credentials")
           .select("status")
@@ -80,31 +99,51 @@ export function TopNav() {
         if (error) {
           console.error("[TopNav] Error fetching Fitbit credentials:", error);
           setFitbitStatus("not_connected");
+          setFitbitLastSynced(null);
           return;
         }
 
         if (!creds) {
           console.log("[TopNav] No Fitbit credentials found, status: not_connected");
           setFitbitStatus("not_connected");
+          setFitbitLastSynced(null);
           return;
         }
 
         console.log("[TopNav] Fitbit credentials status:", creds.status);
-        
-        // Check the status field
+
         if (creds.status === "needs_reauth") {
           setFitbitStatus("needs_reauth");
         } else {
+          // If status is null/undefined, we still treat it as connected,
+          // just like the old behavior once a row existed.
           setFitbitStatus("connected");
+        }
+
+        // 3) NEW: best-effort last_synced_at (does NOT affect status)
+        //    If the column doesn't exist or query fails, we just skip it.
+        const { data: syncRow, error: syncErr } = await supabase
+          .from("fitbit_credentials")
+          .select("last_synced_at")
+          .eq("app_user_id", user.id)
+          .maybeSingle();
+
+        if (!syncErr && syncRow?.last_synced_at) {
+          setFitbitLastSynced(new Date(syncRow.last_synced_at));
+        } else {
+          setFitbitLastSynced(null);
         }
       } catch (err) {
         console.error("[TopNav] Error checking Fitbit status:", err);
         setFitbitStatus("not_connected");
+        setFitbitLastSynced(null);
       }
     }
 
     checkFitbitStatus();
   }, [supabase]);
+
+
 
   // Check Calendar connection status on mount (mirrors Fitbit logic)
   useEffect(() => {
@@ -217,6 +256,40 @@ export function TopNav() {
   const handleConnectWhoop = () => {
     // Start the WHOOP OAuth flow
     window.location.href = "/api/whoop/connect";
+  };
+
+  const triggerFitbitResync = async () => {
+    if (fitbitStatus !== "connected") return;
+    setFitbitSyncing(true);
+
+    try {
+      const res = await fetch("/api/fitbit/sync", { method: "POST" });
+
+      if (!res.ok) {
+        console.error("[TopNav] Fitbit sync failed with status:", res.status);
+        // We could show a toast here later
+        return;
+      }
+
+      // Expecting JSON like { ok: true, lastSynced: "2026-02-11T18:25:00.123Z" }
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch {
+        // no body or not JSON, ignore
+      }
+
+      if (json?.lastSynced) {
+        setFitbitLastSynced(new Date(json.lastSynced));
+      } else {
+        // Fallback: assume "now" if backend doesn't send lastSynced
+        setFitbitLastSynced(new Date());
+      }
+    } catch (err) {
+      console.error("[TopNav] Error calling /api/fitbit/sync:", err);
+    } finally {
+      setFitbitSyncing(false);
+    }
   };
 
   // Compute wearables status: green if at least one is green, red if both are red
@@ -399,70 +472,105 @@ export function TopNav() {
 
                 {/* Wearables submenu */}
                 {wearablesOpen && (
-                  <div className="pl-4 py-1">
-                    {/* Fitbit */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIntegrationsOpen(false);
-                        setWearablesOpen(false);
-                        handleConnectFitbit();
-                      }}
-                      className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-all ${
+                <div className="pl-4 py-1 space-y-1">
+                  {/* Fitbit connection (ALWAYS goes to OAuth) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIntegrationsOpen(false);
+                      setWearablesOpen(false);
+                      handleConnectFitbit();
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-all ${
+                      fitbitStatus === "connected"
+                        ? "text-emerald-500 dark:text-emerald-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                        : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                        ? "text-red-500 dark:text-red-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                        : "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-800 light:hover:bg-gray-100"
+                    }`}
+                  >
+                    <Activity className="w-4 h-4" />
+                    <span className="flex-1 text-left">
+                      {fitbitStatus === "connected"
+                        ? "Fitbit (connected)"
+                        : "Connect / Reconnect Fitbit"}
+                    </span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
                         fitbitStatus === "connected"
-                          ? "text-emerald-500 dark:text-emerald-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                          ? "bg-emerald-500"
                           : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
-                          ? "text-red-500 dark:text-red-400 hover:bg-zinc-800 light:hover:bg-gray-100"
-                          : "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-800 light:hover:bg-gray-100"
+                          ? "bg-red-500 animate-pulse"
+                          : "bg-zinc-500"
                       }`}
-                    >
-                      <Activity className="w-4 h-4" />
-                      <span className="flex-1 text-left">
-                        {fitbitStatus === "connected" ? "Fitbit ✓" : "Fitbit"}
-                      </span>
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          fitbitStatus === "connected"
-                            ? "bg-emerald-500"
-                            : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
-                            ? "bg-red-500 animate-pulse"
-                            : "bg-zinc-500"
-                        }`}
-                      />
-                    </button>
+                    />
+                  </button>
 
-                    {/* WHOOP */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIntegrationsOpen(false);
-                        setWearablesOpen(false);
-                        handleConnectWhoop();
-                      }}
-                      className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-all ${
+                  {/* NEW: Fitbit Re-sync data (only enabled when connected) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (fitbitStatus !== "connected") return;
+                      setIntegrationsOpen(false);
+                      setWearablesOpen(false);
+                      triggerFitbitResync();
+                    }}
+                    disabled={fitbitStatus !== "connected"}
+                    className={`w-full flex items-center gap-3 px-4 py-2 text-sm rounded-md transition-all ${
+                      fitbitStatus === "connected"
+                        ? "text-zinc-300 dark:text-zinc-200 hover:bg-zinc-800 light:hover:bg-gray-100 cursor-pointer"
+                        : "text-zinc-500 dark:text-zinc-600 cursor-not-allowed opacity-60"
+                    }`}
+                  >
+                    <Activity className="w-4 h-4" />
+                    <span className="flex-1 text-left">
+                      {fitbitSyncing
+                        ? "Syncing…"
+                        : fitbitStatus !== "connected"
+                        ? "Re-sync (connect first)"
+                        : fitbitLastSynced && userTimeZone
+                        ? `Re-sync Fitbit data • Last: ${formatLocalTime(
+                            fitbitLastSynced,
+                            userTimeZone
+                          )}`
+                        : "Re-sync Fitbit data"}
+                    </span>
+
+                  </button>
+
+                  {/* WHOOP (unchanged) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIntegrationsOpen(false);
+                      setWearablesOpen(false);
+                      handleConnectWhoop();
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition-all ${
+                      whoopStatus === "connected"
+                        ? "text-emerald-500 dark:text-emerald-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                        : whoopStatus === "needs_reauth" || whoopStatus === "not_connected"
+                        ? "text-red-500 dark:text-red-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                        : "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-800 light:hover:bg-gray-100"
+                    }`}
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span className="flex-1 text-left">
+                      {whoopStatus === "connected" ? "WHOOP ✓" : "WHOOP"}
+                    </span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
                         whoopStatus === "connected"
-                          ? "text-emerald-500 dark:text-emerald-400 hover:bg-zinc-800 light:hover:bg-gray-100"
+                          ? "bg-emerald-500"
                           : whoopStatus === "needs_reauth" || whoopStatus === "not_connected"
-                          ? "text-red-500 dark:text-red-400 hover:bg-zinc-800 light:hover:bg-gray-100"
-                          : "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-800 light:hover:bg-gray-100"
+                          ? "bg-red-500 animate-pulse"
+                          : "bg-zinc-500"
                       }`}
-                    >
-                      <Zap className="w-4 h-4" />
-                      <span className="flex-1 text-left">
-                        {whoopStatus === "connected" ? "WHOOP ✓" : "WHOOP"}
-                      </span>
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          whoopStatus === "connected"
-                            ? "bg-emerald-500"
-                            : whoopStatus === "needs_reauth" || whoopStatus === "not_connected"
-                            ? "bg-red-500 animate-pulse"
-                            : "bg-zinc-500"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                )}
+                    />
+                  </button>
+                </div>
+              )}
+
               </div>
             </div>
           )}
@@ -629,39 +737,74 @@ export function TopNav() {
 
                   {/* Wearables submenu */}
                   {wearablesOpen && (
-                    <div className="pl-4 mt-1">
-                      {/* Fitbit */}
-                      <button
-                        onMouseDown={e => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMobileOpen(false);
-                          setIntegrationsOpen(false);
-                          setWearablesOpen(false);
-                          handleConnectFitbit();
-                        }}
-                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                  <div className="pl-4 mt-1 space-y-1">
+                    {/* Fitbit connection (ALWAYS OAuth) */}
+                    <button
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMobileOpen(false);
+                        setIntegrationsOpen(false);
+                        setWearablesOpen(false);
+                        handleConnectFitbit();
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                        fitbitStatus === "connected"
+                          ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                          : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
+                          ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                          : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                      }`}
+                    >
+                      <Activity className="w-4 h-4" />
+                      <span className="flex-1 text-left">
+                        {fitbitStatus === "connected" ? "Fitbit (connected)" : "Connect / Reconnect Fitbit"}
+                      </span>
+                      <span
+                        className={`w-2 h-2 rounded-full ${
                           fitbitStatus === "connected"
-                            ? "text-emerald-500 dark:text-emerald-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                            ? "bg-emerald-500"
                             : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
-                            ? "text-red-500 dark:text-red-400 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
-                            : "text-zinc-400 dark:text-zinc-500 dark:hover:bg-zinc-900 light:hover:bg-cyan-500"
+                            ? "bg-red-500 animate-pulse"
+                            : "bg-zinc-500"
                         }`}
-                      >
-                        <Activity className="w-4 h-4" />
-                        <span className="flex-1 text-left">
-                          {fitbitStatus === "connected" ? "Fitbit ✓" : "Fitbit"}
-                        </span>
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            fitbitStatus === "connected"
-                              ? "bg-emerald-500"
-                              : fitbitStatus === "needs_reauth" || fitbitStatus === "not_connected"
-                              ? "bg-red-500 animate-pulse"
-                              : "bg-zinc-500"
-                          }`}
-                        />
-                      </button>
+                      />
+                    </button>
+
+                    {/* NEW: Re-sync Fitbit data */}
+                    <button
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (fitbitStatus !== "connected") return;
+                        setMobileOpen(false);
+                        setIntegrationsOpen(false);
+                        setWearablesOpen(false);
+                        triggerFitbitResync();
+                      }}
+                      disabled={fitbitStatus !== "connected"}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                        fitbitStatus === "connected"
+                          ? "text-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-900 light:hover:bg-cyan-500 cursor-pointer"
+                          : "text-zinc-500 dark:text-zinc-600 cursor-not-allowed opacity-60"
+                      }`}
+                    >
+                      <Activity className="w-4 h-4" />
+                      <span className="flex-1 text-left">
+                      {fitbitSyncing
+                        ? "Syncing…"
+                        : fitbitStatus !== "connected"
+                        ? "Re-sync (connect first)"
+                        : fitbitLastSynced && userTimeZone
+                        ? `Re-sync Fitbit • Last: ${formatLocalTime(
+                            fitbitLastSynced,
+                            userTimeZone
+                          )}`
+                        : "Re-sync Fitbit data"}
+                    </span>
+
+                    </button>
+
 
                       {/* WHOOP */}
                       <button
