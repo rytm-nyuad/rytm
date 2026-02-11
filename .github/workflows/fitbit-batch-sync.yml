@@ -24,39 +24,38 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          # Match your project's Node version if different
           node-version: "20"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
+      # 👇 Install tsx JUST for this workflow run (no need to commit it)
+      - name: Install tsx runtime
+        run: npm install tsx --no-save
+
       - name: Run Fitbit batch sync script
         env:
-          # Supabase URL (can be NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL – your script checks both)
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }} # optional fallback if you prefer
-          # Service role key so the script can bypass RLS and write to tables
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
-          # Fitbit OAuth credentials (used by refreshFitbitAccessToken in fitbit.ts)
           FITBIT_CLIENT_ID: ${{ secrets.FITBIT_CLIENT_ID }}
           FITBIT_CLIENT_SECRET: ${{ secrets.FITBIT_CLIENT_SECRET }}
         run: |
           DAYS="${{ github.event.inputs.days }}"
           USERS="${{ github.event.inputs.users }}"
 
-          # Default days if empty (defensive)
           if [ -z "$DAYS" ]; then
             DAYS="14"
           fi
 
           echo "➡️ Running batch Fitbit sync"
           echo "   daysBack = $DAYS"
+
           if [ -n "$USERS" ]; then
             echo "   users    = $USERS"
-            npx ts-node scripts/syncFitbitBatch.ts --days="$DAYS" --users="$USERS"
+            npx tsx scripts/syncFitbitBatch.ts --days="$DAYS" --users="$USERS"
           else
             echo "   users    = (using script DEFAULT_USER_IDS)"
-            npx ts-node scripts/syncFitbitBatch.ts --days="$DAYS"
+            npx tsx scripts/syncFitbitBatch.ts --days="$DAYS"
           fi
