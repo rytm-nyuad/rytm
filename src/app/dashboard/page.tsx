@@ -65,6 +65,9 @@ function DashboardContent() {
   });
   const [canonicalTz, setCanonicalTz] = useState<string>("UTC");
 
+  const [fitbitLastSyncedAt, setFitbitLastSyncedAt] = useState<string | null>(null);
+  const [fitbitSyncing, setFitbitSyncing] = useState(false);
+
   const loadSeqRef = useRef(0);
 
   // Modal states
@@ -200,7 +203,74 @@ function DashboardContent() {
     }
   };
 
+    // ---------------------------
+  // Fitbit sync helpers
+  // ---------------------------
 
+  const syncFitbit = async (opts?: {
+    daysBack?: number;
+    reloadDashboard?: boolean;
+    silent?: boolean;
+    reason?: string;
+  }) => {
+    const { daysBack = 2, reloadDashboard = false, silent = false } = opts || {};
+
+    // We rely on the server-side session, but userId is needed to reload dashboard
+    if (!userId) return;
+
+    try {
+      if (!silent) setFitbitSyncing(true);
+
+      const res = await fetch("/api/fitbit/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ daysBack }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!json || !json.ok) {
+        console.warn("[Dashboard] Fitbit sync failed:", json);
+        // We might later surface FITBIT_NOT_CONNECTED / FITBIT_AUTH_REVOKED to UI
+        return;
+      }
+
+      if (json.lastSyncedAt) {
+        setFitbitLastSyncedAt(json.lastSyncedAt);
+      }
+
+      if (reloadDashboard) {
+        await loadDashboardData(userId, selectedDate, { forceWeekly: true });
+      }
+    } catch (e) {
+      console.error("[Dashboard] Error calling /api/fitbit/sync:", e);
+    } finally {
+      if (!silent) setFitbitSyncing(false);
+    }
+  };
+
+  const shouldSyncBeforeCoach = () => {
+    if (!fitbitLastSyncedAt) return true;
+    const last = new Date(fitbitLastSyncedAt);
+    if (!Number.isFinite(last.getTime())) return true;
+
+    const now = new Date();
+    const ageMs = now.getTime() - last.getTime();
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    return ageMs > TWO_HOURS_MS;
+  };
+
+  const openCoachWithOptionalSync = async (initialMessage?: string) => {
+    if (userId && shouldSyncBeforeCoach()) {
+      // Silent: don't show full-screen "Loading..." just because we're syncing before chat
+      await syncFitbit({ daysBack: 2, reloadDashboard: false, silent: true, reason: "coach_open" });
+    }
+
+    if (initialMessage) {
+      setInitialCoachMessage(initialMessage);
+    }
+    setShowCoachModal(true);
+  };
 
 
   const handleMorningGateSubmit = async (score: number) => {
@@ -212,6 +282,13 @@ function DashboardContent() {
       setIsLocked(false);
       setProgress((prev) => ({ ...prev, overallQuestion: true }));
       await loadDashboardData(userId, selectedDate, { forceWeekly: true });
+
+      void syncFitbit({
+        daysBack: 2,
+        reloadDashboard: false, // we just reloaded above
+        silent: false,
+        reason: "overall_gate",
+      });
     } else {
       console.error("Failed to submit overall score");
     }
@@ -526,6 +603,13 @@ function DashboardContent() {
                   // reload to update checklist + weekly/streak if needed
                   await loadDashboardData(userId, selectedDate, { forceWeekly: true });
                 }
+                // NEW: also trigger Fitbit sync when daily_overall flips true from the checklist
+                  void syncFitbit({
+                    daysBack: 2,
+                    reloadDashboard: false,
+                    silent: false,
+                    reason: "overall_modal",
+                  });
               }}
             />
           </div>
