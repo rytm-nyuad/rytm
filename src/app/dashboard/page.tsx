@@ -182,7 +182,7 @@ function DashboardContent() {
       });
 
       const hourLocal = getLocalHourInTimeZone(tz);
-      const shouldGate = hourLocal >= 4;
+      const shouldGate = hourLocal >= 6;
       setIsLocked(selectedLocal === todayLocal ? (shouldGate && !dayRow.has_overall) : false);
 
       const forceWeekly = opts?.forceWeekly ?? false;
