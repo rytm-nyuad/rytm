@@ -8,7 +8,7 @@ export interface DailyOverall {
 export interface Meal {
   id: string;
   user_id: string;
-  meal_category: "Breakfast" | "Lunch" | "Dinner" | "Snack";
+  meal_category: "Breakfast" | "Lunch" | "Dinner" | "Snack" | "Drink";
   description?: string;
   image_url?: string;
   logged_at: string;
@@ -57,7 +57,19 @@ export interface ChatMessage {
 export interface TodayProgress {
   overallQuestion: boolean;
   mealLogged: boolean;
-  waterLogged: boolean;
   checkInCompleted: boolean;
   journalCompleted: boolean;
+}
+
+/**
+ * Shape of a meal_logs row returned from Supabase.
+ * Used to display the "Logged today" summary on the checklist screen.
+ */
+export interface MealLogEntry {
+  id: string;
+  user_id: string;
+  meal_type: string;           // e.g. 'breakfast', 'lunch', 'dinner', 'snack', 'drink'
+  description: string | null;
+  photo_url: string | null;
+  meal_datetime: string;       // ISO timestamptz
 }

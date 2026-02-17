@@ -11,9 +11,9 @@ import { StreakRing } from "@/components/dashboard/StreakRing";
 import { WeeklyStreak } from "@/components/dashboard/WeeklyStreak";
 import { ProgressList } from "@/components/dashboard/ProgressList";
 import { LogMealModal } from "@/components/dashboard/LogMealModal";
-import { LogWaterModal } from "@/components/dashboard/LogWaterModal";
 import { DailyCheckInModal } from "@/components/dashboard/DailyCheckInModal";
 import { JournalChat } from "@/components/dashboard/JournalChat";
+import { DailyTodoList } from "@/components/dashboard/DailyTodoList";
 import { CoachPromptBar } from "@/components/dashboard/CoachPromptBar";
 import { FullScreenCoach } from "@/components/dashboard/FullScreenCoach";
 import { formatLocalDate, getLocalHourInTimeZone } from "@/lib/time";
@@ -27,15 +27,15 @@ import {
   getTodayOverall,
   submitDailyOverall,
   getTodayMealsCount,
-  hasWaterLoggedToday,
   hasCheckInToday,
   logMeal,
-  logWater,
   submitDailyCheckIn,
   getWeeklyActivity,
+  getMealsForDate,
 } from "@/lib/db/dashboard";
 
 import type { TodayProgress } from "@/types/dashboard";
+import type { MealLogEntry } from "@/types/dashboard";
 
 export default function DashboardPage() {
   return (
@@ -59,11 +59,11 @@ function DashboardContent() {
   const [progress, setProgress] = useState<TodayProgress>({
     overallQuestion: false,
     mealLogged: false,
-    waterLogged: false,
     checkInCompleted: false,
     journalCompleted: false,
   });
   const [canonicalTz, setCanonicalTz] = useState<string>("UTC");
+  const [loggedMeals, setLoggedMeals] = useState<MealLogEntry[]>([]);
 
   const [fitbitLastSyncedAt, setFitbitLastSyncedAt] = useState<string | null>(null);
   const [fitbitSyncing, setFitbitSyncing] = useState(false);
@@ -73,7 +73,6 @@ function DashboardContent() {
   // Modal states
   const [showOverallModal, setShowOverallModal] = useState(false);
   const [showMealModal, setShowMealModal] = useState(false);
-  const [showWaterModal, setShowWaterModal] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showCoachModal, setShowCoachModal] = useState(false);
   const [journalAutoFocus, setJournalAutoFocus] = useState(false);
@@ -176,10 +175,14 @@ function DashboardContent() {
       setProgress({
         overallQuestion: dayRow.has_overall,
         mealLogged: dayRow.has_meal,
-        waterLogged: dayRow.has_water,
         checkInCompleted: dayRow.has_checkin,
         journalCompleted: dayRow.has_journal,
       });
+
+      // Fetch logged meals for the selected date (for summary list)
+      const meals = await getMealsForDate(userId, date);
+      if (seq !== loadSeqRef.current) return;
+      setLoggedMeals(meals);
 
       const hourLocal = getLocalHourInTimeZone(tz);
       const shouldGate = hourLocal >= 4;
@@ -306,18 +309,8 @@ function DashboardContent() {
     console.log("logMeal returned:", success);
     if (success) {
       setProgress((prev) => ({ ...prev, mealLogged: true }));
-      // Reload progress to reflect the new meal count
+      // Reload progress + logged meals to reflect the new entry
       await loadDashboardData(userId, selectedDate);
-    }
-  };
-
-  const handleWaterSubmit = async (amountMl: number, source: string) => {
-    console.log("handleWaterSubmit called", { amountMl, source });
-    const success = await logWater(userId, amountMl, source, selectedDate);
-    console.log("logWater returned:", success);
-    if (success) {
-      setProgress((prev) => ({ ...prev, waterLogged: true }));
-      await loadDashboardData(userId, selectedDate, { forceWeekly: true });
     }
   };
 
@@ -376,7 +369,7 @@ function DashboardContent() {
   };
 
   const completedTasks = Object.values(progress).filter(Boolean).length;
-  const totalTasks = 5;
+  const totalTasks = 4;
 
   if (initialLoading) {
     return (
@@ -522,10 +515,10 @@ function DashboardContent() {
               currentDate={selectedDate}
               canonicalTimeZone={canonicalTz}
               onDateChange={setSelectedDate}
+              loggedMeals={loggedMeals}
               onAction={(action) => {
                 if (action === "overall") setShowOverallModal(true);
                 if (action === "meal") setShowMealModal(true);
-                if (action === "water") setShowWaterModal(true);
                 if (action === "checkin") setShowCheckInModal(true);
                 if (action === "journal") {
                   setJournalAutoFocus(true);
@@ -537,19 +530,30 @@ function DashboardContent() {
           </div>
 
           {/* =================================================== */}
-          {/* RIGHT: JOURNAL */}
+          {/* RIGHT: TO-DO + JOURNAL */}
           {/* =================================================== */}
-          <div className="w-full lg:flex-1 h-full dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col">
-            <JournalChat 
-              autoFocus={journalAutoFocus}
-              onMessageSent={handleJournalMessageSent}
-              onSessionSelected={handleSessionSelected}
-              selectedDate={selectedDate}
-              canonicalTimeZone={canonicalTz}
-              activeThreadId={selectedJournalThreadId}
-              activeJournalType={selectedJournalType}
-            />
+          <div className="w-full lg:flex-1 h-full flex flex-col gap-4 sm:gap-6">
+            {/* TO-DO LIST */}
+            <div className="dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col" style={{ height: '40%', minHeight: 180 }}>
+              <DailyTodoList
+                firstName={firstName}
+                selectedDate={selectedDate}
+                canonicalTimeZone={canonicalTz}
+              />
+            </div>
 
+            {/* JOURNAL (reduced height) */}
+            <div className="dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col flex-1 min-h-0">
+              <JournalChat 
+                autoFocus={journalAutoFocus}
+                onMessageSent={handleJournalMessageSent}
+                onSessionSelected={handleSessionSelected}
+                selectedDate={selectedDate}
+                canonicalTimeZone={canonicalTz}
+                activeThreadId={selectedJournalThreadId}
+                activeJournalType={selectedJournalType}
+              />
+            </div>
           </div>
           
         </div>
@@ -562,13 +566,11 @@ function DashboardContent() {
         tasks={{
           overallQuestion: progress.overallQuestion,
           mealLogged: progress.mealLogged,
-          waterLogged: progress.waterLogged,
           checkInCompleted: progress.checkInCompleted,
           journalCompleted: progress.journalCompleted,
         }}
         onAction={(action) => {
           if (action === "meal") setShowMealModal(true);
-          if (action === "water") setShowWaterModal(true);
           if (action === "checkin") setShowCheckInModal(true);
           if (action === "journal") {
             setJournalAutoFocus(true);
@@ -624,11 +626,6 @@ function DashboardContent() {
         onClose={() => setShowMealModal(false)}
         onSubmit={handleMealSubmit}
         userId={userId}
-      />
-      <LogWaterModal
-        isOpen={showWaterModal}
-        onClose={() => setShowWaterModal(false)}
-        onSubmit={handleWaterSubmit}
       />
       <DailyCheckInModal
         isOpen={showCheckInModal}

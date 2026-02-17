@@ -2,22 +2,56 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatLocalDate, formatLocalDisplayDate, isSameLocalDay, normalizeToNoon } from "@/lib/time";
+import type { MealLogEntry } from "@/types/dashboard";
 
 interface ProgressListProps {
   canonicalTimeZone: string;
   progress: {
     overallQuestion: boolean;
     mealLogged: boolean;
-    waterLogged: boolean;
     checkInCompleted: boolean;
     journalCompleted: boolean;
   };
   currentDate: Date;
   onDateChange: (date: Date) => void;
-  onAction?: (action: 'overall' | 'meal' | 'water' | 'checkin' | 'journal') => void;
+  onAction?: (action: 'overall' | 'meal' | 'checkin' | 'journal') => void;
+  /** Meals logged for the selected date, shown below divider */
+  loggedMeals?: MealLogEntry[];
 }
 
-export function ProgressList({ canonicalTimeZone, progress, currentDate, onDateChange, onAction }: ProgressListProps) {
+/**
+ * Capitalize first letter of a meal type string.
+ */
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Format a timestamptz into a local time string like "7:30 AM".
+ */
+function formatMealTime(datetime: string, tz: string): string {
+  try {
+    const d = new Date(datetime);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleTimeString("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return "—";
+  }
+}
+
+export function ProgressList({
+  canonicalTimeZone,
+  progress,
+  currentDate,
+  onDateChange,
+  onAction,
+  loggedMeals = [],
+}: ProgressListProps) {
   // Use shared display formatter from src/lib/time.ts
 
   const handlePreviousDay = () => {
@@ -38,10 +72,10 @@ export function ProgressList({ canonicalTimeZone, progress, currentDate, onDateC
 
   const isToday = () => isSameLocalDay(currentDate, new Date(), canonicalTimeZone);
 
+  // CHANGE: 4 checklist items (water/nutrition removed)
   const tasks = [
     { label: "Overall mood", completed: progress.overallQuestion, action: 'overall' as const },
     { label: "Log a meal", completed: progress.mealLogged, action: 'meal' as const },
-    { label: "Log water & nutrition", completed: progress.waterLogged, action: 'water' as const },
     { label: "Daily check-in", completed: progress.checkInCompleted, action: 'checkin' as const },
     { label: "Journal entry", completed: progress.journalCompleted, action: 'journal' as const },
   ];
@@ -73,7 +107,7 @@ export function ProgressList({ canonicalTimeZone, progress, currentDate, onDateC
           </button>
         </div>
         <span className="text-xs font-medium dark:text-zinc-400 light:text-slate-600">
-          {completedCount}/5 complete
+          {completedCount}/4 complete
         </span>
       </div>
 
@@ -117,20 +151,6 @@ export function ProgressList({ canonicalTimeZone, progress, currentDate, onDateC
                   + MEAL
                 </button>
               </div>
-            ) : task.action === 'water' && onAction ? (
-              <div className="flex gap-1.5">
-                {task.completed && (
-                  <div className="px-2 py-0.5 rounded-full text-[10px] font-medium dark:bg-white light:bg-green-50 dark:text-black light:text-green-700 border light:border-green-200">
-                    DONE
-                  </div>
-                )}
-                <button
-                  onClick={() => onAction(task.action!)}
-                  className="px-2 py-0.5 rounded-full text-[10px] font-medium dark:bg-purple-600 light:bg-purple-600 dark:text-white light:text-white dark:hover:bg-purple-700 light:hover:bg-purple-700 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  + NUTRITION
-                </button>
-              </div>
             ) : task.action === 'journal' && onAction ? (
               <div className="flex gap-1.5">
                 {task.completed && (
@@ -163,6 +183,55 @@ export function ProgressList({ canonicalTimeZone, progress, currentDate, onDateC
             )}
           </div>
         ))}
+      </div>
+
+      {/* ──────────── Divider ──────────── */}
+      <div className="my-4 border-t dark:border-zinc-800 light:border-gray-200" />
+
+      {/* ──────────── Logged meals summary ──────────── */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <h4 className="text-xs font-semibold dark:text-zinc-400 light:text-slate-500 uppercase tracking-wider mb-2">
+          Logged entries
+        </h4>
+        {loggedMeals.length === 0 ? (
+          <p className="text-xs dark:text-zinc-600 light:text-slate-400 italic">
+            No meals logged for this day yet.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {loggedMeals.map((meal) => (
+              <div
+                key={meal.id}
+                className="flex items-start justify-between gap-2 py-1.5"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium dark:text-white light:text-slate-900">
+                      {capitalize(meal.meal_type)}
+                    </span>
+                    <span className="text-[10px] dark:text-zinc-500 light:text-slate-400">
+                      {formatMealTime(meal.meal_datetime, canonicalTimeZone)}
+                    </span>
+                  </div>
+                  {meal.description ? (
+                    <p className="text-[11px] dark:text-zinc-500 light:text-slate-500 truncate mt-0.5 leading-tight max-w-[220px]">
+                      {meal.description}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] dark:text-zinc-700 light:text-slate-400 italic mt-0.5">
+                      No description
+                    </p>
+                  )}
+                </div>
+                {meal.photo_url && (
+                  <span className="text-[10px] dark:text-zinc-500 light:text-slate-400 whitespace-nowrap flex-shrink-0">
+                    📷 Image
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

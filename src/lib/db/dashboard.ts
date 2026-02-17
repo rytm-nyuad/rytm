@@ -1,5 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
-import type { DailyOverall } from "@/types/dashboard";
+import type { DailyOverall, MealLogEntry } from "@/types/dashboard";
 import { formatLocalDate, getBrowserTimeZone } from "@/lib/time";
 import { getCanonicalTimeZone } from "@/lib/time";
 
@@ -318,6 +318,8 @@ export async function hasWaterLoggedToday(userId: string, date?: Date): Promise<
   return row.has_water;
 }
 
+// DEPRECATED: logWater is kept for backwards compatibility but the recommended
+// path is now logging a meal with meal_type = 'drink' via logMeal().
 export async function logWater(
   userId: string,
   amountMl: number,
@@ -345,6 +347,41 @@ export async function logWater(
 
   invalidateSnapshot(userId);
   return true;
+}
+
+/* ============================================================
+   Fetch meal_logs for a given local date (for "Logged today" list)
+============================================================ */
+export async function getMealsForDate(
+  userId: string,
+  date: Date
+): Promise<MealLogEntry[]> {
+  const tz = await getCanonicalTimeZone(supabase, userId);
+  const localDate = formatLocalDate(date, tz);
+
+  // Query meal_logs with a broad filter, then narrow client-side to the exact local date.
+  // We over-fetch starting from midnight UTC of the local date (which will cover most timezones).
+  const { data, error } = await supabase
+    .from('meal_logs')
+    .select('id, user_id, meal_type, description, photo_url, meal_datetime')
+    .eq('user_id', userId)
+    .gte('meal_datetime', `${localDate}T00:00:00+00:00`)
+    .order('meal_datetime', { ascending: true });
+
+  if (error) {
+    console.error('getMealsForDate failed:', error);
+    return [];
+  }
+
+  // Client-side filter: only keep entries whose meal_datetime falls on the target local date
+  const filtered = (data ?? []).filter((row: MealLogEntry) => {
+    const dt = new Date(row.meal_datetime);
+    const rowLocalDate = formatLocalDate(dt, tz);
+    return rowLocalDate === localDate;
+  });
+
+  // Sort: by meal_datetime ascending (already from DB), stable.
+  return filtered;
 }
 
 export async function hasCheckInToday(userId: string, date?: Date): Promise<boolean> {

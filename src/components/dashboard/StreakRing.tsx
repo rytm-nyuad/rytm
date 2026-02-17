@@ -11,7 +11,7 @@ interface StreakRingProps {
 export function StreakRing({
   streak,
   tasksCompleted = 0,
-  totalTasks = 5,
+  totalTasks = 4,
 }: StreakRingProps) {
   const [animated, setAnimated] = useState(false);
 
