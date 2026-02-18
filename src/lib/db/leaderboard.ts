@@ -220,6 +220,7 @@ export function formatMetricValue(value: number, metricKey: string): string {
   if (metricKey === "steps") {
     return value.toLocaleString();
   }
+  if (metricKey === "cardio_zone_minutes") return `${Math.round(value)} pts`;
   return value.toLocaleString();
 }
 
