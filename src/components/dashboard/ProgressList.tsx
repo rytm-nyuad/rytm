@@ -1,7 +1,9 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatLocalDate, formatLocalDisplayDate, isSameLocalDay, normalizeToNoon } from "@/lib/time";
+import { formatMealTypeLabel } from "@/lib/utils";
 import type { MealLogEntry } from "@/types/dashboard";
 
 interface ProgressListProps {
@@ -17,13 +19,6 @@ interface ProgressListProps {
   onAction?: (action: 'overall' | 'meal' | 'checkin' | 'journal') => void;
   /** Meals logged for the selected date, shown below divider */
   loggedMeals?: MealLogEntry[];
-}
-
-/**
- * Capitalize first letter of a meal type string.
- */
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /**
@@ -52,7 +47,13 @@ export function ProgressList({
   onAction,
   loggedMeals = [],
 }: ProgressListProps) {
-  // Use shared display formatter from src/lib/time.ts
+  const [mealIndex, setMealIndex] = useState(0);
+
+  // Reset meal pager when date changes
+  useEffect(() => { setMealIndex(0); }, [currentDate]);
+
+  // Ensure mealIndex stays in bounds
+  const safeMealIndex = loggedMeals.length > 0 ? Math.min(mealIndex, loggedMeals.length - 1) : 0;
 
   const handlePreviousDay = () => {
     const newDate = normalizeToNoon(currentDate);
@@ -83,7 +84,7 @@ export function ProgressList({
   const completedCount = tasks.filter((t) => t.completed).length;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col">
       {/* Header with Date Navigation */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -188,33 +189,56 @@ export function ProgressList({
       {/* ──────────── Divider ──────────── */}
       <div className="my-4 border-t dark:border-zinc-800 light:border-gray-200" />
 
-      {/* ──────────── Logged meals summary ──────────── */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <h4 className="text-xs font-semibold dark:text-zinc-400 light:text-slate-500 uppercase tracking-wider mb-2">
-          Logged entries
-        </h4>
+      {/* ──────────── Logged Meals Pager ──────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-semibold dark:text-zinc-400 light:text-slate-500 uppercase tracking-wider">
+            Logged Meals
+          </h4>
+          {loggedMeals.length > 0 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setMealIndex((prev) => (prev - 1 + loggedMeals.length) % loggedMeals.length)}
+                disabled={loggedMeals.length <= 1}
+                className="p-0.5 rounded dark:text-zinc-400 light:text-slate-500 dark:hover:bg-zinc-800 light:hover:bg-gray-200 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Previous meal"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[10px] dark:text-zinc-500 light:text-slate-500 font-medium min-w-[24px] text-center">
+                {safeMealIndex + 1}/{loggedMeals.length}
+              </span>
+              <button
+                onClick={() => setMealIndex((prev) => (prev + 1) % loggedMeals.length)}
+                disabled={loggedMeals.length <= 1}
+                className="p-0.5 rounded dark:text-zinc-400 light:text-slate-500 dark:hover:bg-zinc-800 light:hover:bg-gray-200 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Next meal"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
         {loggedMeals.length === 0 ? (
           <p className="text-xs dark:text-zinc-600 light:text-slate-400 italic">
             No meals logged for this day yet.
           </p>
         ) : (
-          <div className="space-y-2">
-            {loggedMeals.map((meal) => (
-              <div
-                key={meal.id}
-                className="flex items-start justify-between gap-2 py-1.5"
-              >
+          (() => {
+            const meal = loggedMeals[safeMealIndex];
+            return (
+              <div className="flex items-start justify-between gap-2 py-1.5">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-medium dark:text-white light:text-slate-900">
-                      {capitalize(meal.meal_type)}
+                      {formatMealTypeLabel(meal.meal_type)}
                     </span>
                     <span className="text-[10px] dark:text-zinc-500 light:text-slate-400">
                       {formatMealTime(meal.meal_datetime, canonicalTimeZone)}
                     </span>
                   </div>
                   {meal.description ? (
-                    <p className="text-[11px] dark:text-zinc-500 light:text-slate-500 truncate mt-0.5 leading-tight max-w-[220px]">
+                    <p className="text-[11px] dark:text-zinc-500 light:text-slate-500 line-clamp-2 mt-0.5 leading-tight max-w-[220px]">
                       {meal.description}
                     </p>
                   ) : (
@@ -225,12 +249,12 @@ export function ProgressList({
                 </div>
                 {meal.photo_url && (
                   <span className="text-[10px] dark:text-zinc-500 light:text-slate-400 whitespace-nowrap flex-shrink-0">
-                    📷 Image
+                    📷 Image uploaded
                   </span>
                 )}
               </div>
-            ))}
-          </div>
+            );
+          })()
         )}
       </div>
     </div>

@@ -8,6 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "daily-streak-report": "node scripts/daily_streak_report.js",
+    "meal:backfill": "tsx scripts/backfill_v1.ts",
+    "meal:nightly": "tsx scripts/nightly_meal_processing.ts",
+    "meal:test": "tsx scripts/test_single_meal.ts",
+    "meal:check-env": "tsx scripts/check_env.ts",
     "test": "jest --runInBand"
   },
   "dependencies": {
@@ -22,6 +26,7 @@
     "lucide-react": "^0.562.0",
     "next": "^14.2.18",
     "nodemailer": "^6.9.4",
+    "openai": "^6.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
@@ -36,6 +41,7 @@
     "jest": "^29.0.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

@@ -114,3 +114,29 @@ export async function deleteTodo(todoId: string): Promise<boolean> {
 
   return true;
 }
+
+/**
+ * Edit a todo's text.
+ */
+export async function editTodo(
+  todoId: string,
+  text: string
+): Promise<boolean> {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  const { error } = await supabase()
+    .from("daily_todos")
+    .update({
+      text: trimmed,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", todoId);
+
+  if (error) {
+    console.error("editTodo error:", error);
+    return false;
+  }
+
+  return true;
+}

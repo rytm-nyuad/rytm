@@ -431,6 +431,8 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
                   <option value="dinner">Dinner</option>
                   <option value="snack">Snack</option>
                   <option value="drink">Drink</option>
+                  <option value="ramadan_iftar">Ramadan: Iftar</option>
+                  <option value="ramadan_suhoor">Ramadan: Suhoor</option>
                   <option value="other">Other</option>
                 </select>
               </Field>

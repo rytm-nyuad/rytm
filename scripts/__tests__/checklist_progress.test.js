@@ -133,7 +133,7 @@ describe('Streak completion rule', () => {
 });
 
 describe('Meal type validation', () => {
-  const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack', 'drink'];
+  const VALID_MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack', 'drink', 'ramadan_iftar', 'ramadan_suhoor'];
 
   test('all standard meal types are valid', () => {
     for (const mt of VALID_MEAL_TYPES) {
@@ -143,6 +143,11 @@ describe('Meal type validation', () => {
 
   test('"drink" is a valid meal type', () => {
     expect(VALID_MEAL_TYPES.includes('drink')).toBe(true);
+  });
+
+  test('Ramadan meal types are valid', () => {
+    expect(VALID_MEAL_TYPES.includes('ramadan_iftar')).toBe(true);
+    expect(VALID_MEAL_TYPES.includes('ramadan_suhoor')).toBe(true);
   });
 
   test('"water" is NOT a valid meal type (use "drink" instead)', () => {
@@ -161,6 +166,8 @@ describe('Meal type validation', () => {
     const hasMealLogged = (mealTypes) => mealTypes.length > 0;
     expect(hasMealLogged(['drink'])).toBe(true);
     expect(hasMealLogged(['breakfast', 'drink'])).toBe(true);
+    expect(hasMealLogged(['ramadan_iftar'])).toBe(true);
+    expect(hasMealLogged(['ramadan_suhoor'])).toBe(true);
     expect(hasMealLogged([])).toBe(false);
   });
 });

@@ -22,6 +22,9 @@ import { TopNav } from "@/components/dashboard/TopNav";
 import { TodaysFocus } from "@/components/dashboard/TodaysFocus";
 import { NudgeToast } from "@/components/dashboard/NudgeToast";
 import { DashboardBackground } from "@/components/dashboard/DashboardBackground";
+import { RamadanDecorOverlay } from "@/components/seasonal/RamadanDecorOverlay";
+
+const RAMADAN_DECOR = process.env.NEXT_PUBLIC_RAMADAN_DECOR === "1";
 
 import {
   getTodayOverall,
@@ -408,6 +411,7 @@ function DashboardContent() {
         <div className="absolute top-0 left-0 right-0 h-14 light:bg-gradient-to-r light:from-cyan-600 light:to-cyan-700 dark:hidden" />
         
         <DashboardBackground />
+        {RAMADAN_DECOR && <RamadanDecorOverlay />}
 
         <div className="relative z-10 h-full flex flex-col">
           {/* NAV */}
@@ -503,38 +507,33 @@ function DashboardContent() {
         <div className="h-full px-4 sm:px-6 py-6 sm:py-8 flex gap-4 sm:gap-6 max-w-7xl mx-auto
                         flex-col lg:flex-row">
           {/* =================================================== */}
-          {/* LEFT: CHECKLIST */}
+          {/* LEFT: CHECKLIST + TO-DO (Two stacked cards) */}
           {/* =================================================== */}
-          <div className="w-full lg:w-[360px] lg:flex-shrink-0 h-full dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col">
-            <h2 className="font-semibold mb-4">Today's Checklist</h2>
-
-            {/* KEEP: real ProgressList with routing/modals */}
-            <div className="flex-1 overflow-y-auto">
+          <div className="w-full lg:w-[360px] lg:flex-shrink-0 h-full flex flex-col gap-4 sm:gap-6">
+            
+            {/* Checklist Card - Compact, content-sized */}
+            <div className="dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col flex-shrink-0">
+              <h2 className="font-semibold mb-4">Today's Checklist</h2>
               <ProgressList
-              progress={progress}
-              currentDate={selectedDate}
-              canonicalTimeZone={canonicalTz}
-              onDateChange={setSelectedDate}
-              loggedMeals={loggedMeals}
-              onAction={(action) => {
-                if (action === "overall") setShowOverallModal(true);
-                if (action === "meal") setShowMealModal(true);
-                if (action === "checkin") setShowCheckInModal(true);
-                if (action === "journal") {
-                  setJournalAutoFocus(true);
-                  setTimeout(() => setJournalAutoFocus(false), 100);
-                }
-              }}
+                progress={progress}
+                currentDate={selectedDate}
+                canonicalTimeZone={canonicalTz}
+                onDateChange={setSelectedDate}
+                loggedMeals={loggedMeals}
+                onAction={(action) => {
+                  if (action === "overall") setShowOverallModal(true);
+                  if (action === "meal") setShowMealModal(true);
+                  if (action === "checkin") setShowCheckInModal(true);
+                  if (action === "journal") {
+                    setJournalAutoFocus(true);
+                    setTimeout(() => setJournalAutoFocus(false), 100);
+                  }
+                }}
               />
             </div>
-          </div>
 
-          {/* =================================================== */}
-          {/* RIGHT: TO-DO + JOURNAL */}
-          {/* =================================================== */}
-          <div className="w-full lg:flex-1 h-full flex flex-col gap-4 sm:gap-6">
-            {/* TO-DO LIST */}
-            <div className="dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col" style={{ height: '40%', minHeight: 180 }}>
+            {/* To-Do Card - Fills remaining space */}
+            <div className="dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col flex-1 min-h-0 overflow-hidden">
               <DailyTodoList
                 firstName={firstName}
                 selectedDate={selectedDate}
@@ -542,7 +541,12 @@ function DashboardContent() {
               />
             </div>
 
-            {/* JOURNAL (reduced height) */}
+          </div>
+
+          {/* =================================================== */}
+          {/* RIGHT: JOURNAL (full height) */}
+          {/* =================================================== */}
+          <div className="w-full lg:flex-1 h-full flex flex-col">
             <div className="dark:bg-black light:bg-white/95 dark:text-white light:text-slate-900 rounded-xl p-4 sm:p-6 light:border-none light:shadow-xl flex flex-col flex-1 min-h-0">
               <JournalChat 
                 autoFocus={journalAutoFocus}

@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Plus, X, Check } from "lucide-react";
+import { Plus, X, Check, Pencil } from "lucide-react";
 import { createBrowserClient } from "@supabase/ssr";
 import { formatLocalDate, formatLocalDisplayDate } from "@/lib/time";
 import {
@@ -10,6 +10,7 @@ import {
   addTodo,
   toggleTodo,
   deleteTodo,
+  editTodo,
 } from "@/lib/db/todos";
 import type { DailyTodo } from "@/types/todo";
 
@@ -170,6 +171,36 @@ export function DailyTodoList({
     }
   };
 
+  // Edit
+  const handleEdit = async (todo: DailyTodo, newText: string) => {
+    const trimmed = newText.trim();
+    if (!trimmed || trimmed === todo.text) return;
+
+    const updateList = (list: DailyTodo[]) =>
+      list.map((t) =>
+        t.id === todo.id
+          ? { ...t, text: trimmed, updated_at: new Date().toISOString() }
+          : t
+      );
+
+    if (todo.is_completed) {
+      setCompletedTodos(updateList);
+    } else {
+      setActiveTodos(updateList);
+    }
+
+    const ok = await editTodo(todo.id, trimmed);
+    if (!ok) {
+      const rollback = (list: DailyTodo[]) =>
+        list.map((t) => (t.id === todo.id ? todo : t));
+      if (todo.is_completed) {
+        setCompletedTodos(rollback);
+      } else {
+        setActiveTodos(rollback);
+      }
+    }
+  };
+
   const remainingCount = activeTodos.length;
   const completedCount = completedTodos.length;
 
@@ -215,6 +246,7 @@ export function DailyTodoList({
             todo={todo}
             onToggle={handleToggle}
             onDelete={handleDelete}
+            onEdit={handleEdit}
           />
         ))}
 
@@ -228,6 +260,7 @@ export function DailyTodoList({
             todo={todo}
             onToggle={handleToggle}
             onDelete={handleDelete}
+            onEdit={handleEdit}
           />
         ))}
 
@@ -263,11 +296,52 @@ function TodoRow({
   todo,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   todo: DailyTodo;
   onToggle: (t: DailyTodo) => void;
   onDelete: (t: DailyTodo) => void;
+  onEdit: (t: DailyTodo, newText: string) => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(todo.text);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [isEditing]);
+
+  // Keep editText in sync if todo.text is updated externally
+  useEffect(() => {
+    if (!isEditing) setEditText(todo.text);
+  }, [todo.text, isEditing]);
+
+  const handleSave = () => {
+    const trimmed = editText.trim();
+    if (!trimmed) {
+      setEditText(todo.text);
+      setIsEditing(false);
+      return;
+    }
+    if (trimmed !== todo.text) {
+      onEdit(todo, trimmed);
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditText(todo.text);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { e.preventDefault(); handleSave(); }
+    if (e.key === "Escape") handleCancel();
+  };
+
   return (
     <div className="group flex items-center gap-2 py-1.5 px-2 rounded-lg dark:hover:bg-zinc-800/50 light:hover:bg-gray-50 transition-colors">
       {/* Checkbox */}
@@ -285,16 +359,45 @@ function TodoRow({
         )}
       </button>
 
-      {/* Text */}
-      <span
-        className={`flex-1 text-xs leading-tight ${
-          todo.is_completed
-            ? "line-through dark:text-zinc-500 light:text-slate-400"
-            : "dark:text-white light:text-slate-900"
-        }`}
-      >
-        {todo.text}
-      </span>
+      {/* Text / Edit input */}
+      {isEditing ? (
+        <input
+          ref={editInputRef}
+          type="text"
+          value={editText}
+          onChange={(e) => setEditText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={handleSave}
+          className="flex-1 text-xs leading-tight bg-transparent border-b dark:border-zinc-600 light:border-gray-400 dark:text-white light:text-slate-900 focus:outline-none dark:focus:border-purple-500 light:focus:border-blue-500 py-0"
+        />
+      ) : (
+        <span
+          className={`flex-1 text-xs leading-tight ${
+            todo.is_completed
+              ? "line-through dark:text-zinc-500 light:text-slate-400"
+              : "dark:text-white light:text-slate-900 cursor-pointer"
+          }`}
+          onClick={() => {
+            if (!todo.is_completed) {
+              setEditText(todo.text);
+              setIsEditing(true);
+            }
+          }}
+        >
+          {todo.text}
+        </span>
+      )}
+
+      {/* Edit icon (hover, active tasks only) */}
+      {!isEditing && !todo.is_completed && (
+        <button
+          onClick={() => { setEditText(todo.text); setIsEditing(true); }}
+          className="flex-shrink-0 p-0.5 rounded dark:text-zinc-600 light:text-slate-400 dark:hover:text-zinc-300 light:hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-all"
+          aria-label="Edit task"
+        >
+          <Pencil className="w-3 h-3" />
+        </button>
+      )}
 
       {/* Delete */}
       <button

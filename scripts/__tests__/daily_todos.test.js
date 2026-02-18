@@ -190,4 +190,83 @@ describe("daily_todos — sorting & behavior", () => {
     expect(active).toEqual([]);
     expect(completed).toEqual([]);
   });
+
+  // ─── Edit validation ───
+  test("edit text trimmed to empty should be rejected", () => {
+    const validateEdit = (newText) => {
+      const trimmed = newText.trim();
+      return trimmed.length > 0;
+    };
+
+    expect(validateEdit("")).toBe(false);
+    expect(validateEdit("   ")).toBe(false);
+    expect(validateEdit("  Valid task  ")).toBe(true);
+    expect(validateEdit("A")).toBe(true);
+  });
+
+  test("edit should update text and preserve other fields", () => {
+    const original = makeTodo({ id: "edit-me", text: "Original task" });
+    const newText = "Updated task";
+
+    const edited = {
+      ...original,
+      text: newText.trim(),
+      updated_at: new Date().toISOString(),
+    };
+
+    expect(edited.id).toBe("edit-me");
+    expect(edited.text).toBe("Updated task");
+    expect(edited.date).toBe(original.date);
+    expect(edited.is_completed).toBe(original.is_completed);
+    expect(new Date(edited.updated_at).getTime()).toBeGreaterThanOrEqual(
+      new Date(original.updated_at).getTime()
+    );
+  });
+
+  test("edit with same text (no change) should be a no-op", () => {
+    const original = makeTodo({ id: "no-change", text: "Same text" });
+    const newText = "Same text";
+
+    const shouldUpdate = newText.trim() !== original.text;
+    expect(shouldUpdate).toBe(false);
+  });
+});
+
+// ─── Meal pager index logic ───
+describe("meal pager — index reset & bounds", () => {
+  test("meal pager index resets to 0 on date change", () => {
+    let mealIndex = 2;
+    // Simulate date change effect
+    const onDateChange = () => { mealIndex = 0; };
+
+    onDateChange();
+    expect(mealIndex).toBe(0);
+  });
+
+  test("safeMealIndex clamps to last meal when index exceeds length", () => {
+    const clamp = (idx, length) =>
+      length > 0 ? Math.min(idx, length - 1) : 0;
+
+    expect(clamp(5, 3)).toBe(2);
+    expect(clamp(0, 3)).toBe(0);
+    expect(clamp(2, 3)).toBe(2);
+    expect(clamp(0, 0)).toBe(0);
+    expect(clamp(3, 0)).toBe(0);
+  });
+
+  test("pager wraps around forward", () => {
+    const wrap = (idx, length) => (idx + 1) % length;
+
+    expect(wrap(0, 3)).toBe(1);
+    expect(wrap(1, 3)).toBe(2);
+    expect(wrap(2, 3)).toBe(0); // wraps
+  });
+
+  test("pager wraps around backward", () => {
+    const wrap = (idx, length) => (idx - 1 + length) % length;
+
+    expect(wrap(0, 3)).toBe(2); // wraps
+    expect(wrap(1, 3)).toBe(0);
+    expect(wrap(2, 3)).toBe(1);
+  });
 });
