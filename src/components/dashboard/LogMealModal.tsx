@@ -119,7 +119,8 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
 
   // Validate a specific draft
   const validateDraft = (draft: MealDraft): boolean => {
-    if (!draft.description.trim() && !draft.selectedFile) {
+    // Drink entries are valid with just the type (no description/image required)
+    if (draft.mealType !== "drink" && !draft.description.trim() && !draft.selectedFile) {
       setError("Please provide a description or upload an image");
       return false;
     }
@@ -429,6 +430,9 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
                   <option value="lunch">Lunch</option>
                   <option value="dinner">Dinner</option>
                   <option value="snack">Snack</option>
+                  <option value="drink">Drink</option>
+                  <option value="ramadan_iftar">Ramadan: Iftar</option>
+                  <option value="ramadan_suhoor">Ramadan: Suhoor</option>
                   <option value="other">Other</option>
                 </select>
               </Field>
@@ -465,11 +469,11 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
             )}
 
             <Field>
-              <FieldLabel>Description (optional if image provided)</FieldLabel>
+              <FieldLabel>{currentDraft.mealType === "drink" ? "Description (optional)" : "Description (optional if image provided)"}</FieldLabel>
               <textarea
                 value={currentDraft.description}
                 onChange={(e) => updateCurrentDraft({ description: e.target.value })}
-                placeholder="What did you eat?"
+                placeholder={currentDraft.mealType === "drink" ? "e.g., Water, Coffee, Protein Shake..." : "What did you eat?"}
                 rows={4}
                 className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/60 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50 resize-none"
                 disabled={submitting}

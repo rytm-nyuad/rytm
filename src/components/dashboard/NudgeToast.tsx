@@ -6,14 +6,13 @@ import { X } from "lucide-react";
 interface TaskStatus {
   overallQuestion: boolean;
   mealLogged: boolean;
-  waterLogged: boolean;
   checkInCompleted: boolean;
   journalCompleted: boolean;
 }
 
 interface NudgeToastProps {
   tasks: TaskStatus;
-  onAction: (action: 'meal' | 'water' | 'checkin' | 'journal') => void;
+  onAction: (action: 'meal' | 'checkin' | 'journal') => void;
 }
 
 export function NudgeToast({ tasks, onAction }: NudgeToastProps) {
@@ -23,7 +22,6 @@ export function NudgeToast({ tasks, onAction }: NudgeToastProps) {
   // Determine first pending task
   const getFirstPendingTask = () => {
     if (!tasks.mealLogged) return { label: 'Log meal now', action: 'meal' as const };
-    if (!tasks.waterLogged) return { label: 'Log water now', action: 'water' as const };
     if (!tasks.checkInCompleted) return { label: 'Daily check-in now', action: 'checkin' as const };
     if (!tasks.journalCompleted) return { label: 'Journal now', action: 'journal' as const };
     return null;

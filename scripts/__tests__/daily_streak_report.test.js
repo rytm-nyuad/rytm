@@ -29,6 +29,8 @@ describe('daily_streak_report', () => {
         { date: '2026-02-02', created_at: '2026-02-02T15:30:00+04:00' }
       ],
       // u3: has daily_summary rows but both incomplete and missing items
+      // NOTE: has_water is no longer required for completion (removed from checklist).
+      // Completion now requires: has_overall, has_meal, has_journal, has_checkin.
       'u3': [
         { date: '2026-02-01', has_overall: false, has_meal: false, has_water: true, has_journal: false, has_checkin: true, is_complete: false },
         { date: '2026-02-02', has_overall: true, has_meal: false, has_water: false, has_journal: false, has_checkin: false, is_complete: false }

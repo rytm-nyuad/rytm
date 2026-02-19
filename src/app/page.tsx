@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { PageShell } from "@/components/PageShell";
 
 // Background Signal Flow Component
 function BackgroundSignalFlow() {
@@ -156,31 +157,14 @@ export default function HomePage() {
   }, [router]);
 
   return (
-    <main className="relative min-h-screen flex flex-col bg-white text-black overflow-hidden">
-      {/* Subtle signal flow background */}
-      <BackgroundSignalFlow />
+    <PageShell navbarVariant="floating" contentOffsetClass="pt-20">
+      <div className="relative flex flex-col overflow-hidden">
+        {/* Subtle signal flow background */}
+        <BackgroundSignalFlow />
 
-      {/* Simple flat header */}
-      <header className="flex items-center justify-between px-8 py-6 border-b border-zinc-200">
-        <div className="text-2xl font-bold tracking-tight">
-          rytm
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <Link href="/sign-in" className="text-base font-semibold text-zinc-600 hover:text-black transition-colors">
-            Log in
-          </Link>
-          <Link href="/sign-up">
-            <button className="px-6 py-3 text-base font-semibold bg-black text-white rounded-md hover:bg-zinc-800 transition-colors">
-              Sign up
-            </button>
-          </Link>
-        </div>
-      </header>
-
-      {/* Hero content - two column layout */}
-      <div className="flex-1 flex items-center justify-center px-8 py-12">
-        <div className="max-w-6xl w-full mx-auto grid md:grid-cols-2 gap-16 items-center">
+        {/* Hero content - two column layout */}
+        <div className="flex-1 flex items-center justify-center px-8 py-12">
+          <div className="max-w-6xl w-full mx-auto grid md:grid-cols-2 gap-16 items-center">
           {/* Left column - Text content */}
           <div className="space-y-8">
             {/* Kicker + Headline + Description */}
@@ -241,6 +225,7 @@ export default function HomePage() {
           Master your flow • Privacy-first • Built for performance
         </p>
       </footer>
-    </main>
+      </div>
+    </PageShell>
   );
 }

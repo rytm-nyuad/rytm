@@ -119,7 +119,10 @@ BEGIN
       AND array_length(c.mood_emotions, 1) > 0
   ) INTO v_has_checkin;
 
-  v_is_complete := v_has_overall AND v_has_meal AND v_has_water AND v_has_journal AND v_has_checkin;
+  -- CHANGE: water logging is no longer required for day completion.
+  -- Drinks are now logged as meal entries (meal_type = 'drink').
+  -- Completion requires 4 items: overall, meal, journal, checkin.
+  v_is_complete := v_has_overall AND v_has_meal AND v_has_journal AND v_has_checkin;
 
   -- CHANGE: bounded streak logic
   IF local_date < grace_start THEN
