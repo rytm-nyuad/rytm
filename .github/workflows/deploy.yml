@@ -47,6 +47,7 @@ jobs:
             export WHOOP_REDIRECT_URI='${{ secrets.WHOOP_REDIRECT_URI }}'
             export WHOOP_AUTH_URL='${{ secrets.WHOOP_AUTH_URL }}'
             export WHOOP_TOKEN_URL='${{ secrets.WHOOP_TOKEN_URL }}'
+            export NEXT_PUBLIC_RAMADAN_DECOR='${{ secrets.NEXT_PUBLIC_RAMADAN_DECOR }}'
             # Report/email configuration removed — reporting runs from GitHub Actions (secrets remain in Actions only)
             export BUILD_TIME="$(date +%s)"
 
