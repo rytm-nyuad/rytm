@@ -1,0 +1,44 @@
+name: Prep Daily Summary
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC = 08:00 Asia/Dubai
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Target date (YYYY-MM-DD). Defaults to yesterday in Asia/Dubai."
+        required: false
+        type: string
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Call prep-daily-summary Edge Function
+        run: |
+          # Build request body
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            BODY='{"date":"${{ github.event.inputs.date }}"}'
+          else
+            BODY='{}'
+          fi
+
+          echo "Request body: $BODY"
+
+          STATUS=$(curl -o response.json -w "%{http_code}" -X POST \
+            "${{ secrets.SUPABASE_FUNCTION_URL }}/prep-daily-summary" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY")
+
+          echo "Response (status $STATUS):"
+          cat response.json
+
+          if [ "$STATUS" -ne 200 ]; then
+            echo "❌ Request failed with status $STATUS"
+            exit 1
+          fi
+
+          echo "✅ Prep daily summary completed successfully!"
