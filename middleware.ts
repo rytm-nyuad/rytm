@@ -50,9 +50,16 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Logged in but not on the allowlist — show coming soon page
+  // Logged in but not on the allowlist — nuke session & redirect to coming-soon
   if (!isEmailAllowed(user.email)) {
-    return NextResponse.redirect(new URL('/coming-soon', request.url));
+    const redirectResponse = NextResponse.redirect(new URL('/coming-soon', request.url));
+    // Clear all Supabase auth cookies so the session is fully invalidated
+    request.cookies.getAll().forEach(cookie => {
+      if (cookie.name.startsWith('sb-')) {
+        redirectResponse.cookies.set(cookie.name, '', { maxAge: 0, path: '/' });
+      }
+    });
+    return redirectResponse;
   }
 
   return response;
