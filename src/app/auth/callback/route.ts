@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
+import { isEmailAllowed } from '@/lib/allowlist';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,11 @@ export async function GET(request: NextRequest) {
     }
     
     if (data.user) {
+      // ── Allowlist gate ──
+      if (!isEmailAllowed(data.user.email)) {
+        return NextResponse.redirect(`${appUrl}/coming-soon`);
+      }
+
       // Check if user has signed consent
       const { data: consentData, error: consentError } = await supabase
         .from("consent_signatures")

@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
+import { isEmailAllowed } from '@/lib/allowlist';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,11 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // ── Allowlist gate ──
+    if (!isEmailAllowed(data.user?.email)) {
+      return NextResponse.json({ redirectTo: '/coming-soon' }, { status: 200 });
     }
 
     // Check consent
