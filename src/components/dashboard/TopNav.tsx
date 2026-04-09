@@ -221,6 +221,7 @@ export function TopNav() {
 
   const navItems = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+    { href: "/coach", icon: Zap, label: "Coach" },
     // { href: "/calendar", icon: Calendar, label: "Calendar" },
     // { href: "/exercise", icon: Dumbbell, label: "Exercise" },
     { href: "/analytics", icon: BarChart3, label: "Analytics" },
