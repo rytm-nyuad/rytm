@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Send, Plus, MessageSquare, Trash2, Calendar, Heart, Zap, TrendingUp, Loader2 } from "lucide-react";
+import { VoiceInputButton } from "@/components/ui/VoiceInputButton";
 import {
   getCoachConversations,
   getCoachMessages,
@@ -249,6 +250,11 @@ export function CoachChatPanel({ userId, firstName }: CoachChatPanelProps) {
               placeholder="Ask your coach..."
               disabled={loading}
               className="flex-1 px-2 py-1.5 bg-transparent dark:text-white text-zinc-900 dark:placeholder-zinc-500 placeholder-zinc-400 focus:outline-none text-sm"
+            />
+            <VoiceInputButton
+              onTranscript={(t) => setInput(t)}
+              currentValue={input}
+              disabled={loading}
             />
             <button
               onClick={() => handleSend()}

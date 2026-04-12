@@ -174,6 +174,26 @@ class DataFetcher:
             .execute()
         return result.data or []
     
+    def fetch_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch user profile (name, timezone)"""
+        result = self.client.table('profiles') \
+            .select('user_id, first_name, last_name, timezone') \
+            .eq('user_id', user_id) \
+            .execute()
+        return result.data[0] if result.data else None
+
+    def fetch_recent_actions(self, user_id: str, end_date: date, lookback_days: int = 7) -> List[Dict[str, Any]]:
+        """Fetch recent plan actions for variety/deduplication"""
+        start_date = end_date - timedelta(days=lookback_days)
+        result = self.client.table('plan_actions1') \
+            .select('action_id, domain, priority, effort_level, reason, for_date') \
+            .eq('user_id', user_id) \
+            .gte('for_date', start_date.isoformat()) \
+            .lt('for_date', end_date.isoformat()) \
+            .order('for_date', desc=True) \
+            .execute()
+        return result.data or []
+
     def fetch_all_daily_data(self, user_id: str, target_date: date) -> Dict[str, Any]:
         """Fetch all data sources for a given day"""
         return {

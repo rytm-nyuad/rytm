@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ArrowUp, MessageSquare } from "lucide-react";
+import { VoiceInputButton } from "@/components/ui/VoiceInputButton";
 
 interface CoachPromptBarProps {
   onSendMessage: (message: string) => void;
@@ -59,6 +60,11 @@ export function CoachPromptBar({ onSendMessage, onOpenChats }: CoachPromptBarPro
             text-xs sm:text-sm
             px-1 sm:px-2
           "
+        />
+        <VoiceInputButton
+          onTranscript={(t) => setInput(t)}
+          currentValue={input}
+          className="rounded-full flex-shrink-0"
         />
         <button
           onClick={onOpenChats}

@@ -39,7 +39,11 @@ class PipelineState(TypedDict):
     raw_snapshot: Dict[str, Any]
     validation_result: Dict[str, Any]
     features: Dict[str, Any]
-    
+
+    # User context
+    user_name: str
+    recent_action_history: List[Dict]
+
     # User goal
     user_goal: Dict[str, Any]
     
@@ -63,7 +67,7 @@ class PipelineState(TypedDict):
 class MorningCoachPipeline:
     """LangGraph-based morning coach pipeline"""
     
-    def __init__(self, supabase_client, openai_api_key: str):
+    def __init__(self, supabase_client, openrouter_api_key: str):
         self.client = supabase_client
         self.data_fetcher = DataFetcher(
             os.getenv('NEXT_PUBLIC_SUPABASE_URL'),
@@ -75,10 +79,16 @@ class MorningCoachPipeline:
         self.persistence_agent = PersistenceAgent(supabase_client)
         self.regen_controller = RegenerationController()
         self.logger = AgentLogger(supabase_client)
-        
-        # LLM client
-        self.openai_api_key = openai_api_key
-        self.llm = ChatOpenAI(model="gpt-4o-mini", api_key=openai_api_key, temperature=0.7)
+
+        # LLM client via OpenRouter
+        self.openrouter_api_key = openrouter_api_key
+        self.model_name = "deepseek/deepseek-v3.2"
+        self.llm = ChatOpenAI(
+            model=self.model_name,
+            api_key=openrouter_api_key,
+            base_url="https://openrouter.ai/api/v1",
+            temperature=0.7
+        )
         
         # Build graph
         self.graph = self._build_graph()
@@ -137,7 +147,16 @@ class MorningCoachPipeline:
         #print (f"Fetched raw snapshot for user {state['user_id']} on {state['for_date']}. {raw_snapshot}")
         # Add overall_score to snapshot
         raw_snapshot['overall'] = {'overall_score': state['overall_score']}
-        
+
+        # Fetch user profile for personalization
+        profile = self.data_fetcher.fetch_user_profile(state['user_id'])
+        state['user_name'] = profile.get('first_name', '') if profile else ''
+
+        # Fetch recent action history for variety
+        state['recent_action_history'] = self.data_fetcher.fetch_recent_actions(
+            state['user_id'], target_date
+        )
+
         # Log snapshot to database
         history_window = raw_snapshot.get('history_7d', {})
         self.logger.log_snapshot(
@@ -147,7 +166,7 @@ class MorningCoachPipeline:
             raw_snapshot,
             history_window
         )
-        
+
         state['raw_snapshot'] = raw_snapshot
         return state
     
@@ -418,6 +437,22 @@ Select 2-3 domains.
                 'available_features': available_features
             })
 
+        # Build meal context from features
+        meal_context = ""
+        meal_desc = state['features'].get('meal_descriptions', {})
+        if meal_desc and meal_desc.get('value_json'):
+            meal_context = f"\nYesterday's meals:\n{json.dumps(meal_desc['value_json'], indent=2)}\n"
+
+        # Build action history context
+        action_history_context = ""
+        if state.get('recent_action_history'):
+            recent = state['recent_action_history'][:15]  # Cap at 15 most recent
+            history_summary = [
+                {'date': a.get('for_date'), 'domain': a.get('domain'), 'action': a.get('reason', '')[:80]}
+                for a in recent
+            ]
+            action_history_context = f"\nRecent actions (last 7 days — avoid repeating the same suggestions):\n{json.dumps(history_summary, indent=2)}\n"
+
         user_prompt = f"""Selected domains: {json.dumps(state['selected_domains'])}
 User goal domains: {json.dumps(goal_domains)}
 Day constraints: {json.dumps(state['day_constraints'], indent=2)}
@@ -427,14 +462,15 @@ Holistic status report (overall picture of user today):
 
 Domain-specific features (for selected and goal domains):
 {json.dumps(domain_contexts, indent=2)}
-
+{meal_context}{action_history_context}
 Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, generate 3-4 actions for those domains.
- If different, generate at least 3 for selected domains and at least 1 (ideally 1-2) for the goal domain(s). 
+ If different, generate at least 3 for selected domains and at least 1 (ideally 1-2) for the goal domain(s).
  **DO NOT include action_id - it will be generated automatically.**
 """
 
         started_at = datetime.utcnow()
         response = self._call_llm(ACTION_GENERATOR_SYSTEM_PROMPT, user_prompt)
+        debug_log(f"[ACTION_GENERATOR] Response (first 800 chars): {response[:800]}")
 
         output = self._parse_llm_json(response, 'action_generator')
 
@@ -566,13 +602,16 @@ Review for coherence, feasibility, safety, and domain/goal coverage rules. Accep
     def node_compose_brief(self, state: PipelineState) -> PipelineState:
         """Morning Brief Composer LLM Agent"""
         from prompts import MORNING_BRIEF_COMPOSER_SYSTEM_PROMPT
-        
+
+        user_name_line = f"- User name: {state['user_name']}" if state.get('user_name') else "- User name: not available"
+
         user_prompt = f"""
 Today's situation:
 - Energy mode: {self._get_energy_mode(state['overall_score'])}
 - Overall score: {state['overall_score']}
 - Selected domains: {', '.join(state['selected_domains'])}
 - Data confidence: {state['validation_result']['confidence_score']}
+{user_name_line}
 
 Holistic status report JSON:
 {json.dumps(state.get('holistic_status_report', {}), indent=2)}
@@ -580,7 +619,7 @@ Holistic status report JSON:
 Display actions:
 {json.dumps(state['budget_result']['display_actions'], indent=2)}
 
-Compose warm, motivating brief (≤600 words) with numbered actions and "why" for each.
+Write a personal morning note (300-400 words). Spend most of the words on the narrative — dig into the data, tell the story of yesterday and what it means for today. Keep actions concise. Use markdown for formatting.
 """
         
         started_at = datetime.utcnow()
@@ -619,7 +658,12 @@ Compose warm, motivating brief (≤600 words) with numbered actions and "why" fo
     def _call_llm(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
         """Call LLM with system and user prompts"""
         if temperature != self.llm.temperature:
-            llm = ChatOpenAI(model="gpt-4o-mini", api_key=self.openai_api_key, temperature=temperature)
+            llm = ChatOpenAI(
+                model=self.model_name,
+                api_key=self.openrouter_api_key,
+                base_url="https://openrouter.ai/api/v1",
+                temperature=temperature
+            )
         else:
             llm = self.llm
         messages = [
@@ -697,6 +741,8 @@ Compose warm, motivating brief (≤600 words) with numbered actions and "why" fo
             'raw_snapshot': {},
             'validation_result': {},
             'features': {},
+            'user_name': '',
+            'recent_action_history': [],
             'user_goal': None,
             'holistic_status_report': {},
             'day_constraints': {},

@@ -111,7 +111,7 @@ class FeatureAgent:
         """Store computed features in daily_features1"""
         rows = []
         for feature_key, feature_data in features.items():
-            rows.append({
+            row = {
                 'user_id': user_id,
                 'feature_date': for_date.isoformat(),
                 'feature_key': feature_key,
@@ -122,7 +122,10 @@ class FeatureAgent:
                 'source_lineage_json': {'computed_at': datetime.utcnow().isoformat()},
                 'ingestion_run_id': ingestion_run_id,
                 'feature_layer': 'derived'
-            })
+            }
+            if feature_data.get('value_json') is not None:
+                row['value_json'] = feature_data['value_json']
+            rows.append(row)
         
         if rows:
             self.client.table('daily_features1').upsert(rows).execute()
@@ -243,7 +246,7 @@ class PersistenceAgent:
                 'domain': action.get('domain'),
                 'priority': action.get('priority'),
                 'effort_level': effort_level,
-                'tags': action.get('tags', []),
+                'tags': action.get('tags', []) + ([f"when:{action['when']}"] if action.get('when') else []),
                 'reason': action.get('rationale'),
                 'assumptions_json': {'assumptions': action.get('assumptions', [])},
                 'feasibility_constraints_json': action.get('feasibility_constraints', {}),

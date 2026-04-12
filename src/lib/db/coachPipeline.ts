@@ -32,7 +32,7 @@ export async function getTodayPlan(userId: string, forDate: string): Promise<Dai
 
   const { data: actions, error: actionsError } = await supabase
     .from('plan_actions1')
-    .select('action_id, domain, title, description, duration_minutes, effort_level, priority, rationale')
+    .select('action_id, domain, title, description, duration_minutes, effort_level, priority, rationale, tags')
     .eq('plan_id', plan.plan_id)
     .order('priority', { ascending: true });
 
@@ -41,12 +41,21 @@ export async function getTodayPlan(userId: string, forDate: string): Promise<Dai
     return null;
   }
 
+  // Extract `when` from tags (stored as "when:morning" etc.)
+  const parsedActions: CoachAction[] = (actions || []).map((a) => {
+    const whenTag = (a.tags as string[] || []).find((t: string) => t.startsWith('when:'));
+    return {
+      ...a,
+      when: whenTag ? whenTag.replace('when:', '') as CoachAction['when'] : undefined,
+    };
+  });
+
   return {
     plan_id: plan.plan_id,
     morning_message: plan.morning_message,
     for_date: plan.for_date,
     selected_domains: plan.selected_domains || [],
-    actions: (actions || []) as CoachAction[],
+    actions: parsedActions,
   };
 }
 

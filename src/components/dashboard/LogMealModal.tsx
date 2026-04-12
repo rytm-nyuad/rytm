@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { X, Upload, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { X, Upload, Trash2, ChevronLeft, ChevronRight, Mic, MicOff, Loader2 } from "lucide-react";
+import { VoiceInputButton } from "@/components/ui/VoiceInputButton";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { createBrowserClient } from "@supabase/ssr";
 import { Button } from "@/components/ui/Button";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -31,8 +33,78 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [parsingVoice, setParsingVoice] = useState(false);
+
   const formContainerRef = useRef<HTMLDivElement>(null);
+
+  const {
+    isSupported: voiceSupported,
+    isListening: voiceListening,
+    transcript: liveTranscript,
+    startListening: voiceStart,
+    stopListening: voiceStop,
+    resetTranscript: voiceReset,
+  } = useSpeechRecognition();
+
+  // Stream live transcript into voiceTranscript
+  const voicePreTextRef = useRef("");
+  useEffect(() => {
+    if (!liveTranscript) return;
+    const prev = voicePreTextRef.current;
+    setVoiceTranscript(prev ? `${prev} ${liveTranscript}` : liveTranscript);
+  }, [liveTranscript]);
+
+  const handleVoiceToggle = useCallback(() => {
+    if (voiceListening) {
+      voiceStop();
+    } else {
+      voicePreTextRef.current = voiceTranscript;
+      voiceReset();
+      voiceStart();
+    }
+  }, [voiceListening, voiceTranscript, voiceStop, voiceReset, voiceStart]);
+
+  const handleParseVoiceMeals = async () => {
+    if (!voiceTranscript.trim()) return;
+    setParsingVoice(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/parse-voice-meal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: voiceTranscript.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to parse meals");
+      }
+      const { meals } = await res.json();
+      if (!meals || meals.length === 0) {
+        setError("Could not identify any meals. Try describing them differently.");
+        return;
+      }
+      // Convert parsed meals into drafts
+      const newDrafts: MealDraft[] = meals.map((m: { mealType: string; description: string; mealTime: string }) => ({
+        mealType: m.mealType || "snack",
+        otherMealType: "",
+        mealTime: m.mealTime || "",
+        description: m.description || "",
+        selectedFile: null,
+        previewUrl: null,
+      }));
+      // Replace existing drafts with parsed ones
+      cleanupAllUrls();
+      setMealDrafts(newDrafts);
+      setCurrentIndex(0);
+      setVoiceTranscript("");
+    } catch (err) {
+      console.error("Voice meal parse error:", err);
+      setError(err instanceof Error ? err.message : "Failed to parse meals");
+    } finally {
+      setParsingVoice(false);
+    }
+  };
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -331,6 +403,8 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
     setMealDrafts([]);
     setCurrentIndex(0);
     setError(null);
+    setVoiceTranscript("");
+    if (voiceListening) voiceStop();
     onClose();
   };
 
@@ -396,6 +470,55 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
         <h3 className="text-2xl font-bold dark:text-white light:text-white mb-6">
           {hasMultipleMeals ? `Meal ${currentIndex + 1}` : 'Log Meal'}
         </h3>
+
+        {/* Voice Meal Entry */}
+        {voiceSupported && (
+          <div className="mb-6 p-4 rounded-xl border dark:border-zinc-700 light:border-white/30 dark:bg-zinc-800/50 light:bg-blue-400/20">
+            <p className="text-sm dark:text-zinc-400 light:text-white/80 mb-3">
+              Describe all your meals at once and we&apos;ll organize them for you
+            </p>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={voiceTranscript}
+                  onChange={(e) => setVoiceTranscript(e.target.value)}
+                  placeholder={voiceListening ? "Listening..." : "e.g. I had eggs for breakfast and a shawarma for lunch..."}
+                  className={`w-full px-3 py-2 pr-10 dark:bg-zinc-900 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/60 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50 text-sm ${voiceListening ? "ring-2 ring-red-500/50" : ""}`}
+                  disabled={parsingVoice || submitting}
+                />
+                <button
+                  type="button"
+                  onClick={handleVoiceToggle}
+                  disabled={parsingVoice || submitting}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md transition-all ${
+                    voiceListening
+                      ? "text-red-400 animate-pulse"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                  aria-label={voiceListening ? "Stop recording" : "Start recording"}
+                >
+                  {voiceListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={handleParseVoiceMeals}
+                disabled={!voiceTranscript.trim() || parsingVoice || submitting}
+                className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2 flex-shrink-0"
+              >
+                {parsingVoice ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Parsing...
+                  </>
+                ) : (
+                  "Parse meals"
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -470,14 +593,23 @@ export function LogMealModal({ isOpen, onClose, onSubmit, userId }: LogMealModal
 
             <Field>
               <FieldLabel>{currentDraft.mealType === "drink" ? "Description (optional)" : "Description (optional if image provided)"}</FieldLabel>
-              <textarea
-                value={currentDraft.description}
-                onChange={(e) => updateCurrentDraft({ description: e.target.value })}
-                placeholder={currentDraft.mealType === "drink" ? "e.g., Water, Coffee, Protein Shake..." : "What did you eat?"}
-                rows={4}
-                className="w-full px-3 py-2 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/60 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50 resize-none"
-                disabled={submitting}
-              />
+              <div className="relative">
+                <textarea
+                  value={currentDraft.description}
+                  onChange={(e) => updateCurrentDraft({ description: e.target.value })}
+                  placeholder={currentDraft.mealType === "drink" ? "e.g., Water, Coffee, Protein Shake..." : "What did you eat?"}
+                  rows={4}
+                  className="w-full px-3 py-2 pr-10 dark:bg-zinc-800 light:bg-blue-400/30 dark:border-zinc-700 light:border-white/30 border rounded-lg dark:text-white light:text-white dark:placeholder-zinc-500 light:placeholder-white/60 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-white/50 resize-none"
+                  disabled={submitting}
+                />
+                <VoiceInputButton
+                  onTranscript={(t) => updateCurrentDraft({ description: t })}
+                  currentValue={currentDraft.description}
+                  size="sm"
+                  disabled={submitting}
+                  className="absolute bottom-2 right-2"
+                />
+              </div>
             </Field>
 
             <Field>

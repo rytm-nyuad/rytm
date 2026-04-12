@@ -31,16 +31,16 @@ def main():
     # Initialize Supabase client
     supabase_url = os.getenv('NEXT_PUBLIC_SUPABASE_URL')
     supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-    openai_key = os.getenv('OPENAI_API_KEY')
-    
-    if not all([supabase_url, supabase_key, openai_key]):
+    openrouter_key = os.getenv('OPENROUTER_API_KEY')
+
+    if not all([supabase_url, supabase_key, openrouter_key]):
         print(json.dumps({'error': 'Missing environment variables'}))
         sys.exit(1)
-    
+
     client = create_client(supabase_url, supabase_key)
-    
+
     # Create and run pipeline
-    pipeline = MorningCoachPipeline(client, openai_key)
+    pipeline = MorningCoachPipeline(client, openrouter_key)
     
     try:
         result = pipeline.run(user_id, for_date, overall_score, ingestion_run_id)

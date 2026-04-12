@@ -5,6 +5,7 @@ export interface CoachAction {
   description?: string;
   duration_minutes?: number;
   effort_level: 'low' | 'medium' | 'high';
+  when?: 'morning' | 'midday' | 'afternoon' | 'evening' | 'before_bed' | 'anytime';
   priority: number;
   rationale: string;
 }

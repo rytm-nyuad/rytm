@@ -275,29 +275,47 @@ class FeatureComputer:
     def _compute_nutrition_features(self, raw_data: Dict) -> Dict[str, Dict]:
         features = {}
         meals = raw_data.get('meals', [])
-        
+
         if meals:
             features['meals_count'] = {
                 'value_num': len(meals),
                 'unit': 'count',
                 'confidence': 1.0
             }
-            
+
             breakfast_logged = any(m.get('meal_type') == 'breakfast' for m in meals)
             dinner_logged = any(m.get('meal_type') == 'dinner' for m in meals)
-            
+
             features['breakfast_logged'] = {
                 'value_num': 1 if breakfast_logged else 0,
                 'unit': 'boolean',
                 'confidence': 1.0
             }
-            
+
             features['dinner_logged'] = {
                 'value_num': 1 if dinner_logged else 0,
                 'unit': 'boolean',
                 'confidence': 1.0
             }
-        
+
+            # Extract meal descriptions for richer context
+            meal_descriptions = []
+            for m in meals:
+                entry = {
+                    'meal_type': m.get('meal_type', 'unknown'),
+                    'description': m.get('description', ''),
+                }
+                if m.get('meal_datetime'):
+                    entry['time'] = m['meal_datetime']
+                meal_descriptions.append(entry)
+
+            features['meal_descriptions'] = {
+                'value_num': None,
+                'value_json': meal_descriptions,
+                'unit': 'list',
+                'confidence': 1.0
+            }
+
         return features
     
     def _compute_self_report_features(self, raw_data: Dict) -> Dict[str, Dict]:

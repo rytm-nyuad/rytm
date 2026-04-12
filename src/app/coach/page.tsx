@@ -9,7 +9,8 @@ import { MorningSummaryCard } from "@/components/coach/MorningSummaryCard";
 import { GoalInterviewModal } from "@/components/coach/GoalInterviewModal";
 import { CoachChatPanel } from "@/components/coach/CoachChatPanel";
 import { ActiveGoal, DailyPlan } from "@/lib/coach/types";
-import { Zap, Target, RefreshCw, AlertCircle, Loader2, Sparkles, ArrowRight, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import { CalendarPicker } from "@/components/coach/CalendarPicker";
+import { Zap, Target, RefreshCw, AlertCircle, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 type PageState = "loading" | "no-goal" | "no-checkin" | "no-plan" | "generating" | "plan-ready";
@@ -150,14 +151,6 @@ export default function CoachPage() {
     loadCoachData();
   };
 
-  const handleDateChange = (direction: "prev" | "next") => {
-    const d = new Date(selectedDate + "T00:00:00");
-    d.setDate(d.getDate() + (direction === "next" ? 1 : -1));
-    const newDate = d.toISOString().split("T")[0];
-    if (newDate <= today) {
-      setSelectedDate(newDate);
-    }
-  };
 
   if (!userId) {
     return (
@@ -190,11 +183,9 @@ export default function CoachPage() {
               <h2 className="text-xs font-semibold dark:text-zinc-500 text-zinc-400 uppercase tracking-widest">
                 Morning Summary
               </h2>
-              <DatePicker
+              <CalendarPicker
                 selectedDate={selectedDate}
-                today={today}
-                onPrev={() => handleDateChange("prev")}
-                onNext={() => handleDateChange("next")}
+                maxDate={today}
                 onDateChange={setSelectedDate}
               />
             </div>
@@ -282,12 +273,12 @@ export default function CoachPage() {
           </section>
 
           {/* Coach Chat Section */}
-          <section>
-            <h2 className="text-xs font-semibold dark:text-zinc-500 text-zinc-400 uppercase tracking-widest mb-3">
-              Coach Chat
-            </h2>
-            <CoachChatPanel userId={userId} firstName={firstName} />
-          </section>
+          {/* <section> */}
+            {/* <h2 className="text-xs font-semibold dark:text-zinc-500 text-zinc-400 uppercase tracking-widest mb-3"> */}
+              {/* Coach Chat */}
+            {/* </h2> */}
+            {/* <CoachChatPanel userId={userId} firstName={firstName} /> */}
+          {/* </section> */}
         </div>
       </div>
 
@@ -298,60 +289,6 @@ export default function CoachPage() {
   );
 }
 
-function DatePicker({
-  selectedDate,
-  today,
-  onPrev,
-  onNext,
-  onDateChange,
-}: {
-  selectedDate: string;
-  today: string;
-  onPrev: () => void;
-  onNext: () => void;
-  onDateChange: (date: string) => void;
-}) {
-  const isToday = selectedDate === today;
-
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        onClick={onPrev}
-        className="p-1.5 rounded-lg dark:hover:bg-zinc-800 hover:bg-zinc-200 transition-colors"
-      >
-        <ChevronLeft className="w-4 h-4 dark:text-zinc-400 text-zinc-500" />
-      </button>
-
-      <div className="flex items-center gap-1.5">
-        <Calendar className="w-3.5 h-3.5 dark:text-zinc-500 text-zinc-400" />
-        <input
-          type="date"
-          value={selectedDate}
-          max={today}
-          onChange={(e) => {
-            if (e.target.value && e.target.value <= today) {
-              onDateChange(e.target.value);
-            }
-          }}
-          className="text-xs font-medium dark:text-zinc-300 text-zinc-600 bg-transparent border-none focus:outline-none cursor-pointer"
-        />
-        {isToday && (
-          <span className="text-xs px-1.5 py-0.5 rounded-full dark:bg-violet-500/20 bg-violet-100 dark:text-violet-400 text-violet-600 font-medium">
-            Today
-          </span>
-        )}
-      </div>
-
-      <button
-        onClick={onNext}
-        disabled={isToday}
-        className="p-1.5 rounded-lg dark:hover:bg-zinc-800 hover:bg-zinc-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-      >
-        <ChevronRight className="w-4 h-4 dark:text-zinc-400 text-zinc-500" />
-      </button>
-    </div>
-  );
-}
 
 function GoalBanner({
   goal,

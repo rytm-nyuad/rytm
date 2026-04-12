@@ -168,7 +168,9 @@ function runPythonPipeline(
     python.on('close', (code) => {
       if (code !== 0) {
         console.error('Python stderr:', stderr);
-        const details = (stderr || stdout || '').trim();
+        console.error('Python stdout:', stdout);
+        // Prefer stdout for error details (JSON errors go there), fall back to stderr
+        const details = (stdout || stderr || '').trim();
         reject(new Error(details ? `Python process exited with code ${code}: ${details}` : `Python process exited with code ${code}`));
       } else {
         try {

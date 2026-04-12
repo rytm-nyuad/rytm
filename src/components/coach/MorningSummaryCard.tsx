@@ -2,6 +2,8 @@
 
 import { CoachAction, DailyPlan } from "@/lib/coach/types";
 import { Zap, Droplets, Moon, Brain, Activity, Target, Flame, Clock } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const DOMAIN_ICONS: Record<string, any> = {
   sleep: Moon,
@@ -52,9 +54,24 @@ export function MorningSummaryCard({ plan, energyMode }: MorningSummaryCardProps
             <p className="text-xs font-semibold dark:text-zinc-500 text-zinc-400 uppercase tracking-widest mb-2">
               Morning Brief — {plan.for_date}
             </p>
-            <p className="dark:text-zinc-100 text-zinc-800 text-sm leading-relaxed whitespace-pre-wrap">
-              {plan.morning_message}
-            </p>
+            <div className="dark:text-zinc-100 text-zinc-800 text-sm leading-relaxed">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+                  strong: ({ children }) => <strong className="font-semibold dark:text-white text-zinc-900">{children}</strong>,
+                  em: ({ children }) => <em className="dark:text-zinc-400 text-zinc-500 italic">{children}</em>,
+                  ol: ({ children }) => <ol className="list-decimal list-outside ml-5 mb-3 space-y-1.5">{children}</ol>,
+                  ul: ({ children }) => <ul className="list-disc list-outside ml-5 mb-3 space-y-1.5">{children}</ul>,
+                  li: ({ children }) => <li className="pl-0.5">{children}</li>,
+                  h1: ({ children }) => <p className="font-semibold dark:text-white text-zinc-900 mb-2">{children}</p>,
+                  h2: ({ children }) => <p className="font-semibold dark:text-white text-zinc-900 mb-2">{children}</p>,
+                  h3: ({ children }) => <p className="font-semibold dark:text-white text-zinc-900 mb-2">{children}</p>,
+                }}
+              >
+                {plan.morning_message}
+              </ReactMarkdown>
+            </div>
             {energyMode && (
               <span className="inline-flex items-center gap-1.5 mt-3 px-2.5 py-1 rounded-full text-xs font-medium dark:bg-zinc-800 bg-zinc-100 dark:text-zinc-300 text-zinc-600">
                 <Zap className="w-3 h-3" />
@@ -76,6 +93,11 @@ export function MorningSummaryCard({ plan, energyMode }: MorningSummaryCardProps
           ))}
         </div>
       )}
+
+      {/* Static disclaimer */}
+      <p className="text-xs dark:text-zinc-600 text-zinc-400 px-1">
+        These suggestions are for general wellness support and are not medical advice.
+      </p>
     </div>
   );
 }
@@ -112,10 +134,15 @@ function ActionCard({ action, index }: { action: CoachAction; index: number }) {
         <p className="text-xs dark:text-zinc-500 text-zinc-400 italic mb-2">
           {action.rationale}
         </p>
-        <div className="flex items-center gap-3">
-          {action.duration_minutes && (
+        <div className="flex items-center gap-3 flex-wrap">
+          {action.when && (
             <span className="inline-flex items-center gap-1 text-xs dark:text-zinc-500 text-zinc-400">
               <Clock className="w-3 h-3" />
+              {action.when.replace('_', ' ')}
+            </span>
+          )}
+          {action.duration_minutes && (
+            <span className="inline-flex items-center gap-1 text-xs dark:text-zinc-500 text-zinc-400">
               {action.duration_minutes}min
             </span>
           )}
