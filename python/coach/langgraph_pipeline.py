@@ -4,6 +4,7 @@ Combines Python deterministic agents + LLM reasoning agents
 """
 import os
 import sys
+import re
 from datetime import datetime, date
 from typing import Dict, List, Any, TypedDict, Annotated
 from langgraph.graph import StateGraph, END
@@ -101,7 +102,7 @@ class MorningCoachPipeline:
         workflow.add_node("fetch_data", self.node_fetch_data)
         workflow.add_node("ingest_validate", self.node_ingest_validate)
         workflow.add_node("compute_features", self.node_compute_features)
-        workflow.add_node("holistic_status_report", self.node_holistic_status_report)
+        workflow.add_node("generate_holistic_status_report", self.node_holistic_status_report)
         workflow.add_node("fetch_goal", self.node_fetch_goal)
         workflow.add_node("build_constraints", self.node_build_constraints)
         workflow.add_node("route_domains", self.node_route_domains)
@@ -115,8 +116,8 @@ class MorningCoachPipeline:
         workflow.set_entry_point("fetch_data")
         workflow.add_edge("fetch_data", "ingest_validate")
         workflow.add_edge("ingest_validate", "compute_features")
-        workflow.add_edge("compute_features", "holistic_status_report")
-        workflow.add_edge("holistic_status_report", "fetch_goal")
+        workflow.add_edge("compute_features", "generate_holistic_status_report")
+        workflow.add_edge("generate_holistic_status_report", "fetch_goal")
         workflow.add_edge("fetch_goal", "build_constraints")
         workflow.add_edge("build_constraints", "route_domains")
         workflow.add_edge("route_domains", "generate_actions")
@@ -681,36 +682,145 @@ Write a personal morning note (300-400 words). Spend most of the words on the na
         return content
 
     def _parse_llm_json(self, response: str, agent_name: str) -> Dict[str, Any]:
-        """Parse LLM JSON robustly, handling markdown fences and wrapper text."""
-        cleaned = response.strip()
+        """Parse LLM JSON robustly, handling fences, wrapper text, and minor JSON drift."""
+        cleaned = self._normalize_llm_response_to_text(response)
+        candidates = self._build_json_candidates(cleaned)
 
-        if cleaned.startswith("```"):
-            lines = cleaned.splitlines()
-            if lines and lines[0].strip().startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            cleaned = "\n".join(lines).strip()
-
-        try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            start_candidates = [idx for idx in (cleaned.find("{"), cleaned.find("[")) if idx != -1]
-            end_candidates = [idx for idx in (cleaned.rfind("}"), cleaned.rfind("]")) if idx != -1]
-
-            if start_candidates and end_candidates:
-                start = min(start_candidates)
-                end = max(end_candidates)
-                if end > start:
-                    candidate = cleaned[start:end + 1]
-                    try:
-                        return json.loads(candidate)
-                    except json.JSONDecodeError:
-                        pass
+        for candidate in candidates:
+            parsed = self._try_parse_json_candidate(candidate)
+            if parsed is not None:
+                return parsed
 
         debug_log(f"[ERROR] Failed to parse {agent_name} JSON")
         debug_log(f"[ERROR] Raw response: {response}")
         raise ValueError(f"{agent_name} returned invalid JSON")
+
+    def _normalize_llm_response_to_text(self, response: Any) -> str:
+        """Normalize LangChain/OpenAI response content into a plain string."""
+        if isinstance(response, str):
+            text = response
+        elif isinstance(response, list):
+            parts = []
+            for item in response:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    text_part = item.get("text")
+                    if isinstance(text_part, str):
+                        parts.append(text_part)
+            text = "\n".join(parts)
+        else:
+            text = str(response)
+
+        text = text.strip()
+
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+
+        if text.lower().startswith("json\n"):
+            text = text[5:].strip()
+
+        return text
+
+    def _build_json_candidates(self, text: str) -> List[str]:
+        """Generate likely JSON substrings from model output."""
+        candidates: List[str] = []
+
+        def add_candidate(value: str):
+            candidate = value.strip()
+            if candidate and candidate not in candidates:
+                candidates.append(candidate)
+
+        add_candidate(text)
+
+        fenced_blocks = re.findall(r"```(?:json)?\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
+        for block in fenced_blocks:
+            add_candidate(block)
+
+        balanced = self._extract_balanced_json_substring(text)
+        if balanced:
+            add_candidate(balanced)
+
+        start_candidates = [idx for idx in (text.find("{"), text.find("[")) if idx != -1]
+        end_candidates = [idx for idx in (text.rfind("}"), text.rfind("]")) if idx != -1]
+        if start_candidates and end_candidates:
+            start = min(start_candidates)
+            end = max(end_candidates)
+            if end > start:
+                add_candidate(text[start:end + 1])
+
+        return candidates
+
+    def _extract_balanced_json_substring(self, text: str) -> str:
+        """Extract the first balanced JSON object/array from mixed text."""
+        start = None
+        stack: List[str] = []
+        in_string = False
+        escape = False
+
+        for i, ch in enumerate(text):
+            if start is None:
+                if ch in "{[":
+                    start = i
+                    stack = [ch]
+                continue
+
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+
+            if ch == '"':
+                in_string = True
+            elif ch in "{[":
+                stack.append(ch)
+            elif ch in "}]":
+                if not stack:
+                    break
+                opener = stack.pop()
+                if (opener, ch) not in {("{", "}"), ("[", "]")}:
+                    break
+                if not stack:
+                    return text[start:i + 1]
+
+        return ""
+
+    def _try_parse_json_candidate(self, candidate: str) -> Any:
+        """Try parsing a candidate, including a few safe cleanup passes."""
+        attempts = [
+            candidate,
+            self._strip_json_prefix(candidate),
+            self._remove_trailing_commas(candidate),
+            self._remove_trailing_commas(self._strip_json_prefix(candidate)),
+        ]
+
+        for attempt in attempts:
+            if not attempt:
+                continue
+            try:
+                return json.loads(attempt)
+            except json.JSONDecodeError:
+                continue
+
+        return None
+
+    def _strip_json_prefix(self, text: str) -> str:
+        stripped = text.strip()
+        if stripped.lower().startswith("json"):
+            stripped = stripped[4:].lstrip(":").strip()
+        return stripped
+
+    def _remove_trailing_commas(self, text: str) -> str:
+        return re.sub(r",(\s*[}\]])", r"\1", text)
 
     def _get_energy_mode(self, overall_score: int) -> str:
         """Map overall score to energy mode"""
