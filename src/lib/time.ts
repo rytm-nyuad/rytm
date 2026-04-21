@@ -157,6 +157,16 @@ export function normalizeToNoon(d: Date): Date {
   copy.setHours(12, 0, 0, 0);
   return copy;
 }
+
+export function shiftLocalDate(localDate: LocalDateString, days: number): LocalDateString {
+  const base = new Date(`${localDate}T12:00:00.000Z`);
+  if (Number.isNaN(base.getTime())) {
+    throw new Error(`Invalid local date: ${localDate}`);
+  }
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
 export function formatLocalTime(d: Date, tz: string): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: tz,

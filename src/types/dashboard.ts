@@ -71,5 +71,6 @@ export interface MealLogEntry {
   meal_type: string;           // e.g. 'breakfast', 'lunch', 'dinner', 'snack', 'drink'
   description: string | null;
   photo_url: string | null;
-  meal_datetime: string;       // ISO timestamptz
+  meal_local_date: string;     // YYYY-MM-DD local day selected in UI
+  meal_datetime: string | null; // ISO timestamptz when exact time is known
 }

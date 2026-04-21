@@ -14,8 +14,6 @@ import json
 
 from data_fetcher import DataFetcher
 from deterministic_agents import (
-    IngestionAgent,
-    FeatureAgent,
     BudgetEnforcerAgent,
     PersistenceAgent,
     RegenerationController
@@ -36,10 +34,11 @@ class PipelineState(TypedDict):
     overall_score: int
     ingestion_run_id: str
     
-    # Data snapshots
-    raw_snapshot: Dict[str, Any]
-    validation_result: Dict[str, Any]
-    features: Dict[str, Any]
+    # Prepared coach context
+    input_bundle: Dict[str, Any]
+    current_state: Dict[str, Any]
+    recent_state_history: List[Dict[str, Any]]
+    coach_readiness: Dict[str, Any]
 
     # User context
     user_name: str
@@ -74,8 +73,6 @@ class MorningCoachPipeline:
             os.getenv('NEXT_PUBLIC_SUPABASE_URL'),
             os.getenv('SUPABASE_SERVICE_ROLE_KEY')
         )
-        self.ingestion_agent = IngestionAgent(supabase_client)
-        self.feature_agent = FeatureAgent(supabase_client)
         self.budget_enforcer = BudgetEnforcerAgent()
         self.persistence_agent = PersistenceAgent(supabase_client)
         self.regen_controller = RegenerationController()
@@ -100,10 +97,8 @@ class MorningCoachPipeline:
         
         # Add nodes (agents)
         workflow.add_node("fetch_data", self.node_fetch_data)
-        workflow.add_node("ingest_validate", self.node_ingest_validate)
-        workflow.add_node("compute_features", self.node_compute_features)
-        workflow.add_node("generate_holistic_status_report", self.node_holistic_status_report)
         workflow.add_node("fetch_goal", self.node_fetch_goal)
+        workflow.add_node("generate_holistic_status_report", self.node_holistic_status_report)
         workflow.add_node("build_constraints", self.node_build_constraints)
         workflow.add_node("route_domains", self.node_route_domains)
         workflow.add_node("generate_actions", self.node_generate_actions)
@@ -114,11 +109,9 @@ class MorningCoachPipeline:
         
         # Define edges (flow)
         workflow.set_entry_point("fetch_data")
-        workflow.add_edge("fetch_data", "ingest_validate")
-        workflow.add_edge("ingest_validate", "compute_features")
-        workflow.add_edge("compute_features", "generate_holistic_status_report")
-        workflow.add_edge("generate_holistic_status_report", "fetch_goal")
-        workflow.add_edge("fetch_goal", "build_constraints")
+        workflow.add_edge("fetch_data", "fetch_goal")
+        workflow.add_edge("fetch_goal", "generate_holistic_status_report")
+        workflow.add_edge("generate_holistic_status_report", "build_constraints")
         workflow.add_edge("build_constraints", "route_domains")
         workflow.add_edge("route_domains", "generate_actions")
         workflow.add_edge("generate_actions", "review_actions")
@@ -140,92 +133,87 @@ class MorningCoachPipeline:
         return workflow.compile()
     
     # === Python Deterministic Agents ===
+
+    def _extract_recent_action_memory(self, recent_state_history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Flatten recent generated actions from state history for deduplication/variety."""
+        flattened: List[Dict[str, Any]] = []
+        for row in recent_state_history:
+            actions_payload = row.get('actions_generated_json') or {}
+            actions = actions_payload.get('actions', []) if isinstance(actions_payload, dict) else []
+            if not isinstance(actions, list):
+                continue
+
+            for action in actions:
+                if not isinstance(action, dict):
+                    continue
+                flattened.append({
+                    'for_date': row.get('date'),
+                    'action_id': action.get('action_id'),
+                    'title': action.get('title'),
+                    'description': action.get('description'),
+                    'domain': action.get('domain'),
+                    'priority': action.get('priority'),
+                    'reason': action.get('rationale') or action.get('reason') or '',
+                })
+        return flattened[:15]
     
     def node_fetch_data(self, state: PipelineState) -> PipelineState:
-        """Data Fetch Agent"""
+        """Prepared context fetch."""
         target_date = date.fromisoformat(state['for_date'])
-        raw_snapshot = self.data_fetcher.fetch_all_daily_data(state['user_id'], target_date)
-        #print (f"Fetched raw snapshot for user {state['user_id']} on {state['for_date']}. {raw_snapshot}")
-        # Add overall_score to snapshot
-        raw_snapshot['overall'] = {'overall_score': state['overall_score']}
+        prepared_context = self.data_fetcher.fetch_prepared_context(state['user_id'], target_date)
 
         # Fetch user profile for personalization
         profile = self.data_fetcher.fetch_user_profile(state['user_id'])
         state['user_name'] = profile.get('first_name', '') if profile else ''
 
-        # Fetch recent action history for variety
-        state['recent_action_history'] = self.data_fetcher.fetch_recent_actions(
-            state['user_id'], target_date
-        )
+        input_bundle = prepared_context.get('input_bundle') or {}
+        current_state = prepared_context.get('current_state') or {}
+        recent_state_history = prepared_context.get('recent_state_history') or []
 
-        # Log snapshot to database
-        history_window = raw_snapshot.get('history_7d', {})
-        self.logger.log_snapshot(
-            state['ingestion_run_id'],
-            state['user_id'],
-            target_date,
-            raw_snapshot,
-            history_window
-        )
+        if not input_bundle:
+            raise ValueError(f"Missing daily_input_bundle_v12 for {state['for_date']}")
+        if not current_state:
+            raise ValueError("Missing user_state_current2 for morning coach pipeline")
 
-        state['raw_snapshot'] = raw_snapshot
-        return state
-    
-    def node_ingest_validate(self, state: PipelineState) -> PipelineState:
-        """Ingestion & Validation Agent"""
-        target_date = date.fromisoformat(state['for_date'])
-        validation_result = self.ingestion_agent.run(
-            state['user_id'],
-            target_date,
-            state['raw_snapshot']
-        )
-        
-        # Persist data quality report
-        self.persistence_agent.persist_data_quality_report(
-            state['ingestion_run_id'],
-            state['user_id'],
-            target_date,
-            validation_result
-        )
-        
-        state['validation_result'] = validation_result
-        return state
-    
-    def node_compute_features(self, state: PipelineState) -> PipelineState:
-        """Feature Computation Agent"""
-        target_date = date.fromisoformat(state['for_date'])
-        features = self.feature_agent.run(
-            state['user_id'],
-            target_date,
-            state['validation_result']['normalized_data'],
-            state['ingestion_run_id']
-        )
-        state['features'] = features
+        state_json = current_state.get('state_json') or {}
+        uncertainty = state_json.get('uncertainty') or {}
+        baseline_flags = uncertainty.get('baseline_stability_flags') or {}
+
+        state['input_bundle'] = input_bundle.get('bundle_json') or {}
+        state['current_state'] = state_json
+        state['recent_state_history'] = recent_state_history
+        state['recent_action_history'] = self._extract_recent_action_memory(recent_state_history)
+        state['coach_readiness'] = {
+            'fast_ready': bool(baseline_flags.get('fast_ready')),
+            'slow_ready': bool(baseline_flags.get('slow_ready')),
+            'bundle_missingness': input_bundle.get('missingness_json') or {},
+            'bundle_confidence': input_bundle.get('confidence_json') or {},
+        }
         return state
     
     def node_holistic_status_report(self, state: PipelineState) -> PipelineState:
-        """Holistic Status Reporter — objective, pre-goal domain analysis."""
+        """Holistic Status Reporter using prepared bundle + auditable state."""
         from prompts import HOLISTIC_STATUS_REPORTER_SYSTEM_PROMPT
-        from constants import DOMAIN_FEATURE_MAP
-        
+
         started_at = datetime.utcnow()
-        
-        # Build compact feature table: domain -> {feature: value}
-        domain_features: Dict[str, Dict] = {}
-        for domain, keys in DOMAIN_FEATURE_MAP.items():
-            values = {}
-            for k in keys:
-                if k in state['features'] and state['features'][k].get('value_num') is not None:
-                    values[k] = state['features'][k]['value_num']
-            if values:  # only include domains that have at least one value
-                domain_features[domain] = values
-        
+
+        bundle = state['input_bundle']
+        current_state = state['current_state']
+        recent_history = state['recent_state_history'][:7]
         user_prompt = f"""Overall score today: {state['overall_score']}
 Energy mode: {self._get_energy_mode(state['overall_score'])}
-Data confidence by domain: {json.dumps(state['validation_result']['confidence_by_domain'], indent=2)}
 
-Feature values by domain:
-{json.dumps(domain_features, indent=2)}
+Prepared daily input bundle:
+{json.dumps(bundle, indent=2)}
+
+Current auditable state:
+{json.dumps(current_state, indent=2)}
+
+Recent state history (most recent first):
+{json.dumps(recent_history, indent=2)}
+
+Coach readiness and data quality:
+{json.dumps(state['coach_readiness'], indent=2)}
 
 Generate the holistic status report JSON."""
         
@@ -233,7 +221,13 @@ Generate the holistic status report JSON."""
         response = self._call_llm(HOLISTIC_STATUS_REPORTER_SYSTEM_PROMPT, user_prompt, temperature=0)
         debug_log(f"[HOLISTIC_STATUS_REPORTER] Response: {response[:400]}...")
         
-        report = self._parse_llm_json(response, 'holistic_status_reporter')
+        report = self._parse_or_retry_llm_json(
+            response,
+            HOLISTIC_STATUS_REPORTER_SYSTEM_PROMPT,
+            user_prompt,
+            'holistic_status_reporter',
+            retry_temperature=0,
+        )
         
         state['holistic_status_report'] = report
         
@@ -249,7 +243,8 @@ Generate the holistic status report JSON."""
             status='success',
             input_json={
                 'overall_score': state['overall_score'],
-                'domain_features_summary': {d: len(v) for d, v in domain_features.items()}
+                'bundle_missingness': state['coach_readiness'].get('bundle_missingness', {}),
+                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {}),
             },
             output_json=report,
             evidence_refs_json={
@@ -321,12 +316,22 @@ Generate the holistic status report JSON."""
         
         started_at = datetime.utcnow()
         energy_mode = self._get_energy_mode(state['overall_score'])
+        bundle = state['input_bundle']
         user_prompt = f"""
 Energy mode: {energy_mode}
 Overall score: {state['overall_score']}
 User goal: {json.dumps(state.get('user_goal', {}), indent=2)}
-Data confidence by domain: {json.dumps(state['validation_result']['confidence_by_domain'], indent=2)}
-Available features: {json.dumps({k: v['value_num'] for k, v in list(state['features'].items())[:20]}, indent=2)}
+Prepared daily input bundle:
+{json.dumps(bundle, indent=2)}
+
+Current auditable state:
+{json.dumps(state['current_state'], indent=2)}
+
+Recent state history:
+{json.dumps(state['recent_state_history'][:5], indent=2)}
+
+Coach readiness:
+{json.dumps(state['coach_readiness'], indent=2)}
 
 Generate day constraints JSON.
 """
@@ -334,7 +339,13 @@ Generate day constraints JSON.
         response = self._call_llm(CONSTRAINTS_BUILDER_SYSTEM_PROMPT, user_prompt)
         debug_log(f"[CONSTRAINTS_BUILDER] Response: {response[:200]}...")
         
-        output = self._parse_llm_json(response, 'constraints_builder')
+        output = self._parse_or_retry_llm_json(
+            response,
+            CONSTRAINTS_BUILDER_SYSTEM_PROMPT,
+            user_prompt,
+            'constraints_builder',
+            retry_temperature=0,
+        )
         
         state['day_constraints'] = output
         
@@ -350,7 +361,8 @@ Generate day constraints JSON.
                 'energy_mode': energy_mode,
                 'overall_score': state['overall_score'],
                 'user_goal': state.get('user_goal', {}),
-                'confidence_by_domain': state['validation_result']['confidence_by_domain']
+                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {}),
+                'bundle_missingness': state['coach_readiness'].get('bundle_missingness', {})
             },
             output_json=output,
             evidence_refs_json=output.get('evidence_used', {}),
@@ -365,13 +377,27 @@ Generate day constraints JSON.
         from prompts import DOMAIN_ROUTER_SYSTEM_PROMPT
         
         started_at = datetime.utcnow()
+        recent_deviations = [
+            {
+                'date': row.get('date'),
+                'deviations': row.get('deviations_json', {}),
+            }
+            for row in state['recent_state_history'][:5]
+        ]
         user_prompt = f"""Energy mode: {self._get_energy_mode(state['overall_score'])}
 Day constraints: {json.dumps(state['day_constraints'], indent=2)}
 User goal primary domains: {state['user_goal']['goal_spec_json'].get('primary_domains', []) if state['user_goal'] else []}
-Data confidence: {json.dumps(state['validation_result']['confidence_by_domain'], indent=2)}
+Bundle confidence: {json.dumps(state['coach_readiness'].get('bundle_confidence', {}), indent=2)}
+Bundle missingness: {json.dumps(state['coach_readiness'].get('bundle_missingness', {}), indent=2)}
 
 Holistic status report (objective, pre-goal analysis):
 {json.dumps(state['holistic_status_report'], indent=2)}
+
+Current auditable state:
+{json.dumps(state['current_state'], indent=2)}
+
+Recent state-history deviations:
+{json.dumps(recent_deviations, indent=2)}
 
 Select 2-3 domains. 
 """
@@ -380,7 +406,13 @@ Select 2-3 domains.
         response = self._call_llm(DOMAIN_ROUTER_SYSTEM_PROMPT, user_prompt)
         debug_log(f"[DOMAIN_ROUTER] Response: {response[:300]}...")
         
-        output = self._parse_llm_json(response, 'domain_router')
+        output = self._parse_or_retry_llm_json(
+            response,
+            DOMAIN_ROUTER_SYSTEM_PROMPT,
+            user_prompt,
+            'domain_router',
+            retry_temperature=0,
+        )
         
         # Extract domain names from selected_domains (which may be dicts with 'domain' key)
         selected = output['selected_domains']
@@ -401,8 +433,9 @@ Select 2-3 domains.
                 'energy_mode': self._get_energy_mode(state['overall_score']),
                 'day_constraints': state['day_constraints'],
                 'user_goal_primary_domains': state['user_goal']['goal_spec_json'].get('primary_domains', []) if state['user_goal'] else [],
-                'confidence_by_domain': state['validation_result']['confidence_by_domain'],
-                'holistic_status_report': state['holistic_status_report']
+                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {}),
+                'holistic_status_report': state['holistic_status_report'],
+                'recent_deviations': recent_deviations,
             },
             output_json=output,
             rationale_json={d.get('domain'): d.get('rationale') for d in selected if isinstance(d, dict)},
@@ -416,33 +449,13 @@ Select 2-3 domains.
     def node_generate_actions(self, state: PipelineState) -> PipelineState:
         """Action Generator LLM Agent"""
         from prompts import ACTION_GENERATOR_SYSTEM_PROMPT
-        from constants import DOMAIN_FEATURE_MAP
 
         # Get user goal domains
         goal_domains = []
         if state['user_goal'] and 'goal_spec_json' in state['user_goal']:
             goal_domains = state['user_goal']['goal_spec_json'].get('primary_domains', [])
-
-        # Build domain-specific feature context for selected and goal domains
-        all_domains = list(set(state['selected_domains'] + goal_domains))
-        domain_contexts = []
-        for domain in all_domains:
-            feature_keys = DOMAIN_FEATURE_MAP.get(domain, [])
-            available_features = {
-                k: state['features'][k]['value_num']
-                for k in feature_keys
-                if k in state['features'] and state['features'][k].get('value_num') is not None
-            }
-            domain_contexts.append({
-                'domain': domain,
-                'available_features': available_features
-            })
-
-        # Build meal context from features
-        meal_context = ""
-        meal_desc = state['features'].get('meal_descriptions', {})
-        if meal_desc and meal_desc.get('value_json'):
-            meal_context = f"\nYesterday's meals:\n{json.dumps(meal_desc['value_json'], indent=2)}\n"
+        bundle = state['input_bundle']
+        meal_context = bundle.get('nutrition', {}).get('meal_context', {})
 
         # Build action history context
         action_history_context = ""
@@ -461,9 +474,18 @@ Day constraints: {json.dumps(state['day_constraints'], indent=2)}
 Holistic status report (overall picture of user today):
 {json.dumps(state['holistic_status_report'], indent=2)}
 
-Domain-specific features (for selected and goal domains):
-{json.dumps(domain_contexts, indent=2)}
-{meal_context}{action_history_context}
+Prepared daily input bundle:
+{json.dumps(bundle, indent=2)}
+
+Current auditable state:
+{json.dumps(state['current_state'], indent=2)}
+
+Recent state history:
+{json.dumps(state['recent_state_history'][:5], indent=2)}
+
+Meal context from the prepared bundle:
+{json.dumps(meal_context, indent=2)}
+{action_history_context}
 Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, generate 3-4 actions for those domains.
  If different, generate at least 3 for selected domains and at least 1 (ideally 1-2) for the goal domain(s).
  **DO NOT include action_id - it will be generated automatically.**
@@ -473,7 +495,13 @@ Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, ge
         response = self._call_llm(ACTION_GENERATOR_SYSTEM_PROMPT, user_prompt)
         debug_log(f"[ACTION_GENERATOR] Response (first 800 chars): {response[:800]}")
 
-        output = self._parse_llm_json(response, 'action_generator')
+        output = self._parse_or_retry_llm_json(
+            response,
+            ACTION_GENERATOR_SYSTEM_PROMPT,
+            user_prompt,
+            'action_generator',
+            retry_temperature=0,
+        )
 
         # Add action IDs
         actions = add_action_ids_to_candidates(output['actions'])
@@ -492,8 +520,9 @@ Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, ge
                 'selected_domains': state['selected_domains'],
                 'goal_domains': goal_domains,
                 'day_constraints': state['day_constraints'],
-                'domain_contexts': domain_contexts,
-                'holistic_status_report': state['holistic_status_report']
+                'meal_context': meal_context,
+                'holistic_status_report': state['holistic_status_report'],
+                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {}),
             },
             output_json={'actions': actions},
             rationale_json={a['action_id']: a.get('rationale', '') for a in actions},
@@ -542,7 +571,13 @@ Review for coherence, feasibility, safety, and domain/goal coverage rules. Accep
         response = self._call_llm(FUSION_CRITIC_SYSTEM_PROMPT, user_prompt)
         debug_log(f"[FUSION_CRITIC] Response: {response[:400]}...")
         
-        review_result = self._parse_llm_json(response, 'fusion_critic')
+        review_result = self._parse_or_retry_llm_json(
+            response,
+            FUSION_CRITIC_SYSTEM_PROMPT,
+            user_prompt,
+            'fusion_critic',
+            retry_temperature=0,
+        )
         
         state['review_result'] = review_result
         
@@ -611,7 +646,7 @@ Today's situation:
 - Energy mode: {self._get_energy_mode(state['overall_score'])}
 - Overall score: {state['overall_score']}
 - Selected domains: {', '.join(state['selected_domains'])}
-- Data confidence: {state['validation_result']['confidence_score']}
+- Bundle confidence: {json.dumps(state['coach_readiness'].get('bundle_confidence', {}), indent=2)}
 {user_name_line}
 
 Holistic status report JSON:
@@ -627,7 +662,13 @@ Write a personal morning note (300-400 words). Spend most of the words on the na
         response = self._call_llm(MORNING_BRIEF_COMPOSER_SYSTEM_PROMPT, user_prompt)
         debug_log(f"[MORNING_BRIEF_COMPOSER] Response:\n{response}")
         
-        output = self._parse_llm_json(response, 'morning_brief_composer')
+        output = self._parse_or_retry_llm_json(
+            response,
+            MORNING_BRIEF_COMPOSER_SYSTEM_PROMPT,
+            user_prompt,
+            'morning_brief_composer',
+            retry_temperature=0,
+        )
         
         state['morning_message'] = output['morning_message']
         
@@ -645,7 +686,7 @@ Write a personal morning note (300-400 words). Spend most of the words on the na
                 'selected_domains': state['selected_domains'],
                 'holistic_status_report': state.get('holistic_status_report', {}),
                 'display_actions': state['budget_result']['display_actions'],
-                'confidence_score': state['validation_result']['confidence_score']
+                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {})
             },
             output_json=output,
             started_at=started_at,
@@ -694,6 +735,29 @@ Write a personal morning note (300-400 words). Spend most of the words on the na
         debug_log(f"[ERROR] Failed to parse {agent_name} JSON")
         debug_log(f"[ERROR] Raw response: {response}")
         raise ValueError(f"{agent_name} returned invalid JSON")
+
+    def _parse_or_retry_llm_json(
+        self,
+        initial_response: str,
+        system_prompt: str,
+        user_prompt: str,
+        agent_name: str,
+        retry_temperature: float = 0,
+    ) -> Dict[str, Any]:
+        """Parse JSON, retrying the LLM once if the first response is malformed."""
+        try:
+            return self._parse_llm_json(initial_response, agent_name)
+        except ValueError:
+            debug_log(f"[WARN] {agent_name} returned invalid JSON on first attempt, retrying once.")
+            retry_prompt = (
+                f"{user_prompt}\n\n"
+                "Your previous response was not valid JSON. "
+                "Return ONLY valid JSON matching the requested schema. "
+                "Do not use markdown fences. Do not add commentary."
+            )
+            retry_response = self._call_llm(system_prompt, retry_prompt, temperature=retry_temperature)
+            debug_log(f"[{agent_name.upper()} RETRY] Response: {retry_response[:400]}...")
+            return self._parse_llm_json(retry_response, agent_name)
 
     def _normalize_llm_response_to_text(self, response: Any) -> str:
         """Normalize LangChain/OpenAI response content into a plain string."""
@@ -801,6 +865,10 @@ Write a personal morning note (300-400 words). Spend most of the words on the na
             self._strip_json_prefix(candidate),
             self._remove_trailing_commas(candidate),
             self._remove_trailing_commas(self._strip_json_prefix(candidate)),
+            self._coerce_common_json_glitches(candidate),
+            self._remove_trailing_commas(self._coerce_common_json_glitches(candidate)),
+            self._coerce_common_json_glitches(self._strip_json_prefix(candidate)),
+            self._remove_trailing_commas(self._coerce_common_json_glitches(self._strip_json_prefix(candidate))),
         ]
 
         for attempt in attempts:
@@ -821,6 +889,18 @@ Write a personal morning note (300-400 words). Spend most of the words on the na
 
     def _remove_trailing_commas(self, text: str) -> str:
         return re.sub(r",(\s*[}\]])", r"\1", text)
+
+    def _coerce_common_json_glitches(self, text: str) -> str:
+        cleaned = text.strip()
+
+        if cleaned in {"```", "```json"}:
+            return ""
+
+        # Bare tokens like A2 in numeric arrays should usually be 2.
+        cleaned = re.sub(r'(?<=\[|,)\s*[A-Za-z](\d+)\s*(?=,|\])', r' \1', cleaned)
+        cleaned = re.sub(r'(:\s*)[A-Za-z](\d+)(\s*[,}])', r'\1\2\3', cleaned)
+
+        return cleaned
 
     def _get_energy_mode(self, overall_score: int) -> str:
         """Map overall score to energy mode"""
@@ -848,9 +928,10 @@ Write a personal morning note (300-400 words). Spend most of the words on the na
             'overall_score': overall_score,
             'ingestion_run_id': ingestion_run_id,
             'attempt': 0,
-            'raw_snapshot': {},
-            'validation_result': {},
-            'features': {},
+            'input_bundle': {},
+            'current_state': {},
+            'recent_state_history': [],
+            'coach_readiness': {},
             'user_name': '',
             'recent_action_history': [],
             'user_goal': None,
@@ -875,7 +956,7 @@ Write a personal morning note (300-400 words). Spend most of the words on the na
                 'energy_mode': self._get_energy_mode(overall_score),
                 'selected_domains': final_state['selected_domains'],
                 'day_constraints': final_state['day_constraints'],
-                'confidence': final_state['validation_result']['confidence_score'],
+                'confidence': final_state['coach_readiness'].get('bundle_confidence', {}),
                 'attempts': final_state['attempt'],
                 'holistic_status_report': final_state['holistic_status_report']
             }

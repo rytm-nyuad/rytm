@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatLocalDate, getCanonicalTimeZone, type LocalDateString } from "@/lib/time";
+import { withSupabaseRetry } from "./supabaseRetry";
 
 const JOURNAL_PROMPT_PATH = path.join(process.cwd(), "python", "prompts_journal.py");
 const PROMPT_REGEX =
@@ -28,14 +29,37 @@ type JournalSummary2Row = {
   user_id: string;
   date: string;
   themes: string[];
-  episodic_events: string[];
-  stressor_types: string[];
-  coping_actions: string[];
+  episodic_events: Array<{
+    event_type: string;
+    status: "started" | "ongoing" | "resolved";
+    time_horizon: "today" | "this_week" | "ongoing";
+    confidence: number;
+    evidence_message_ids: string[];
+  }>;
+  stressor_types: Array<{
+    type:
+      | "academic"
+      | "social"
+      | "health"
+      | "family"
+      | "financial"
+      | "time_pressure"
+      | "uncertainty"
+      | "other";
+    confidence: number;
+    controllability: "low" | "med" | "high";
+    evidence_message_ids: string[];
+  }>;
+  coping_actions: Array<{
+    action: string;
+    effectiveness: "helped" | "didnt_help" | "unsure";
+    evidence_message_ids: string[];
+  }>;
   barriers: string[];
-  tone_hint: string | null;
+  tone_hint: "supportive" | "neutral" | "encouraging" | null;
   risk_flags: string[];
-  self_appraisal_style: string | null;
-  self_efficacy_language: string | null;
+  self_appraisal_style: "catastrophizing" | "balanced" | "optimistic" | null;
+  self_efficacy_language: "low" | "med" | "high" | null;
   goals_conflict_today: string | null;
   evidence_quotes: string[];
   extractor_version: string;
@@ -100,6 +124,10 @@ type JournalExtractorResponse = {
   extractor_confidence?: unknown;
 };
 
+type JournalEpisodicEvent = JournalSummary2Row["episodic_events"][number];
+type JournalStressorType = JournalSummary2Row["stressor_types"][number];
+type JournalCopingAction = JournalSummary2Row["coping_actions"][number];
+
 function buildThreeDayUtcWindow(localDate: LocalDateString) {
   const baseUtc = new Date(`${localDate}T00:00:00.000Z`);
   const start = new Date(baseUtc);
@@ -136,6 +164,36 @@ function normalizeScalarText(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeMessageIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeEnum<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  fallback: T
+): T {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  const match = allowed.find((candidate) => candidate === normalized);
+  return match ?? fallback;
 }
 
 function truncateWords(text: string, maxWords: number): string {
@@ -182,19 +240,134 @@ function buildSkippedSummaryDraft(): JournalSummary2Draft {
   };
 }
 
+function normalizeEpisodicEvents(value: unknown): JournalEpisodicEvent[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const events: JournalEpisodicEvent[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+
+    const eventType = normalizeScalarText(item.event_type);
+    if (!eventType) continue;
+
+    events.push({
+      event_type: eventType,
+      status: normalizeEnum(item.status, ["started", "ongoing", "resolved"] as const, "ongoing"),
+      time_horizon: normalizeEnum(
+        item.time_horizon,
+        ["today", "this_week", "ongoing"] as const,
+        "ongoing"
+      ),
+      confidence: clampConfidence(item.confidence),
+      evidence_message_ids: normalizeMessageIdList(item.evidence_message_ids),
+    });
+
+    if (events.length >= 3) break;
+  }
+
+  return events;
+}
+
+function normalizeStressorTypes(value: unknown): JournalStressorType[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const stressors: JournalStressorType[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+
+    stressors.push({
+      type: normalizeEnum(
+        item.type,
+        [
+          "academic",
+          "social",
+          "health",
+          "family",
+          "financial",
+          "time_pressure",
+          "uncertainty",
+          "other",
+        ] as const,
+        "other"
+      ),
+      confidence: clampConfidence(item.confidence),
+      controllability: normalizeEnum(
+        item.controllability,
+        ["low", "med", "high"] as const,
+        "med"
+      ),
+      evidence_message_ids: normalizeMessageIdList(item.evidence_message_ids),
+    });
+
+    if (stressors.length >= 3) break;
+  }
+
+  return stressors;
+}
+
+function normalizeCopingActions(value: unknown): JournalCopingAction[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const actions: JournalCopingAction[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+
+    const action = normalizeScalarText(item.action);
+    if (!action) continue;
+
+    actions.push({
+      action,
+      effectiveness: normalizeEnum(
+        item.effectiveness,
+        ["helped", "didnt_help", "unsure"] as const,
+        "unsure"
+      ),
+      evidence_message_ids: normalizeMessageIdList(item.evidence_message_ids),
+    });
+
+    if (actions.length >= 3) break;
+  }
+
+  return actions;
+}
+
 function sanitizeJournalSummaryDraft(
   parsed: JournalExtractorResponse
 ): JournalSummary2Draft {
   return {
     themes: normalizeList(parsed.themes, 3),
-    episodic_events: normalizeList(parsed.episodic_events, 3),
-    stressor_types: normalizeList(parsed.stressor_types, 3),
-    coping_actions: normalizeList(parsed.coping_actions, 3),
+    episodic_events: normalizeEpisodicEvents(parsed.episodic_events),
+    stressor_types: normalizeStressorTypes(parsed.stressor_types),
+    coping_actions: normalizeCopingActions(parsed.coping_actions),
     barriers: normalizeList(parsed.barriers, 3),
-    tone_hint: normalizeScalarText(parsed.tone_hint),
+    tone_hint: normalizeEnum(
+      parsed.tone_hint,
+      ["supportive", "neutral", "encouraging"] as const,
+      "neutral"
+    ),
     risk_flags: normalizeList(parsed.risk_flags, 2),
-    self_appraisal_style: normalizeScalarText(parsed.self_appraisal_style),
-    self_efficacy_language: normalizeScalarText(parsed.self_efficacy_language),
+    self_appraisal_style:
+      parsed.self_appraisal_style == null
+        ? null
+        : normalizeEnum(
+            parsed.self_appraisal_style,
+            ["catastrophizing", "balanced", "optimistic"] as const,
+            "balanced"
+          ),
+    self_efficacy_language:
+      parsed.self_efficacy_language == null
+        ? null
+        : normalizeEnum(
+            parsed.self_efficacy_language,
+            ["low", "med", "high"] as const,
+            "med"
+          ),
     goals_conflict_today: normalizeScalarText(parsed.goals_conflict_today),
     evidence_quotes: normalizeList(parsed.evidence_quotes, 2, 20),
     extractor_version: JOURNAL_SUMMARY2_VERSION,
@@ -235,12 +408,16 @@ async function getExistingJournalSummary2(
   userId: string,
   localDate: LocalDateString
 ): Promise<JournalSummary2Row | null> {
-  const { data, error } = await supabaseAdmin
-    .from("journal_summary2")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("date", localDate)
-    .maybeSingle();
+  const { data, error } = await withSupabaseRetry(
+    "read journal_summary2",
+    () =>
+      supabaseAdmin
+        .from("journal_summary2")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("date", localDate)
+        .maybeSingle()
+  );
 
   if (error) {
     throw new Error(`Failed to read journal_summary2: ${error.message}`);
@@ -257,14 +434,18 @@ async function getUserJournalMessagesForLocalDate(
 ): Promise<JournalMessageRow[]> {
   const { startIso, endIso } = buildThreeDayUtcWindow(localDate);
 
-  const { data, error } = await supabaseAdmin
-    .from("journal_messages")
-    .select("id, mode, role, content, local_date, created_at")
-    .eq("user_id", userId)
-    .eq("role", "user")
-    .gte("created_at", startIso)
-    .lt("created_at", endIso)
-    .order("created_at", { ascending: true });
+  const { data, error } = await withSupabaseRetry(
+    "read journal_messages for journal_summary2",
+    () =>
+      supabaseAdmin
+        .from("journal_messages")
+        .select("id, mode, role, content, local_date, created_at")
+        .eq("user_id", userId)
+        .eq("role", "user")
+        .gte("created_at", startIso)
+        .lt("created_at", endIso)
+        .order("created_at", { ascending: true })
+  );
 
   if (error) {
     throw new Error(`Failed to read journal_messages for journal_summary2: ${error.message}`);
@@ -313,23 +494,40 @@ async function extractJournalSummaryDraft(
   const client = getOpenRouterClient();
   const userPrompt = buildJournalExtractionUserPrompt(localDate, timezone, messages);
 
-  const response = await client.chat.completions.create({
-    model: DEFAULT_JOURNAL_SUMMARY2_MODEL,
-    temperature: 0.1,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  });
+  try {
+    const response = await client.chat.completions.create({
+      model: DEFAULT_JOURNAL_SUMMARY2_MODEL,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    });
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("journal_summary2 extractor returned no content");
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.error("journal_summary2 extractor returned empty content", {
+        localDate,
+        timezone,
+        model: DEFAULT_JOURNAL_SUMMARY2_MODEL,
+        messageCount: messages.length,
+      });
+      throw new Error("journal_summary2 extractor returned no content");
+    }
+
+    const parsed = parseJsonResponse(content);
+    return sanitizeJournalSummaryDraft(parsed);
+  } catch (error) {
+    console.error("journal_summary2 extraction failed", {
+      localDate,
+      timezone,
+      model: DEFAULT_JOURNAL_SUMMARY2_MODEL,
+      messageCount: messages.length,
+      error,
+    });
+    throw error;
   }
-
-  const parsed = parseJsonResponse(content);
-  return sanitizeJournalSummaryDraft(parsed);
 }
 
 async function upsertJournalSummary2(
@@ -338,19 +536,35 @@ async function upsertJournalSummary2(
   localDate: LocalDateString,
   draft: JournalSummary2Draft
 ): Promise<JournalSummary2Row> {
+  console.error("journal_summary2 upsert payload", {
+    userId,
+    localDate,
+    draft,
+  });
+
   const payload = {
     user_id: userId,
     date: localDate,
     ...draft,
   };
 
-  const { data, error } = await supabaseAdmin
-    .from("journal_summary2")
-    .upsert(payload, { onConflict: "user_id,date" })
-    .select("*")
-    .single();
+  const { data, error } = await withSupabaseRetry(
+    "upsert journal_summary2",
+    () =>
+      supabaseAdmin
+        .from("journal_summary2")
+        .upsert(payload, { onConflict: "user_id,date" })
+        .select("*")
+        .single()
+  );
 
   if (error) {
+    console.error("journal_summary2 upsert failed", {
+      userId,
+      localDate,
+      payload,
+      error,
+    });
     throw new Error(`Failed to upsert journal_summary2: ${error.message}`);
   }
 
@@ -366,24 +580,6 @@ export async function ensure_journal_summary2(
   const admin = supabaseAdmin ?? createSupabaseAdminClient();
   const resolvedTimezone =
     timezone || (await getCanonicalTimeZone(admin, userId));
-
-  const existing = await getExistingJournalSummary2(admin, userId, localDate);
-  if (existing) {
-    const existingMessages = await getUserJournalMessagesForLocalDate(
-      admin,
-      userId,
-      localDate,
-      resolvedTimezone
-    );
-
-    return {
-      status: "existing",
-      localDate,
-      timezone: resolvedTimezone,
-      messageCount: existingMessages.length,
-      row: existing,
-    };
-  }
 
   const messages = await getUserJournalMessagesForLocalDate(
     admin,
@@ -419,6 +615,17 @@ export async function ensure_journal_summary2(
     };
   }
 
+  const existing = await getExistingJournalSummary2(admin, userId, localDate);
+  if (existing) {
+    return {
+      status: "existing",
+      localDate,
+      timezone: resolvedTimezone,
+      messageCount: messages.length,
+      row: existing,
+    };
+  }
+
   const draft = await extractJournalSummaryDraft(
     localDate,
     resolvedTimezone,
@@ -433,4 +640,15 @@ export async function ensure_journal_summary2(
     messageCount: messages.length,
     row,
   };
+}
+
+export async function ensureJournalSummary2(
+  params: EnsureJournalSummary2Params
+): Promise<EnsureJournalSummary2Result> {
+  return ensure_journal_summary2(
+    params.userId,
+    params.localDate,
+    params.timezone,
+    params.supabaseAdmin
+  );
 }

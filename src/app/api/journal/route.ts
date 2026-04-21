@@ -7,6 +7,9 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { JournalAgent } from "@/llm-service/agents";
 import { AgentContext } from "@/llm-service/types";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { formatLocalDate, getCanonicalTimeZone } from "@/lib/time";
+import { queueForwardRecomputeFromChangedDate } from "@/lib/overall-submission-workflows";
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +140,20 @@ export async function POST(req: NextRequest) {
         { error: "Failed to store assistant journal message" },
         { status: 500 }
       );
+    }
+
+    const supabaseAdmin = createSupabaseAdminClient();
+    const canonicalTimezone = await getCanonicalTimeZone(supabaseAdmin, user.id);
+    const todayLocalDate = formatLocalDate(new Date(), canonicalTimezone);
+
+    if (effectiveLocalDate < todayLocalDate) {
+      await queueForwardRecomputeFromChangedDate({
+        userId: user.id,
+        changedLocalDate: effectiveLocalDate,
+        semantic: "source",
+        timezone: canonicalTimezone,
+        supabaseAdmin,
+      });
     }
 
     return NextResponse.json({

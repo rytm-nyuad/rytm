@@ -1,212 +1,145 @@
 """
-Data fetch module - retrieves raw data from Supabase tables
+Prepared-context fetch module for the morning coach pipeline.
+Loads the deterministic bundle/state artifacts built before the coach runs.
 """
 import os
-from datetime import datetime, timedelta, date
-from typing import Dict, List, Any, Optional
+from datetime import timedelta, date
+from typing import Dict, Any, Optional
+
 from supabase import create_client, Client
+
 
 class DataFetcher:
     def __init__(self, supabase_url: str, supabase_key: str):
         self.client: Client = create_client(supabase_url, supabase_key)
-    
-    def fetch_daily_overall(self, user_id: str, target_date: date) -> Optional[Dict[str, Any]]:
-        """Fetch daily overall score"""
-        result = self.client.table('daily_overall') \
-            .select('*') \
-            .eq('user_id', user_id) \
-            .eq('date', target_date.isoformat()) \
-            .execute()
-        return result.data[0] if result.data else None
-    
-    def fetch_daily_checkin(self, user_id: str, target_date: date) -> Optional[Dict[str, Any]]:
-        """Fetch daily check-in data"""
-        result = self.client.table('daily_checkins') \
-            .select('*') \
-            .eq('user_id', user_id) \
-            .eq('checkin_date', target_date.isoformat()) \
-            .execute()
-        return result.data[0] if result.data else None
-    
-    def fetch_fitbit_sleep(self, user_id: str, target_date: date) -> Optional[Dict[str, Any]]:
-        """Fetch Fitbit sleep data"""
-        result = self.client.table('fitbit_sleep_daily') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .eq('date', target_date.isoformat()) \
-            .execute()
-        return result.data[0] if result.data else None
-    
-    def fetch_fitbit_activity(self, user_id: str, target_date: date) -> Optional[Dict[str, Any]]:
-        """Fetch Fitbit activity data"""
-        result = self.client.table('fitbit_activity_daily') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .eq('date', target_date.isoformat()) \
-            .execute()
-        return result.data[0] if result.data else None
-    
-    def fetch_fitbit_hrv(self, user_id: str, target_date: date) -> Optional[Dict[str, Any]]:
-        """Fetch Fitbit HRV data"""
-        result = self.client.table('fitbit_hrv_daily') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .eq('date', target_date.isoformat()) \
-            .execute()
-        return result.data[0] if result.data else None
-    
-    def fetch_fitbit_readiness(self, user_id: str, target_date: date) -> Optional[Dict[str, Any]]:
-        """Fetch Fitbit readiness data"""
-        result = self.client.table('fitbit_readiness_daily') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .eq('date', target_date.isoformat()) \
-            .execute()
-        return result.data[0] if result.data else None
-    
-    def fetch_fitbit_overnight(self, user_id: str, target_date: date) -> Optional[Dict[str, Any]]:
-        """Fetch Fitbit overnight metrics"""
-        result = self.client.table('fitbit_overnight_daily') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .eq('date', target_date.isoformat()) \
-            .execute()
-        return result.data[0] if result.data else None
-    
-    def fetch_water_intake(self, user_id: str, target_date: date) -> List[Dict[str, Any]]:
-        """Fetch water intake logs for a day"""
-        result = self.client.table('water_intake_logs') \
-            .select('*') \
-            .eq('user_id', user_id) \
-            .gte('intake_datetime', f"{target_date.isoformat()}T00:00:00") \
-            .lt('intake_datetime', f"{(target_date + timedelta(days=1)).isoformat()}T00:00:00") \
-            .execute()
-        return result.data or []
-    
-    def fetch_meal_logs(self, user_id: str, target_date: date) -> List[Dict[str, Any]]:
-        """Fetch meal logs for a day"""
-        result = self.client.table('meal_logs') \
-            .select('*') \
-            .eq('user_id', user_id) \
-            .gte('meal_datetime', f"{target_date.isoformat()}T00:00:00") \
-            .lt('meal_datetime', f"{(target_date + timedelta(days=1)).isoformat()}T00:00:00") \
-            .execute()
-        return result.data or []
-    
-    def fetch_todos(self, user_id: str, target_date: date) -> List[Dict[str, Any]]:
-        """Fetch todos for a day"""
-        result = self.client.table('daily_todos') \
-            .select('*') \
-            .eq('user_id', user_id) \
-            .eq('date', target_date.isoformat()) \
-            .execute()
-        return result.data or []
-    
-    def fetch_calendar_events(self, user_id: str, target_date: date) -> List[Dict[str, Any]]:
-        """Fetch calendar events for a day"""
-        result = self.client.table('calendar_events') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .gte('start_time', f"{target_date.isoformat()}T00:00:00") \
-            .lt('start_time', f"{(target_date + timedelta(days=1)).isoformat()}T00:00:00") \
-            .execute()
-        return result.data or []
-    
-    def fetch_7d_history(self, user_id: str, end_date: date) -> Dict[str, List[Dict[str, Any]]]:
-        """Fetch 7-day history for baseline calculations"""
-        start_date = end_date - timedelta(days=7)
-        
-        return {
-            'checkins': self._fetch_checkins_range(user_id, start_date, end_date),
-            'sleep': self._fetch_sleep_range(user_id, start_date, end_date),
-            'hrv': self._fetch_hrv_range(user_id, start_date, end_date),
-            'activity': self._fetch_activity_range(user_id, start_date, end_date),
-            'readiness': self._fetch_readiness_range(user_id, start_date, end_date),
+        self.ignore_journal_in_coach = os.getenv("IGNORE_JOURNAL_IN_COACH", "").lower() == "true"
+
+    def _strip_journal_from_bundle(self, input_bundle_row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not input_bundle_row:
+            return input_bundle_row
+
+        row = dict(input_bundle_row)
+        bundle_json = dict(row.get("bundle_json") or {})
+        missingness_json = dict(row.get("missingness_json") or {})
+        confidence_json = dict(row.get("confidence_json") or {})
+
+        bundle_json["journal"] = {
+            "themes": [],
+            "episodic_events": [],
+            "stressor_types": [],
+            "coping_actions": [],
+            "barriers": [],
+            "tone_hint": None,
+            "risk_flags": [],
+            "self_appraisal_style": None,
+            "self_efficacy_language": None,
+            "goals_conflict_today": None,
+            "evidence_quotes": [],
         }
-    
-    def _fetch_checkins_range(self, user_id: str, start_date: date, end_date: date) -> List[Dict]:
-        result = self.client.table('daily_checkins') \
-            .select('*') \
-            .eq('user_id', user_id) \
-            .gte('checkin_date', start_date.isoformat()) \
-            .lte('checkin_date', end_date.isoformat()) \
-            .order('checkin_date') \
+        missingness_json["missing_journal"] = True
+        confidence_json["confidence_journal"] = 0
+
+        row["bundle_json"] = bundle_json
+        row["missingness_json"] = missingness_json
+        row["confidence_json"] = confidence_json
+        return row
+
+    def _strip_journal_from_state_json(self, state_json: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        cleaned = dict(state_json or {})
+        cleaned["episodic_memory"] = {
+            "active_events": [],
+            "recent_stressor_distribution": [],
+        }
+        return cleaned
+
+    def _strip_journal_from_state_history_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned = dict(row)
+        snapshot = dict(cleaned.get("state_snapshot_json") or {})
+        snapshot["episodic_memory"] = {
+            "active_events": [],
+            "recent_stressor_distribution": [],
+        }
+        cleaned["state_snapshot_json"] = snapshot
+        return cleaned
+
+    def fetch_prepared_context(self, user_id: str, target_date: date) -> Dict[str, Any]:
+        """Fetch bundle/state/history artifacts for the given morning-summary date."""
+        target_iso = target_date.isoformat()
+        history_start = (target_date - timedelta(days=14)).isoformat()
+
+        bundle_result = (
+            self.client.table("daily_input_bundle_v12")
+            .select("user_id, date, bundle_version, timezone, generated_at, overall_true_today, physio_proxy_score_0_100, gap_today, missingness_json, confidence_json, bundle_json")
+            .eq("user_id", user_id)
+            .eq("date", target_iso)
+            .limit(1)
             .execute()
-        return result.data or []
-    
-    def _fetch_sleep_range(self, user_id: str, start_date: date, end_date: date) -> List[Dict]:
-        result = self.client.table('fitbit_sleep_daily') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .gte('date', start_date.isoformat()) \
-            .lte('date', end_date.isoformat()) \
-            .order('date') \
+        )
+
+        state_result = (
+            self.client.table("user_state_current2")
+            .select("user_id, state_version, as_of_date, updated_at, state_json")
+            .eq("user_id", user_id)
+            .limit(1)
             .execute()
-        return result.data or []
-    
-    def _fetch_hrv_range(self, user_id: str, start_date: date, end_date: date) -> List[Dict]:
-        result = self.client.table('fitbit_hrv_daily') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .gte('date', start_date.isoformat()) \
-            .lte('date', end_date.isoformat()) \
-            .order('date') \
+        )
+
+        target_state_history_result = (
+            self.client.table("user_state_history2")
+            .select("date, state_version, state_snapshot_json, actions_generated_json")
+            .eq("user_id", user_id)
+            .eq("date", target_iso)
+            .limit(1)
             .execute()
-        return result.data or []
-    
-    def _fetch_activity_range(self, user_id: str, start_date: date, end_date: date) -> List[Dict]:
-        result = self.client.table('fitbit_activity_daily') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .gte('date', start_date.isoformat()) \
-            .lte('date', end_date.isoformat()) \
-            .order('date') \
+        )
+
+        state_history_result = (
+            self.client.table("user_state_history2")
+            .select("date, overall_true_today, physio_proxy_score_0_100, gap_today, deviations_json, state_snapshot_json, actions_generated_json")
+            .eq("user_id", user_id)
+            .gte("date", history_start)
+            .lt("date", target_iso)
+            .order("date", desc=True)
             .execute()
-        return result.data or []
-    
-    def _fetch_readiness_range(self, user_id: str, start_date: date, end_date: date) -> List[Dict]:
-        result = self.client.table('fitbit_readiness_daily') \
-            .select('*') \
-            .eq('app_user_id', user_id) \
-            .gte('date', start_date.isoformat()) \
-            .lte('date', end_date.isoformat()) \
-            .order('date') \
-            .execute()
-        return result.data or []
-    
+        )
+
+        input_bundle = bundle_result.data[0] if bundle_result.data else None
+        current_state = state_result.data[0] if state_result.data else None
+        target_state_history = target_state_history_result.data[0] if target_state_history_result.data else None
+
+        if current_state and current_state.get("as_of_date") != target_iso and target_state_history:
+            current_state = {
+                "user_id": user_id,
+                "state_version": target_state_history.get("state_version", "v1"),
+                "as_of_date": target_iso,
+                "updated_at": None,
+                "state_json": target_state_history.get("state_snapshot_json") or {},
+            }
+
+        recent_state_history = state_history_result.data or []
+
+        if self.ignore_journal_in_coach:
+            input_bundle = self._strip_journal_from_bundle(input_bundle)
+            if current_state:
+                current_state = dict(current_state)
+                current_state["state_json"] = self._strip_journal_from_state_json(current_state.get("state_json"))
+            recent_state_history = [
+                self._strip_journal_from_state_history_row(row)
+                for row in recent_state_history
+            ]
+
+        return {
+            "input_bundle": input_bundle,
+            "current_state": current_state,
+            "recent_state_history": recent_state_history,
+        }
+
     def fetch_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch user profile (name, timezone)"""
-        result = self.client.table('profiles') \
-            .select('user_id, first_name, last_name, timezone') \
-            .eq('user_id', user_id) \
+        """Fetch user profile (name, timezone)."""
+        result = (
+            self.client.table("profiles")
+            .select("user_id, first_name, last_name, timezone")
+            .eq("user_id", user_id)
             .execute()
+        )
         return result.data[0] if result.data else None
-
-    def fetch_recent_actions(self, user_id: str, end_date: date, lookback_days: int = 7) -> List[Dict[str, Any]]:
-        """Fetch recent plan actions for variety/deduplication"""
-        start_date = end_date - timedelta(days=lookback_days)
-        result = self.client.table('plan_actions1') \
-            .select('action_id, domain, priority, effort_level, reason, for_date') \
-            .eq('user_id', user_id) \
-            .gte('for_date', start_date.isoformat()) \
-            .lt('for_date', end_date.isoformat()) \
-            .order('for_date', desc=True) \
-            .execute()
-        return result.data or []
-
-    def fetch_all_daily_data(self, user_id: str, target_date: date) -> Dict[str, Any]:
-        """Fetch all data sources for a given day"""
-        return {
-            'overall': self.fetch_daily_overall(user_id, target_date),
-            'checkin': self.fetch_daily_checkin(user_id, target_date),
-            'sleep': self.fetch_fitbit_sleep(user_id, target_date),
-            'activity': self.fetch_fitbit_activity(user_id, target_date),
-            'hrv': self.fetch_fitbit_hrv(user_id, target_date),
-            'readiness': self.fetch_fitbit_readiness(user_id, target_date),
-            'overnight': self.fetch_fitbit_overnight(user_id, target_date),
-            'water': self.fetch_water_intake(user_id, target_date),
-            'meals': self.fetch_meal_logs(user_id, target_date),
-            'todos': self.fetch_todos(user_id, target_date),
-            'calendar': self.fetch_calendar_events(user_id, target_date),
-            'history_7d': self.fetch_7d_history(user_id, target_date)
-        }

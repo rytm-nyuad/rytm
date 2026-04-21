@@ -27,6 +27,18 @@ export type DailyCheckinRelation2 = {
   emotion_count: number;
 };
 
+export type EnsureDailyCheckinRelation2Params = {
+  userId: string;
+  localDate: string;
+  supabaseAdmin?: SupabaseClient;
+};
+
+export type EnsureDailyCheckinRelation2Result = {
+  localDate: string;
+  foundCheckin: boolean;
+  row: DailyCheckinRelation2 | null;
+};
+
 function diff(a: number | null, b: number | null): number | null {
   if (a === null || b === null) return null;
   return a - b;
@@ -84,4 +96,36 @@ export async function upsert_daily_checkin_relation2(
   }
 
   return relations;
+}
+
+export async function ensureDailyCheckinRelation2(
+  params: EnsureDailyCheckinRelation2Params
+): Promise<EnsureDailyCheckinRelation2Result> {
+  const client = params.supabaseAdmin ?? createSupabaseAdminClient();
+  const { data, error } = await client
+    .from("daily_checkins")
+    .select(
+      "sleep_quality, energy_score, focus_score, workload_score, coping_capacity_score, stress_score, social_score, mood_score, mood_emotions"
+    )
+    .eq("user_id", params.userId)
+    .eq("checkin_date", params.localDate)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to read daily_checkins for daily_checkin_relation2: ${error.message}`);
+  }
+
+  const relations = compute_checkin_relations((data as DailyCheckinRow | null) ?? null);
+  const row = await upsert_daily_checkin_relation2(
+    params.userId,
+    params.localDate,
+    relations,
+    client
+  );
+
+  return {
+    localDate: params.localDate,
+    foundCheckin: data != null,
+    row,
+  };
 }

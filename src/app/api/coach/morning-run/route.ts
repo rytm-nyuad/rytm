@@ -5,8 +5,86 @@ import { cookies } from 'next/headers';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { runMorningPreparationForSubmissionDate } from '@/lib/overall-submission-workflows';
+import { refreshFitbitProfileTimezoneForUser } from '@/lib/fitbit';
+import { formatLocalDate, getCanonicalTimeZone, shiftLocalDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
+
+async function getExistingPreparationStatus(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  userId: string,
+  submissionLocalDate: string
+) {
+  const [bundleResult, stateHistoryResult, currentStateResult] = await Promise.all([
+    supabaseAdmin
+      .from('daily_input_bundle_v12')
+      .select('date')
+      .eq('user_id', userId)
+      .eq('date', submissionLocalDate)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('user_state_history2')
+      .select('date, state_snapshot_json')
+      .eq('user_id', userId)
+      .eq('date', submissionLocalDate)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('user_state_current2')
+      .select('as_of_date, state_json')
+      .eq('user_id', userId)
+      .maybeSingle(),
+  ]);
+
+  const bundleExists = !!bundleResult.data;
+  const stateHistory = stateHistoryResult.data as
+    | { date: string; state_snapshot_json?: { uncertainty?: { baseline_stability_flags?: { fast_ready?: boolean; slow_ready?: boolean } } } }
+    | null;
+  const currentState = currentStateResult.data as
+    | { as_of_date: string; state_json?: { uncertainty?: { baseline_stability_flags?: { fast_ready?: boolean; slow_ready?: boolean } } } }
+    | null;
+
+  const currentFlags =
+    currentState?.as_of_date === submissionLocalDate
+      ? currentState.state_json?.uncertainty?.baseline_stability_flags
+      : null;
+  const historyFlags = stateHistory?.state_snapshot_json?.uncertainty?.baseline_stability_flags ?? null;
+  const flags = currentFlags ?? historyFlags;
+
+  return {
+    ready: bundleExists && !!stateHistory,
+    shouldRunSummary: !!flags?.fast_ready,
+    stateReady: {
+      fast_ready: !!flags?.fast_ready,
+      slow_ready: !!flags?.slow_ready,
+    },
+  };
+}
+
+async function updateStateHistoryActions(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  userId: string,
+  submissionLocalDate: string,
+  result: any
+) {
+  const payload = {
+    themes: result?.debug?.selected_domains ?? [],
+    actions: result?.actions ?? [],
+    questions: [],
+  };
+
+  const { error } = await supabaseAdmin
+    .from('user_state_history2')
+    .update({
+      actions_generated_json: payload,
+    })
+    .eq('user_id', userId)
+    .eq('date', submissionLocalDate);
+
+  if (error) {
+    throw new Error(`Failed to update user_state_history2 actions_generated_json: ${error.message}`);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,14 +110,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const forDate: string | undefined = body.forDate;
 
-    const today = new Date().toISOString().split('T')[0];
-    let targetDate = forDate || today;
+    let targetDate = forDate;
 
     if (forDate && !/^\d{4}-\d{2}-\d{2}$/.test(forDate)) {
       return NextResponse.json({ error: 'forDate must be in YYYY-MM-DD format' }, { status: 400 });
     }
 
     const supabaseAdmin = createSupabaseAdminClient();
+    await refreshFitbitProfileTimezoneForUser(supabaseAdmin, userId);
+    const canonicalTimezone = await getCanonicalTimeZone(supabaseAdmin, userId);
+    const todayLocalDate = formatLocalDate(new Date(), canonicalTimezone);
+    if (!targetDate) {
+      targetDate = todayLocalDate;
+    }
 
     // Fetch overall_score
     let dailyOverall: { overall_score: number; date: string } | null = null;
@@ -64,7 +147,7 @@ export async function POST(request: NextRequest) {
         .from('daily_overall')
         .select('overall_score, date')
         .eq('user_id', userId)
-        .eq('date', today)
+        .eq('date', todayLocalDate)
         .maybeSingle();
 
       if (todayData) {
@@ -93,7 +176,68 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const submissionDate = targetDate!;
     const overallScore = dailyOverall.overall_score;
+
+    let morningPreparation:
+      | Awaited<ReturnType<typeof runMorningPreparationForSubmissionDate>>
+      | {
+          submissionLocalDate: string;
+          processedLocalDate: string;
+          timezone: string;
+          nutrition: null;
+          checkinRelations: null;
+          journal: null;
+          bundle: null;
+          state: {
+            shouldRunSummary: boolean;
+            stateReady: { fast_ready: boolean; slow_ready: boolean };
+          };
+        };
+
+    const existingPreparation = await getExistingPreparationStatus(
+      supabaseAdmin,
+      userId,
+      submissionDate
+    );
+
+    if (existingPreparation.ready) {
+      morningPreparation = {
+        submissionLocalDate: submissionDate,
+        processedLocalDate: shiftLocalDate(submissionDate, -1),
+        timezone: canonicalTimezone,
+        nutrition: null,
+        checkinRelations: null,
+        journal: null,
+        bundle: null,
+        state: {
+          shouldRunSummary: existingPreparation.shouldRunSummary,
+          stateReady: existingPreparation.stateReady,
+        },
+      };
+    } else {
+      morningPreparation = await runMorningPreparationForSubmissionDate({
+        userId,
+        submissionLocalDate: submissionDate,
+        timezone: canonicalTimezone,
+        supabaseAdmin,
+      });
+    }
+
+    if (!morningPreparation.state.shouldRunSummary) {
+      return NextResponse.json({
+        success: true,
+        status: 'not_enough_history',
+        forDate: submissionDate,
+        processedDate: morningPreparation.processedLocalDate,
+        message: 'Not enough history yet to generate a morning coach summary. State was updated and the coach inputs are prepared.',
+        debug: {
+          fast_ready: morningPreparation.state.stateReady.fast_ready,
+          slow_ready: morningPreparation.state.stateReady.slow_ready,
+          processed_date: morningPreparation.processedLocalDate,
+        },
+      });
+    }
 
     // Check for active goal
     const { data: existingGoal, error: goalError } = await supabaseAdmin
@@ -117,15 +261,15 @@ export async function POST(request: NextRequest) {
       .from('daily_plans1')
       .delete()
       .eq('user_id', userId)
-      .eq('for_date', targetDate);
+      .eq('for_date', submissionDate);
 
     // Create ingestion run
     const { data: ingestionRun, error: ingestionError } = await supabaseAdmin
       .from('ingestion_runs1')
-      .insert({
-        user_id: userId,
-        for_date: targetDate,
-        status: 'success',
+        .insert({
+          user_id: userId,
+          for_date: submissionDate,
+          status: 'success',
         pipeline_version: 'mvp-v1-langgraph',
       })
       .select()
@@ -134,9 +278,21 @@ export async function POST(request: NextRequest) {
     if (ingestionError) throw ingestionError;
 
     // Run Python pipeline
-    const result = await runPythonPipeline(userId, targetDate, overallScore, ingestionRun.ingestion_run_id);
+    const result = await runPythonPipeline(userId, submissionDate, overallScore, ingestionRun.ingestion_run_id);
+    await updateStateHistoryActions(
+      supabaseAdmin,
+      userId,
+      submissionDate,
+      result
+    );
 
-    return NextResponse.json({ success: true, forDate: targetDate, ...result });
+    return NextResponse.json({
+      success: true,
+      status: 'ok',
+      forDate: submissionDate,
+      processedDate: morningPreparation.processedLocalDate,
+      ...result,
+    });
   } catch (error: any) {
     console.error('Morning run error:', error);
     return NextResponse.json(

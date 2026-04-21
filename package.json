@@ -12,6 +12,9 @@
     "meal:nightly": "tsx scripts/nightly_meal_processing.ts",
     "meal:test": "tsx scripts/test_single_meal.ts",
     "meal:check-env": "tsx scripts/check_env.ts",
+    "workflows:test-day": "tsx -r dotenv/config scripts/test_overall_submission_workflows.ts",
+    "workflows:backfill-range": "tsx -r dotenv/config scripts/backfill_morning_preparation_range.ts",
+    "workflows:recompute-forward": "tsx -r dotenv/config scripts/recompute_morning_preparation_forward.ts",
     "test": "jest --runInBand"
   },
   "dependencies": {

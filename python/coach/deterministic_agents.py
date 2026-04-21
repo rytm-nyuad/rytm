@@ -9,6 +9,45 @@ from supabase import create_client, Client
 from data_fetcher import DataFetcher
 from feature_computer import FeatureComputer
 
+SUPPORTED_PLAN_FEATURE_KEYS = {
+    "overall_score",
+    "sleep_duration_hours",
+    "sleep_efficiency",
+    "stress",
+    "focus",
+    "energy",
+    "workload",
+    "mood",
+    "social_connectedness",
+    "total_water_ml",
+    "steps",
+    "total_active_minutes",
+    "very_active_minutes",
+    "sedentary_minutes",
+    "distance_total_km",
+    "calories_out",
+    "activity_calories",
+    "bmr_calories",
+    "resting_heart_rate",
+    "hrv_rmssd",
+    "hrv_deep_rmssd",
+    "readiness_score",
+    "oxygen_variation",
+    "blood_oxygen_avg",
+    "breathing_rate",
+    "skin_temp_relative",
+    "meals_count",
+    "breakfast_logged",
+    "dinner_logged",
+    "last_meal_time",
+    "caffeine_cups",
+    "caffeine_after_2pm_flag",
+    "energy_drink_ml",
+    "soda_ml",
+    "productivity_proxy_todos_completed_ratio",
+}
+
+
 class IngestionAgent:
     """Ingestion & Validation Agent - Ensures data quality"""
     
@@ -180,6 +219,56 @@ class PersistenceAgent:
     
     def __init__(self, client: Client):
         self.client = client
+
+    def _sanitize_action_for_plan_storage(self, action: Dict[str, Any]) -> Dict[str, Any]:
+        required_feature_keys = action.get('required_feature_keys', [])
+        if not isinstance(required_feature_keys, list):
+            required_feature_keys = []
+
+        supported_required_feature_keys = [
+            key for key in required_feature_keys
+            if isinstance(key, str) and key in SUPPORTED_PLAN_FEATURE_KEYS
+        ]
+        dropped_feature_keys = [
+            key for key in required_feature_keys
+            if isinstance(key, str) and key not in SUPPORTED_PLAN_FEATURE_KEYS
+        ]
+
+        success_criteria = action.get('success_criteria', {})
+        if not isinstance(success_criteria, dict):
+            success_criteria = {}
+
+        feature_key = success_criteria.get('feature_key')
+        unsupported_success_feature_key = (
+            isinstance(feature_key, str) and feature_key not in SUPPORTED_PLAN_FEATURE_KEYS
+        )
+
+        sanitized_action = dict(action)
+        sanitized_action['required_feature_keys'] = supported_required_feature_keys
+
+        if dropped_feature_keys or unsupported_success_feature_key:
+            print(
+                f"[WARNING] Downgrading unsupported plan action feature keys. "
+                f"Dropped required_feature_keys={dropped_feature_keys}, "
+                f"unsupported success_criteria.feature_key={feature_key if unsupported_success_feature_key else None}",
+                file=__import__('sys').stderr
+            )
+
+            sanitized_action['evaluation_mode'] = 'user_rating'
+            sanitized_action['requires_user_rating'] = True
+
+            if unsupported_success_feature_key:
+                downgraded_success_criteria = dict(success_criteria)
+                downgraded_success_criteria['legacy_feature_key'] = feature_key
+                downgraded_success_criteria.pop('feature_key', None)
+                downgraded_success_criteria['type'] = 'qualitative'
+                downgraded_success_criteria['description'] = (
+                    downgraded_success_criteria.get('description')
+                    or f"User reports whether they completed the action tied to {feature_key}"
+                )
+                sanitized_action['success_criteria'] = downgraded_success_criteria
+
+        return sanitized_action
     
     def persist_daily_plan(
         self,
@@ -220,6 +309,7 @@ class PersistenceAgent:
             'average': 'medium'
         }
         for action in display_actions:
+            action = self._sanitize_action_for_plan_storage(action)
             eval_mode = action.get('evaluation_mode', 'mixed')
             # Ensure evaluation_mode is valid
             if eval_mode not in valid_evaluation_modes:

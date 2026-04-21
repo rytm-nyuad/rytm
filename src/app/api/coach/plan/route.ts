@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getActiveGoal, getTodayPlan } from '@/lib/db/coachPipeline';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { formatLocalDate, getCanonicalTimeZone } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +27,12 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const forDate = searchParams.get('forDate') || new Date().toISOString().split('T')[0];
+    let forDate = searchParams.get('forDate');
+    if (!forDate) {
+      const supabaseAdmin = createSupabaseAdminClient();
+      const timezone = await getCanonicalTimeZone(supabaseAdmin, user.id);
+      forDate = formatLocalDate(new Date(), timezone);
+    }
 
     const [goal, plan] = await Promise.all([
       getActiveGoal(user.id),

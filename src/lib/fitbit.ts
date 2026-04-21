@@ -19,6 +19,7 @@ import {
 
 const FITBIT_API_BASE = "https://api.fitbit.com";
 const FITBIT_TOKEN_URL = "https://api.fitbit.com/oauth2/token";
+const FITBIT_PROFILE_PATH = "/1/user/-/profile.json";
 
 // --------------------
 // Types & Error classes
@@ -645,6 +646,126 @@ export interface SyncFitbitResult {
   timezone: string;
   syncedDates: LocalDateString[];
   lastSyncedAt: string;
+}
+
+export interface FitbitProfileTimezoneRefreshResult {
+  fitbitTimezone: string | null;
+  profileTimezoneUpdated: boolean;
+  usedLiveProfile: boolean;
+}
+
+export async function refreshFitbitProfileTimezoneForUser(
+  supabase: SupabaseClient,
+  appUserId: string
+): Promise<FitbitProfileTimezoneRefreshResult> {
+  let fitbitTimezone: string | null = null;
+  let usedLiveProfile = false;
+
+  try {
+    const creds = await getFitbitCredentialsForUser(supabase, appUserId);
+    const profileJson = await fitbitFetchJson({
+      supabase,
+      creds,
+      path: FITBIT_PROFILE_PATH,
+    });
+
+    const profileTimezone =
+      typeof profileJson?.user?.timezone === "string"
+        ? profileJson.user.timezone.trim()
+        : "";
+
+    if (profileTimezone) {
+      fitbitTimezone = profileTimezone;
+      usedLiveProfile = true;
+
+      const { error: fitbitProfileError } = await supabase
+        .from("fitbit_profile")
+        .upsert(
+          {
+            app_user_id: appUserId,
+            user_timezone: fitbitTimezone,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "app_user_id" }
+        );
+
+      if (fitbitProfileError) {
+        console.error("[Fitbit] Error upserting refreshed fitbit_profile timezone:", fitbitProfileError);
+      }
+    }
+  } catch (error) {
+    if (
+      !(error instanceof FitbitNotConnectedError) &&
+      !(error instanceof FitbitAuthRevokedError)
+    ) {
+      console.error("[Fitbit] Failed to refresh live profile timezone:", error);
+    }
+  }
+
+  if (!fitbitTimezone) {
+    const { data: storedProfile, error: storedProfileError } = await supabase
+      .from("fitbit_profile")
+      .select("user_timezone")
+      .eq("app_user_id", appUserId)
+      .maybeSingle<{ user_timezone: string | null }>();
+
+    if (storedProfileError) {
+      console.error("[Fitbit] Error reading stored fitbit_profile timezone:", storedProfileError);
+    } else {
+      fitbitTimezone =
+        typeof storedProfile?.user_timezone === "string"
+          ? storedProfile.user_timezone.trim() || null
+          : null;
+    }
+  }
+
+  if (!fitbitTimezone) {
+    return {
+      fitbitTimezone: null,
+      profileTimezoneUpdated: false,
+      usedLiveProfile,
+    };
+  }
+
+  const { data: profileRow, error: profileReadError } = await supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("user_id", appUserId)
+    .maybeSingle<{ timezone: string | null }>();
+
+  if (profileReadError) {
+    throw new FitbitApiError(
+      `Failed to read profiles.timezone while syncing wearable timezone: ${profileReadError.message}`
+    );
+  }
+
+  const currentProfileTimezone =
+    typeof profileRow?.timezone === "string" ? profileRow.timezone.trim() : "";
+
+  if (currentProfileTimezone === fitbitTimezone) {
+    return {
+      fitbitTimezone,
+      profileTimezoneUpdated: false,
+      usedLiveProfile,
+    };
+  }
+
+  const { error: profileUpdateError } = await supabase
+    .from("profiles")
+    .update({ timezone: fitbitTimezone })
+    .eq("user_id", appUserId);
+
+  if (profileUpdateError) {
+    throw new FitbitApiError(
+      `Failed to update profiles.timezone from Fitbit timezone: ${profileUpdateError.message}`
+    );
+  }
+
+  return {
+    fitbitTimezone,
+    profileTimezoneUpdated: true,
+    usedLiveProfile,
+  };
 }
 
 /**

@@ -2,7 +2,7 @@
 // RYTM v1 – Nightly Meal Processing Cron Job
 // ============================================================
 // Runs at 4:00 AM daily (via GitHub Actions or system cron).
-// Picks up all meals from the last 24 hours that have not been
+// Picks up all meals from the recent local-date window that have not been
 // processed by pipeline v1.0, and processes them.
 //
 // Usage:
@@ -37,12 +37,15 @@ async function main() {
   console.log(`   Time: ${new Date().toISOString()}\n`);
 
   const supabase = getServiceClient();
+  const cutoffLocalDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
 
-  // Fetch meals from last 24h that have NOT been processed
+  // Fetch meals from a broad recent local-date window that have NOT been processed
   const { data: meals, error } = await supabase
     .from('meal_logs')
     .select('id')
-    .gte('meal_datetime', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+    .gte('meal_local_date', cutoffLocalDate)
     .not(
       'id',
       'in',
@@ -58,10 +61,10 @@ async function main() {
     const { data: allMeals } = await supabase
       .from('meal_logs')
       .select('id')
-      .gte('meal_datetime', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+      .gte('meal_local_date', cutoffLocalDate);
 
     if (!allMeals || allMeals.length === 0) {
-      console.log('✅ No meals in the last 24 hours. Done.');
+      console.log('✅ No meals in the recent local-date window. Done.');
       process.exit(0);
     }
 

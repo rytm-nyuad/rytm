@@ -2,7 +2,7 @@
 // POST /api/process-backfill
 // ============================================================
 // Triggers meal processing for all unprocessed meals within
-// a given day range for the authenticated user.
+// a given local-date range for the authenticated user.
 //
 // Request body: { days?: number }  (default: 14)
 // Response:     { total, success, skipped, failed, results[] }
@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { processMeal, PIPELINE_VERSION } from '@/lib/meal-processing';
+import { formatLocalDate, getCanonicalTimeZone, shiftLocalDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,16 +37,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const days = typeof body.days === 'number' ? body.days : 14;
 
-    // Fetch user's meals in the window
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
+    const timezone = await getCanonicalTimeZone(supabase, user.id);
+    const todayLocalDate = formatLocalDate(new Date(), timezone);
+    const cutoffLocalDate = shiftLocalDate(todayLocalDate, -days);
 
     const { data: meals, error: fetchErr } = await supabase
       .from('meal_logs')
       .select('id')
       .eq('user_id', user.id)
-      .gte('meal_datetime', cutoff.toISOString())
-      .order('meal_datetime', { ascending: true });
+      .gte('meal_local_date', cutoffLocalDate)
+      .order('meal_local_date', { ascending: true })
+      .order('meal_datetime', { ascending: true, nullsFirst: false });
 
     if (fetchErr) {
       return NextResponse.json({ error: fetchErr.message }, { status: 500 });

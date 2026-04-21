@@ -1,11 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { formatLocalDate, getCanonicalTimeZone, type LocalDateString } from "@/lib/time";
+import { getCanonicalTimeZone, type LocalDateString } from "@/lib/time";
 import { processMeal } from "@/lib/meal-processing/process-meal";
 
 type MealLogRow = {
   id: string;
-  meal_datetime: string;
+  meal_local_date: string;
+  meal_datetime: string | null;
 };
 
 type DailyNutrition2Row = {
@@ -41,47 +42,54 @@ export type EnsureDailyNutrition2Result = {
   mealsFound: number;
   mealsProcessedNow: number;
   mealsAlreadyProcessed: number;
+  mealProcessingSkipped: number;
+  skippedMealIds: string[];
   row: DailyNutrition2Row | null;
 };
 
-function buildThreeDayUtcWindow(localDate: LocalDateString) {
-  const baseUtc = new Date(`${localDate}T00:00:00.000Z`);
-  const start = new Date(baseUtc);
-  start.setUTCDate(start.getUTCDate() - 1);
+const MEAL_PROCESSING_MAX_RETRIES = Math.max(
+  1,
+  Number.parseInt(process.env.MEAL_PROCESSING_MAX_RETRIES || "3", 10) || 3
+);
+const SKIP_MEAL_PROCESSING_FAILURES =
+  process.env.SKIP_MEAL_PROCESSING_FAILURES?.toLowerCase() === "true";
 
-  const end = new Date(baseUtc);
-  end.setUTCDate(end.getUTCDate() + 2);
-
-  return {
-    startIso: start.toISOString(),
-    endIso: end.toISOString(),
-  };
+function isRetryableMealProcessingError(errorMessage: string | undefined): boolean {
+  if (!errorMessage) return false;
+  const normalized = errorMessage.toLowerCase();
+  return [
+    "connection error",
+    "timeout",
+    "timed out",
+    "fetch failed",
+    "econnreset",
+    "etimedout",
+    "connecttimeouterror",
+    "rate limit",
+    "temporarily unavailable",
+    "503",
+    "502",
+    "504",
+  ].some((pattern) => normalized.includes(pattern));
 }
 
 async function getMealsForLocalDate(
   supabaseAdmin: SupabaseClient,
   userId: string,
   localDate: LocalDateString,
-  timezone: string
 ): Promise<MealLogRow[]> {
-  const { startIso, endIso } = buildThreeDayUtcWindow(localDate);
-
   const { data, error } = await supabaseAdmin
     .from("meal_logs")
-    .select("id, meal_datetime")
+    .select("id, meal_local_date, meal_datetime")
     .eq("user_id", userId)
-    .gte("meal_datetime", startIso)
-    .lt("meal_datetime", endIso)
-    .order("meal_datetime", { ascending: true });
+    .eq("meal_local_date", localDate)
+    .order("meal_datetime", { ascending: true, nullsFirst: false });
 
   if (error) {
     throw new Error(`Failed to read meal_logs for daily_nutrition2 workflow: ${error.message}`);
   }
 
-  return (data ?? []).filter((meal) => {
-    if (!meal.meal_datetime) return false;
-    return formatLocalDate(new Date(meal.meal_datetime), timezone) === localDate;
-  });
+  return (data as MealLogRow[] | null) ?? [];
 }
 
 async function getMealIdsWithSuccessfulRuns(
@@ -110,12 +118,47 @@ async function getMealIdsWithSuccessfulRuns(
 async function ensureSuccessfulMealProcessingRuns(
   supabaseAdmin: SupabaseClient,
   mealIds: string[]
-): Promise<number> {
+): Promise<{ processedNow: number; skippedMealIds: string[] }> {
   let processedNow = 0;
+  const skippedMealIds: string[] = [];
 
   for (const mealId of mealIds) {
-    const result = await processMeal(mealId, supabaseAdmin);
+    let attempt = 0;
+    let result: Awaited<ReturnType<typeof processMeal>> | null = null;
+
+    while (attempt < MEAL_PROCESSING_MAX_RETRIES) {
+      attempt += 1;
+      result = await processMeal(mealId, supabaseAdmin);
+      if (result.success) {
+        break;
+      }
+
+      const shouldRetry =
+        attempt < MEAL_PROCESSING_MAX_RETRIES &&
+        isRetryableMealProcessingError(result.error);
+
+      if (!shouldRetry) {
+        break;
+      }
+
+      console.warn(
+        `[dailyNutrition2] Retrying meal processing for meal ${mealId} after error: ${result.error || "unknown error"} (attempt ${attempt}/${MEAL_PROCESSING_MAX_RETRIES})`
+      );
+      await new Promise((resolve) => setTimeout(resolve, attempt * 750));
+    }
+
+    if (!result) {
+      throw new Error(`Meal processing failed for meal ${mealId}`);
+    }
+
     if (!result.success) {
+      if (SKIP_MEAL_PROCESSING_FAILURES) {
+        skippedMealIds.push(mealId);
+        console.warn(
+          `[dailyNutrition2] Skipping failed meal processing for meal ${mealId}: ${result.error || "unknown error"}`
+        );
+        continue;
+      }
       throw new Error(result.error || `Meal processing failed for meal ${mealId}`);
     }
     if (!result.skipped) {
@@ -123,7 +166,7 @@ async function ensureSuccessfulMealProcessingRuns(
     }
   }
 
-  return processedNow;
+  return { processedNow, skippedMealIds };
 }
 
 export async function ensureDailyNutrition2(
@@ -136,8 +179,7 @@ export async function ensureDailyNutrition2(
   const meals = await getMealsForLocalDate(
     supabaseAdmin,
     params.userId,
-    params.localDate,
-    timezone
+    params.localDate
   );
 
   const mealIds = meals.map((meal) => meal.id);
@@ -148,7 +190,7 @@ export async function ensureDailyNutrition2(
   );
 
   const missingMealIds = mealIds.filter((mealId) => !successMealIds.has(mealId));
-  const mealsProcessedNow = await ensureSuccessfulMealProcessingRuns(
+  const mealProcessing = await ensureSuccessfulMealProcessingRuns(
     supabaseAdmin,
     missingMealIds
   );
@@ -167,8 +209,10 @@ export async function ensureDailyNutrition2(
     localDate: params.localDate,
     timezone,
     mealsFound: meals.length,
-    mealsProcessedNow,
+    mealsProcessedNow: mealProcessing.processedNow,
     mealsAlreadyProcessed: meals.length - missingMealIds.length,
+    mealProcessingSkipped: mealProcessing.skippedMealIds.length,
+    skippedMealIds: mealProcessing.skippedMealIds,
     row: (data as DailyNutrition2Row | null) ?? null,
   };
 }

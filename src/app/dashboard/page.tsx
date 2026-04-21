@@ -282,7 +282,7 @@ function DashboardContent() {
   const handleMorningGateSubmit = async (score: number) => {
     console.log("Submitting overall score:", { userId, score });
     // Submit for the current date (after 5am, this is today; before 5am, user shouldn't see gate)
-    const success = await submitDailyOverall(userId, score, new Date());
+    const success = await submitDailyOverall(userId, score);
     console.log("Submit result:", success);
     if (success) {
       setIsLocked(false);
@@ -653,4 +653,3 @@ function DashboardContent() {
     </div>
   );
 }
-

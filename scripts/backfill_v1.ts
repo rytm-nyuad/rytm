@@ -1,7 +1,7 @@
 // ============================================================
 // RYTM v1 – Backfill Script for Meal Processing
 // ============================================================
-// Processes all meals from the past 14 days that have not yet
+// Processes all meals from the past 14 local dates that have not yet
 // been processed by pipeline v1.0.
 //
 // Usage (from project root):
@@ -80,15 +80,17 @@ async function main() {
 
   const supabase = getServiceClient();
 
-  // Fetch unprocessed meals within the window
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
+  // Fetch unprocessed meals within the local-date window
+  const cutoffLocalDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
 
   let query = supabase
     .from('meal_logs')
-    .select('id, user_id, description, photo_url, meal_datetime')
-    .gte('meal_datetime', cutoff.toISOString())
-    .order('meal_datetime', { ascending: true });
+    .select('id, user_id, description, photo_url, meal_local_date, meal_datetime')
+    .gte('meal_local_date', cutoffLocalDate)
+    .order('meal_local_date', { ascending: true })
+    .order('meal_datetime', { ascending: true, nullsFirst: false });
 
   if (userId) {
     query = query.eq('user_id', userId);
@@ -124,7 +126,9 @@ async function main() {
   if (dryRun) {
     console.log('🔍 Dry run — listing meals that would be processed:\n');
     for (const m of toProcess) {
-      console.log(`   ${m.id}  ${m.meal_datetime}  ${(m.description ?? '').slice(0, 60)}`);
+      console.log(
+        `   ${m.id}  ${m.meal_local_date}  ${m.meal_datetime ?? 'time-not-set'}  ${(m.description ?? '').slice(0, 60)}`
+      );
     }
     process.exit(0);
   }
