@@ -501,9 +501,57 @@ For the next migration phase:
 
 - keep `user_goals1` as-is
 - keep `daily_plans1` as the per-day UI plan shell
-- keep `plan_actions1` for current display
+- move current display actions to `user_state_history2.actions_generated_json`
 - treat `user_state_history2.actions_generated_json` as the long-term action memory
 - migrate action evaluation semantics away from enum-backed feature keys and toward bundle/state JSON references
+
+## Implemented Action Migration
+
+The active implementation now does the following:
+
+- `daily_plans1` remains the morning-plan shell
+- the UI reads structured actions from `user_state_history2.actions_generated_json`, not `plan_actions1`
+- generated action objects now carry:
+  - `evaluation`
+  - `evidence`
+- the same enriched action objects are written into `user_state_history2.actions_generated_json`
+- during the next morning-preparation run, the system deterministically evaluates the previous day's actions and writes the results into `user_state_history2.outcomes_json`
+
+### Evaluation Storage
+
+`evaluation` and `evidence` are stored inside each action object in `actions_generated_json`.
+
+That means the state-history row now contains both:
+
+- the action that was recommended
+- the evaluation contract for judging it later
+
+This keeps the action, the evidence behind it, and the later outcome in one auditable row family:
+
+- `actions_generated_json`
+- `outcomes_json`
+
+### Next-Morning Evaluation Rule
+
+The current implementation evaluates actions from submission date `D` on the next morning run for submission date `D+1`.
+
+That uses:
+
+- the new day's prepared input bundle
+- the new day's current auditable state
+
+This is intentional because the bundle for `D+1` summarizes the completed day `D`, which is the correct evidence window for judging whether the actions for day `D` were followed.
+
+### Journal Exclusion
+
+Per the migration decision, journal-derived refs are explicitly excluded from deterministic action evaluation.
+
+Blocked sources:
+
+- `bundle.journal.*`
+- `state.episodic_memory.*`
+
+These refs are ignored for outcome judging even if an LLM attempts to include them.
 
 This is intended to reduce brittle morning-run failures when the model produces almost-valid structured output.
 

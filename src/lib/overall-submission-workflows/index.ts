@@ -18,6 +18,7 @@ export type {
   RunMorningPreparationParams,
   RunMorningPreparationResult,
 } from "./morningPreparation";
+export { evaluatePreviousStateHistoryActions } from "./actionOutcomes";
 export {
   recomputeForwardFromSubmissionDate,
   queueForwardRecomputeFromChangedDate,

@@ -189,6 +189,7 @@ export async function POST(request: NextRequest) {
           checkinRelations: null;
           journal: null;
           bundle: null;
+          previousActionOutcomes: null;
           state: {
             shouldRunSummary: boolean;
             stateReady: { fast_ready: boolean; slow_ready: boolean };
@@ -210,6 +211,7 @@ export async function POST(request: NextRequest) {
         checkinRelations: null,
         journal: null,
         bundle: null,
+        previousActionOutcomes: null,
         state: {
           shouldRunSummary: existingPreparation.shouldRunSummary,
           stateReady: existingPreparation.stateReady,

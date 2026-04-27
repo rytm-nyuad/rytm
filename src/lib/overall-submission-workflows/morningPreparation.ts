@@ -5,6 +5,7 @@ import { ensureDailyCheckinRelation2 } from "./dailyCheckinRelation2";
 import { ensureDailyNutrition2 } from "./dailyNutrition2";
 import { build_daily_input_bundle_v1 } from "./inputBundleV1";
 import { ensureJournalSummary2 } from "./journalSummary2";
+import { evaluatePreviousStateHistoryActions } from "./actionOutcomes";
 import { updateState } from "./state_engine";
 
 export type RunMorningPreparationParams = {
@@ -23,6 +24,7 @@ export type RunMorningPreparationResult = {
   journal: Awaited<ReturnType<typeof ensureJournalSummary2>>;
   bundle: Awaited<ReturnType<typeof build_daily_input_bundle_v1>>;
   state: Awaited<ReturnType<typeof updateState>>;
+  previousActionOutcomes: Awaited<ReturnType<typeof evaluatePreviousStateHistoryActions>>;
 };
 
 export async function runMorningPreparationForSubmissionDate(
@@ -68,6 +70,14 @@ export async function runMorningPreparationForSubmissionDate(
     supabaseAdmin,
   });
 
+  const previousActionOutcomes = await evaluatePreviousStateHistoryActions({
+    client: supabaseAdmin,
+    userId: params.userId,
+    submissionDate: params.submissionLocalDate,
+    inputBundle: bundle.row.bundle_json,
+    currentStateRow: state.currentStateRow,
+  });
+
   return {
     submissionLocalDate: params.submissionLocalDate,
     processedLocalDate,
@@ -77,5 +87,6 @@ export async function runMorningPreparationForSubmissionDate(
     journal,
     bundle,
     state,
+    previousActionOutcomes,
   };
 }
