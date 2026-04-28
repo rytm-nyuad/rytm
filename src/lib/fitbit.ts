@@ -58,6 +58,15 @@ export class FitbitApiError extends Error {
   }
 }
 
+export class FitbitRateLimitError extends Error {
+  retryAfter?: number; // seconds until reset, if provided by Fitbit
+  constructor(message = "Fitbit API rate limit exceeded (429).", retryAfter?: number) {
+    super(message);
+    this.name = "FitbitRateLimitError";
+    this.retryAfter = retryAfter;
+  }
+}
+
 // --------------------
 // Small utilities
 // --------------------
@@ -299,6 +308,16 @@ async function fitbitFetchJson({
 
   if ((status === 404 || status === 204) && allow404) {
     return null;
+  }
+
+  if (status === 429) {
+    // Parse Retry-After if Fitbit includes it (they sometimes do in headers,
+    // but since we only have the parsed JSON here we use a safe default).
+    const retryAfter = typeof json?.['retry-after'] === 'number' ? json['retry-after'] : undefined;
+    throw new FitbitRateLimitError(
+      `Fitbit rate limit hit for ${path}`,
+      retryAfter
+    );
   }
 
   if (status && status >= 400) {
@@ -790,6 +809,13 @@ export async function syncFitbitDailyForUser(
         throw err;
       }
       if (err instanceof FitbitNotConnectedError) {
+        throw err;
+      }
+      // Rate limit: no point continuing further dates in this sync run.
+      if (err instanceof FitbitRateLimitError) {
+        console.warn(`[Fitbit] Rate limited on ${dateLocal}. Aborting sync run.`, {
+          retryAfter: err.retryAfter,
+        });
         throw err;
       }
       console.error(`[Fitbit] Error syncing for date ${dateLocal}:`, err);

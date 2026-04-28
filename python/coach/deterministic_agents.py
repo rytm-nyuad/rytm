@@ -117,14 +117,13 @@ class FeatureAgent:
                 'feature_key': feature_key,
                 'value_num': feature_data.get('value_num'),
                 'value_text': feature_data.get('value_text'),
+                'value_json': feature_data.get('value_json'),
                 'unit': feature_data.get('unit'),
                 'confidence': feature_data.get('confidence', 1.0),
                 'source_lineage_json': {'computed_at': datetime.utcnow().isoformat()},
                 'ingestion_run_id': ingestion_run_id,
                 'feature_layer': 'derived'
             }
-            if feature_data.get('value_json') is not None:
-                row['value_json'] = feature_data['value_json']
             rows.append(row)
         
         if rows:

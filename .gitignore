@@ -2,6 +2,7 @@
 node_modules/
 .pnp
 .pnp.js
+.venv
 
 # Testing
 coverage/
@@ -38,7 +39,9 @@ next-env.d.ts
 Thumbs.db
 
 # Python coach pipeline
+python/coach/.venv/
 python/coach/venv/
 python/coach/__pycache__/
 python/coach/*.pyc
 python/__pycache__/
+python/coach/.venv.broken.1776121295/

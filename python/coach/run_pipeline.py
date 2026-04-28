@@ -29,13 +29,20 @@ def main():
     ingestion_run_id = sys.argv[4]
     
     # Initialize Supabase client
-    supabase_url = os.getenv('NEXT_PUBLIC_SUPABASE_URL')
-    supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-    openrouter_key = os.getenv('OPENROUTER_API_KEY')
+    required_env = {
+        'NEXT_PUBLIC_SUPABASE_URL': os.getenv('NEXT_PUBLIC_SUPABASE_URL'),
+        'SUPABASE_SERVICE_ROLE_KEY': os.getenv('SUPABASE_SERVICE_ROLE_KEY'),
+        'OPENROUTER_API_KEY': os.getenv('OPENROUTER_API_KEY'),
+    }
+    missing_env = [name for name, value in required_env.items() if not value]
 
-    if not all([supabase_url, supabase_key, openrouter_key]):
-        print(json.dumps({'error': 'Missing environment variables'}))
+    if missing_env:
+        print(json.dumps({'error': 'Missing environment variables', 'missing': missing_env}))
         sys.exit(1)
+
+    supabase_url = required_env['NEXT_PUBLIC_SUPABASE_URL']
+    supabase_key = required_env['SUPABASE_SERVICE_ROLE_KEY']
+    openrouter_key = required_env['OPENROUTER_API_KEY']
 
     client = create_client(supabase_url, supabase_key)
 

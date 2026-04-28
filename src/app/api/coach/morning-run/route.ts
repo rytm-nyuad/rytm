@@ -154,8 +154,14 @@ function runPythonPipeline(
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(process.cwd(), 'python', 'coach', 'run_pipeline.py');
-    const venvPython = path.join(process.cwd(), 'python', 'coach', 'venv', 'bin', 'python3');
-    const pythonBin = fs.existsSync(venvPython) ? venvPython : 'python3';
+    const pythonCandidates = [
+      path.join(process.cwd(), 'python', 'coach', '.venv', 'bin', 'python3'),
+      path.join(process.cwd(), 'python', 'coach', 'venv', 'bin', 'python3'),
+      'python3',
+    ];
+    const pythonBin = pythonCandidates.find((candidate) =>
+      candidate === 'python3' || fs.existsSync(candidate)
+    ) || 'python3';
 
     const python = spawn(pythonBin, [scriptPath, userId, forDate, overallScore.toString(), ingestionRunId]);
 

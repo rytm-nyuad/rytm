@@ -12,18 +12,20 @@ import { ActiveGoal, DailyPlan } from "@/lib/coach/types";
 import { CalendarPicker } from "@/components/coach/CalendarPicker";
 import { Zap, Target, RefreshCw, AlertCircle, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { formatLocalDate, getBrowserTimeZone } from "@/lib/time";
 
 type PageState = "loading" | "no-goal" | "no-checkin" | "no-plan" | "generating" | "plan-ready";
 
 function getTodayLocal() {
-  return new Date().toISOString().split("T")[0];
+  return formatLocalDate(new Date(), getBrowserTimeZone());
 }
 
 function formatDateLabel(dateStr: string): string {
+  const tz = getBrowserTimeZone();
   const today = getTodayLocal();
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split("T")[0];
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayStr = formatLocalDate(yesterdayDate, tz);
 
   if (dateStr === today) return "Today";
   if (dateStr === yesterdayStr) return "Yesterday";

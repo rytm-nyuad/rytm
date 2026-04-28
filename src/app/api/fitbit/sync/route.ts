@@ -18,6 +18,7 @@ import {
   syncFitbitDailyForUser,
   FitbitNotConnectedError,
   FitbitAuthRevokedError,
+  FitbitRateLimitError,
 } from "@/lib/fitbit";
 
 export async function POST(req: NextRequest) {
@@ -88,6 +89,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { ok: false, error: "FITBIT_AUTH_REVOKED" },
         { status: 400 }
+      );
+    }
+
+    if (err instanceof FitbitRateLimitError) {
+      const headers: Record<string, string> = {};
+      if (err.retryAfter) headers["Retry-After"] = String(err.retryAfter);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "FITBIT_RATE_LIMITED",
+          message: "Fitbit API rate limit reached. Try again later.",
+          retryAfter: err.retryAfter ?? null,
+        },
+        { status: 429, headers }
       );
     }
 
