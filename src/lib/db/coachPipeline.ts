@@ -80,6 +80,7 @@ export async function getTodayPlan(userId: string, forDate: string): Promise<Dai
     plan_id: plan.plan_id,
     morning_message: plan.morning_message,
     for_date: plan.for_date,
+    updated_at: plan.updated_at,
     selected_domains: plan.selected_domains_json || plan.selected_domains || [],
     actions: parsedActions,
   };

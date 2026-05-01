@@ -36,6 +36,7 @@ export interface DailyPlan {
   plan_id: string;
   morning_message: string;
   for_date: string;
+  updated_at?: string;
   selected_domains: string[];
   actions: CoachAction[];
 }

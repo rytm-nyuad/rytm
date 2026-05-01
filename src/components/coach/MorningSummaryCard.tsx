@@ -1,7 +1,7 @@
 "use client";
 
 import { CoachAction, DailyPlan } from "@/lib/coach/types";
-import { Zap, Droplets, Moon, Brain, Activity, Target, Flame, Clock } from "lucide-react";
+import { Zap, Droplets, Moon, Brain, Activity, Target, Flame, Clock, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -38,9 +38,30 @@ const EFFORT_COLORS: Record<string, string> = {
 interface MorningSummaryCardProps {
   plan: DailyPlan;
   energyMode?: string;
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
 }
 
-export function MorningSummaryCard({ plan, energyMode }: MorningSummaryCardProps) {
+function formatGeneratedAt(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export function MorningSummaryCard({
+  plan,
+  energyMode,
+  onRegenerate,
+  isRegenerating = false,
+}: MorningSummaryCardProps) {
+  const generatedAt = formatGeneratedAt(plan.updated_at);
+
   return (
     <div className="space-y-6">
       {/* Morning Message */}
@@ -51,9 +72,28 @@ export function MorningSummaryCard({ plan, energyMode }: MorningSummaryCardProps
             <Zap className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold dark:text-zinc-500 text-zinc-400 uppercase tracking-widest mb-2">
-              Morning Brief — {plan.for_date}
-            </p>
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold dark:text-zinc-500 text-zinc-400 uppercase tracking-widest">
+                  Morning Brief — {plan.for_date}
+                </p>
+                {generatedAt && (
+                  <p className="mt-1 text-xs dark:text-zinc-500 text-zinc-500">
+                    Generated at {generatedAt}
+                  </p>
+                )}
+              </div>
+              {onRegenerate && (
+                <button
+                  onClick={onRegenerate}
+                  disabled={isRegenerating}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 bg-zinc-100 text-zinc-700 hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? "animate-spin" : ""}`} />
+                  Regenerate
+                </button>
+              )}
+            </div>
             <div className="dark:text-zinc-100 text-zinc-800 text-sm leading-relaxed">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}

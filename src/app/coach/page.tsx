@@ -10,7 +10,7 @@ import { GoalInterviewModal } from "@/components/coach/GoalInterviewModal";
 import { CoachChatPanel } from "@/components/coach/CoachChatPanel";
 import { ActiveGoal, DailyPlan } from "@/lib/coach/types";
 import { CalendarPicker } from "@/components/coach/CalendarPicker";
-import { Zap, Target, RefreshCw, AlertCircle, Loader2, Sparkles, ArrowRight } from "lucide-react";
+import { Zap, Target, AlertCircle, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 type PageState = "loading" | "no-goal" | "no-checkin" | "no-plan" | "generating" | "plan-ready";
@@ -129,15 +129,8 @@ export default function CoachPage() {
         setPageState("no-plan");
         return;
       }
-      setPlan({
-        plan_id: data.plan_id,
-        morning_message: data.morning_message,
-        for_date: selectedDate,
-        selected_domains: data.debug?.selected_domains || [],
-        actions: data.actions || [],
-      });
       setEnergyMode(data.debug?.energy_mode);
-      setPageState("plan-ready");
+      await loadCoachData();
     } catch (err: any) {
       setGenerateError(err.message || "Something went wrong");
       setPageState("no-plan");
@@ -171,18 +164,22 @@ export default function CoachPage() {
           <GoalBanner
             goal={goal}
             onSetGoal={() => setShowGoalModal(true)}
-            onRegenerate={handleGeneratePlan}
-            isGenerating={generating}
-            planExists={pageState === "plan-ready"}
           />
 
           {/* Morning Summary Section */}
           <section>
             {/* Section header with date picker */}
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xs font-semibold dark:text-zinc-500 text-zinc-400 uppercase tracking-widest">
-                Morning Summary
-              </h2>
+              <div>
+                <h2 className="text-xs font-semibold dark:text-zinc-500 text-zinc-400 uppercase tracking-widest">
+                  Morning Summary
+                </h2>
+                {pageState === "plan-ready" && plan && (
+                  <p className="mt-1 text-xs dark:text-zinc-500 text-zinc-500">
+                    Saved brief for {formatDateLabel(plan.for_date)}. Use the calendar to revisit prior mornings, or regenerate this date if you want a fresh run.
+                  </p>
+                )}
+              </div>
               <CalendarPicker
                 selectedDate={selectedDate}
                 maxDate={today}
@@ -243,7 +240,7 @@ export default function CoachPage() {
               <EmptyState
                 icon={Sparkles}
                 title={`No plan for ${formatDateLabel(selectedDate)} yet`}
-                description="Generate your personalized morning brief and action plan."
+                description="Generate your personalized morning brief and action plan. Previously generated briefs remain available from the calendar."
                 action={
                   <button
                     onClick={handleGeneratePlan}
@@ -268,7 +265,12 @@ export default function CoachPage() {
             )}
 
             {pageState === "plan-ready" && plan && (
-              <MorningSummaryCard plan={plan} energyMode={energyMode} />
+              <MorningSummaryCard
+                plan={plan}
+                energyMode={energyMode}
+                onRegenerate={handleGeneratePlan}
+                isRegenerating={generating}
+              />
             )}
           </section>
 
@@ -293,15 +295,9 @@ export default function CoachPage() {
 function GoalBanner({
   goal,
   onSetGoal,
-  onRegenerate,
-  isGenerating,
-  planExists,
 }: {
   goal: ActiveGoal | null;
   onSetGoal: () => void;
-  onRegenerate: () => void;
-  isGenerating: boolean;
-  planExists: boolean;
 }) {
   return (
     <div className="flex items-center justify-between rounded-xl dark:bg-zinc-900 bg-white border dark:border-zinc-800 border-zinc-200 px-4 py-3">
@@ -321,16 +317,6 @@ function GoalBanner({
       <div className="flex items-center gap-2">
         {goal ? (
           <>
-            {planExists && (
-              <button
-                onClick={onRegenerate}
-                disabled={isGenerating}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium dark:text-zinc-400 text-zinc-500 dark:hover:bg-zinc-800 hover:bg-zinc-100 disabled:opacity-50 transition-colors"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : ""}`} />
-                Regenerate
-              </button>
-            )}
             <button
               onClick={onSetGoal}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium dark:text-zinc-300 text-zinc-700 dark:bg-zinc-800 bg-zinc-100 dark:hover:bg-zinc-700 hover:bg-zinc-200 transition-colors"

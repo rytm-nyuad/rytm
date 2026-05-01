@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatLocalDate, getCanonicalTimeZone } from "@/lib/time";
-import { refreshFitbitProfileTimezoneForUser } from "@/lib/fitbit";
+import {
+  FitbitAuthRevokedError,
+  FitbitNotConnectedError,
+  refreshFitbitProfileTimezoneForUser,
+  syncFitbitDailyForUser,
+} from "@/lib/fitbit";
 import {
   queueForwardRecomputeFromChangedDate,
   runMorningPreparationForSubmissionDate,
@@ -68,12 +73,47 @@ export async function POST(request: NextRequest) {
     }
 
     const todayLocalDate = formatLocalDate(new Date(), canonicalTimezone);
+    let fitbitSync:
+      | { ok: true; timezone: string; syncedDates: string[]; lastSyncedAt: string }
+      | { ok: false; error: string; message: string }
+      | null = null;
     let morningPreparation:
       | { ok: true; processedLocalDate: string; shouldRunSummary: boolean }
       | { ok: false; error: string }
       | null = null;
 
     if (localDate === todayLocalDate) {
+      try {
+        const syncResult = await syncFitbitDailyForUser(supabaseAdmin, user.id, { daysBack: 2 });
+        fitbitSync = {
+          ok: true,
+          timezone: syncResult.timezone,
+          syncedDates: syncResult.syncedDates,
+          lastSyncedAt: syncResult.lastSyncedAt,
+        };
+      } catch (fitbitSyncError: any) {
+        if (fitbitSyncError instanceof FitbitNotConnectedError) {
+          fitbitSync = {
+            ok: false,
+            error: "FITBIT_NOT_CONNECTED",
+            message: fitbitSyncError.message,
+          };
+        } else if (fitbitSyncError instanceof FitbitAuthRevokedError) {
+          fitbitSync = {
+            ok: false,
+            error: "FITBIT_AUTH_REVOKED",
+            message: fitbitSyncError.message,
+          };
+        } else {
+          console.error("[Dashboard] Fitbit sync before morning preparation failed:", fitbitSyncError);
+          fitbitSync = {
+            ok: false,
+            error: "FITBIT_SYNC_FAILED",
+            message: fitbitSyncError?.message || "Unknown Fitbit sync error",
+          };
+        }
+      }
+
       try {
         const result = await runMorningPreparationForSubmissionDate({
           userId: user.id,
@@ -108,6 +148,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       localDate,
       timezoneRefresh,
+      fitbitSync,
       morningPreparation,
     });
   } catch (error: any) {
