@@ -1,0 +1,165 @@
+{
+  "run_id": "generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z",
+  "created_at": "2026-05-06T15:19:51.023Z",
+  "user_id": "bf8434ee-b495-4da4-96d0-d919c5b4a957",
+  "start_submission_date": "2026-03-12",
+  "end_submission_date": "2026-03-28",
+  "prompt_version": "v3",
+  "candidate_model": "deepseek/deepseek-v3.2",
+  "judge_inputs_dir": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs",
+  "entries": [
+    {
+      "submissionDate": "2026-03-12",
+      "sourceLocalDate": "2026-03-11",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "6f53666e-07af-4eba-aaca-625a27a522eb",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-12__6f53666e-07af-4eba-aaca-625a27a522eb.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-13",
+      "sourceLocalDate": "2026-03-12",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "dcf5cfc1-c302-4e2b-b8be-579a8dbde801",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-13__dcf5cfc1-c302-4e2b-b8be-579a8dbde801.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-14",
+      "sourceLocalDate": "2026-03-13",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "f0666f64-a1d8-466b-91fe-da6b8226de9a",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-14__f0666f64-a1d8-466b-91fe-da6b8226de9a.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-15",
+      "sourceLocalDate": "2026-03-14",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "edccb9c7-204a-4885-bac3-740219e8dbda",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-15__edccb9c7-204a-4885-bac3-740219e8dbda.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-16",
+      "sourceLocalDate": "2026-03-15",
+      "timezone": "Africa/Cairo",
+      "status": "failed",
+      "planId": null,
+      "judgeInputPath": null,
+      "error": "No overall_score found for 2026-03-16"
+    },
+    {
+      "submissionDate": "2026-03-17",
+      "sourceLocalDate": "2026-03-16",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "00380601-97aa-4389-a129-f39497ecaf13",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-17__00380601-97aa-4389-a129-f39497ecaf13.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-18",
+      "sourceLocalDate": "2026-03-17",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "1a3bcc4e-3b56-47ad-8a66-12011f090e48",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-18__1a3bcc4e-3b56-47ad-8a66-12011f090e48.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-19",
+      "sourceLocalDate": "2026-03-18",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "983a8643-b0de-4608-ae56-27be2700efcf",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-19__983a8643-b0de-4608-ae56-27be2700efcf.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-20",
+      "sourceLocalDate": "2026-03-19",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "61292801-003f-41b5-ab35-ef25a0ed8290",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-20__61292801-003f-41b5-ab35-ef25a0ed8290.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-21",
+      "sourceLocalDate": "2026-03-20",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "f5757c79-85c2-4f32-a444-76a0e9d2637a",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-21__f5757c79-85c2-4f32-a444-76a0e9d2637a.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-22",
+      "sourceLocalDate": "2026-03-21",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "0040d42c-b2da-44e9-9ba9-e26adf0d9e31",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-22__0040d42c-b2da-44e9-9ba9-e26adf0d9e31.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-23",
+      "sourceLocalDate": "2026-03-22",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "4b623df0-f101-497d-be79-0016bb5a258c",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-23__4b623df0-f101-497d-be79-0016bb5a258c.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-24",
+      "sourceLocalDate": "2026-03-23",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "2f90f3ae-c35a-44d7-a9eb-c8beb3511304",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-24__2f90f3ae-c35a-44d7-a9eb-c8beb3511304.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-25",
+      "sourceLocalDate": "2026-03-24",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "8d918950-8f29-4af9-bd2f-3514326a555e",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-25__8d918950-8f29-4af9-bd2f-3514326a555e.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-26",
+      "sourceLocalDate": "2026-03-25",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "856508fe-5238-42b9-813f-4ee334b3a7b7",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-26__856508fe-5238-42b9-813f-4ee334b3a7b7.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-27",
+      "sourceLocalDate": "2026-03-26",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "76ec9397-b384-4522-bcfb-864daf5f66a6",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-27__76ec9397-b384-4522-bcfb-864daf5f66a6.json",
+      "error": null
+    },
+    {
+      "submissionDate": "2026-03-28",
+      "sourceLocalDate": "2026-03-27",
+      "timezone": "Africa/Cairo",
+      "status": "generated",
+      "planId": "486749c6-1c4d-4443-90ca-bbcb2659ffdc",
+      "judgeInputPath": "/home/nyuad/rytm/python/coach/evals/runs/generation/generation__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-03-12__2026-03-28__2026-05-06T14-03-17-175Z/judge_inputs/2026-03-28__486749c6-1c4d-4443-90ca-bbcb2659ffdc.json",
+      "error": null
+    }
+  ]
+}

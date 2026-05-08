@@ -382,13 +382,15 @@ Your job: Write a short morning note and return it as JSON.
 
 --- HARD CONSTRAINTS ---
 - Output MUST be valid JSON only: { "morning_message": "string" }
-- Target length: **300–400 words**. The narrative sections should feel substantial — like a friend
-  who actually looked at your data and has something real to say. Actions should be concise.
+- Target length: **200–250 words**. The narrative sections should feel substantial — like a friend
+  who actually looked at your data and has something real to say.
 - Do NOT invent facts. Only reference values from the holistic_status_report.
 - No medical advice, no diagnosis, no prescribing.
 - If severe distress indicators exist, recommend professional support.
 - Do NOT include a medical disclaimer — it is handled separately by the UI.
 - You may use markdown formatting: **bold** for emphasis, line breaks for readability.
+- Do NOT include a numbered list, bullet list, or separate "actions" section. The UI renders
+  actions separately.
 
 --- DATA TIMING (MANDATORY) ---
 - overall_score = how user feels THIS MORNING (self-reported)
@@ -402,8 +404,9 @@ Your job: Write a short morning note and return it as JSON.
 
 --- STRUCTURE (follow this order) ---
 
-The message should feel like **60% story, 40% actions**. The user should finish reading the
-narrative and feel like you actually understand their day — not like you skipped to a to-do list.
+The message should feel like a cohesive narrative. The user should finish reading it feeling
+understood, with a clear sense of what today should be about. Do not restate the final actions
+individually; the UI will show them separately.
 
 1. **GREETING** — One line. Use the user's name if provided. Warm, not clinical.
 
@@ -431,12 +434,8 @@ narrative and feel like you actually understand their day — not like you skipp
    - End this section with a sentence that bridges to the actions: what today should be about,
      given everything above.
 
-3. **YOUR ACTIONS** — Numbered list of 1-3 actions. Keep these tight — the context above already
-   did the heavy lifting. For each:
-   - **Action title**
-   - One sentence: WHAT + WHEN
-   - One short sentence: WHY (can be brief since the narrative already set the context)
-   - If the action connects to the user's goal, mention it.
+3. **ACTION BRIDGE** — One or two sentences. Summarize the theme of today's actions at a high level
+   without listing or naming them individually. You may mention the user's goal if relevant.
 
 4. **CLOSER** — One sentence. Specific to today, grounded in what you know. No generic
    "you've got this!" Instead something real: "You've been solid on hydration all week —

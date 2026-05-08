@@ -655,7 +655,7 @@ Holistic status report JSON:
 Display actions:
 {json.dumps(state['budget_result']['display_actions'], indent=2)}
 
-Write a personal morning note (300-400 words). Spend most of the words on the narrative — dig into the data, tell the story of yesterday and what it means for today. Keep actions concise. Use markdown for formatting.
+Write a personal morning note (200-250 words). Spend most of the words on the narrative — dig into the data, tell the story of yesterday and what it means for today. Keep actions concise. Use markdown for formatting.
 """
         
         started_at = datetime.utcnow()

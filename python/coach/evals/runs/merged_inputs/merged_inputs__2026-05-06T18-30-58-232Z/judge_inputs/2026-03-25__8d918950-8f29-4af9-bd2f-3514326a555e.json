@@ -1,0 +1,2919 @@
+{
+  "export_version": "v1",
+  "exported_at": "2026-05-06T15:07:13.872Z",
+  "user_id": "bf8434ee-b495-4da4-96d0-d919c5b4a957",
+  "morning_briefing_id": "8d918950-8f29-4af9-bd2f-3514326a555e",
+  "brief_date": "2026-03-25",
+  "source_local_date": "2026-03-24",
+  "timezone": "Africa/Cairo",
+  "candidate_model": "deepseek/deepseek-v3.2",
+  "candidate_prompt_version": "v3",
+  "bundle_version": "v1",
+  "state_version": "v1",
+  "goal_context": {
+    "goal_id": "90baa305-92ca-4707-a4ca-cd51b5a40842",
+    "title": "Improve Sleep Schedule",
+    "goal_type": "sleep",
+    "status": "active",
+    "goal_spec_json": {
+      "safety": {
+        "escalation_triggers": [],
+        "medical_disclaimer_required": true
+      },
+      "budgets": {
+        "max_message_words": 400,
+        "max_actions_per_day": 4,
+        "max_domains_per_day": 2,
+        "target_actions_per_day": 3
+      },
+      "goal_type": "sleep",
+      "goal_title": "Improve Sleep Schedule",
+      "preferences": {
+        "tone": "coach",
+        "exercise_style": "intense",
+        "nutrition_style": "balanced",
+        "wake_time_preference": null,
+        "sleep_time_preference": null
+      },
+      "created_from": {
+        "assumptions": [],
+        "user_input_text": "improve sleep schedule",
+        "missing_info_questions": []
+      },
+      "goal_version": 1,
+      "goal_statement": "Sleep a minimum of 6 hours consistently every night",
+      "primary_domains": [
+        "sleep"
+      ],
+      "target_outcomes": [
+        {
+          "name": "overall_score",
+          "target_type": "increase",
+          "target_range": [
+            6,
+            8
+          ],
+          "time_horizon_days": 30
+        }
+      ],
+      "secondary_domains": [],
+      "leading_indicators": [
+        {
+          "direction": "up",
+          "feature_key": "sleep_duration_hours"
+        },
+        {
+          "direction": "up",
+          "feature_key": "sleep_efficiency"
+        },
+        {
+          "direction": "up",
+          "feature_key": "sleep_score"
+        }
+      ],
+      "constraints_defaults": {
+        "avoid_topics": [],
+        "hard_constraints": [
+          "tight schedule",
+          "high workload",
+          "6am basketball practices midweek"
+        ],
+        "soft_constraints": [],
+        "max_effort_per_day": "medium",
+        "time_budget_minutes": 20
+      }
+    },
+    "created_at": "2026-04-11T18:49:25.399645+00:00"
+  },
+  "full_morning_briefing": {
+    "definition": "Evaluate the morning_message together with the same-day generated_actions, because both are shown to the user as one morning briefing experience.",
+    "morning_message": "Good morning Ameena — 89/100 this morning tells me you're feeling strong and ready.\n\nLast night was a recovery win: **9.55 hours** of deep, efficient sleep (88% efficiency) and your HRV hit a solid 108 — your body absolutely recharged. That's the good news. The twist is that you fell asleep after 11:30 PM, continuing a really volatile sleep schedule. Meanwhile, yesterday told a different story: your stress was high at 69/100, your coping capacity dropped to 44, and you felt Annoyed and Tense. That's a classic **stress-recovery dissociation** — your physiology is strong, but your mind is carrying a heavy load.\n\nHere's where it connects: yesterday you were also extremely sedentary (15 hours sitting) with zero moderate activity and only 1866 steps. When high stress meets prolonged stillness, it often creates a spiral — the body recovers but the mind doesn't get the movement it needs to process tension.\n\nToday is about bridging that gap. You have this great physiological foundation from last night, so let's use that energy to gently shift both your movement patterns and your stress response.\n\nThe actions today focus on simple, rhythmic breaks — a walk to disrupt the sedentary pattern, breathing to intercept stress spikes, and an evening screen boundary to protect your sleep timing.\n\nYou've got the recovery fuel in the tank; today's about directing it toward movement and calm.",
+    "generated_actions": [
+      {
+        "tags": [
+          "activity",
+          "movement",
+          "lunch",
+          "sedentary_break"
+        ],
+        "when": "midday",
+        "title": "Take a 12-minute brisk walk after lunch",
+        "domain": "activity",
+        "evidence": {
+          "state_refs": [
+            "slopes.steps.slope_fast",
+            "domain_summaries.activity.status"
+          ],
+          "bundle_refs": [
+            "watch.activity.steps",
+            "watch.activity.mvpa_minutes",
+            "watch.activity.sedentary_minutes"
+          ],
+          "history_refs": []
+        },
+        "priority": 1,
+        "action_id": "14073a105826692a",
+        "fallbacks": [
+          "If weather prevents outdoor walking, walk indoors for 12 minutes (around your home/office)",
+          "If 12 minutes feels too long, do 8 minutes but maintain brisk pace"
+        ],
+        "rationale": "YESTERDAY's activity was critically poor with 0 MVPA, only 1866 steps (-556 slope_fast decline), and 900 sedentary minutes. This directly counters the sedentary stress spiral identified in the holistic report, disrupts the sharp decline in movement, and leverages your high subjective energy (89) to add moderate-effort movement that fits within your tight schedule. The 12-minute duration is specific and achievable.",
+        "evaluation": {
+          "mode": "auto",
+          "signal_refs": [
+            {
+              "path": "watch.activity.steps",
+              "label": "steps higher than yesterday",
+              "source": "bundle",
+              "operator": ">",
+              "threshold_num": 1866
+            },
+            {
+              "path": "watch.activity.mvpa_minutes",
+              "label": "some MVPA minutes logged",
+              "source": "bundle",
+              "operator": ">",
+              "threshold_num": 0
+            }
+          ],
+          "completion_prompt": null,
+          "success_definition": "Today's step count exceeds yesterday's critically low 1866 steps, and at least some MVPA minutes are recorded (breaking the 0 MVPA streak)."
+        },
+        "assumptions": [
+          "You have safe walking routes available",
+          "You can spare 12 minutes after lunch"
+        ],
+        "description": "When you finish your lunch today, immediately put on your shoes and walk outside for exactly 12 minutes at a brisk pace. Focus on moving your body rather than distance.",
+        "effort_level": "medium",
+        "action_source": "generated",
+        "cooldown_logic": {
+          "max_times_per_week": 5,
+          "cooldown_days_after_fail": 0,
+          "cooldown_days_after_success": 1
+        },
+        "evaluation_mode": "auto",
+        "requires_user_rating": false,
+        "feasibility_constraints": {
+          "must_avoid": [
+            "checking phone during walk",
+            "making it strenuous or exhausting"
+          ],
+          "time_minutes": 12,
+          "requires_equipment": [
+            "comfortable shoes"
+          ]
+        }
+      },
+      {
+        "tags": [
+          "stress",
+          "breathing",
+          "implementation_intention",
+          "microbreak"
+        ],
+        "when": "anytime",
+        "title": "When you feel tension rising, do 3 rounds of box breathing",
+        "domain": "stress",
+        "evidence": {
+          "state_refs": [
+            "slopes.stress_score.slope_fast",
+            "slopes.stress_minus_coping.slope_fast",
+            "domain_summaries.subjective.status"
+          ],
+          "bundle_refs": [
+            "checkin.raw.stress_score",
+            "checkin.raw.coping_capacity_score",
+            "checkin.raw.emotions"
+          ],
+          "history_refs": []
+        },
+        "priority": 2,
+        "action_id": "32d7a8b7dc44ffc9",
+        "fallbacks": [
+          "If 3 rounds feels too long, do just 1 complete cycle (16 seconds)",
+          "If you forget during stress, do it as soon as you remember"
+        ],
+        "rationale": "YESTERDAY's subjective state showed high stress (69) with low coping capacity (44) and negative emotions (Annoyed, Tense), with a 25-point stress-coping gap. The stress-recovery dissociation signal shows psychological stress isn't aligned with your strong physiological recovery. This implementation intention provides a concrete tool to interrupt the stress spiral when it occurs, addressing the 'address high stress and low coping capacity gap' soft constraint directly.",
+        "evaluation": {
+          "mode": "user_rating",
+          "signal_refs": [],
+          "completion_prompt": "Did you use the box breathing technique when you felt stress or tension today?",
+          "success_definition": "User reports intentionally using the breathing technique at least once when noticing stress or tension, creating a brief pause in the stress response."
+        },
+        "assumptions": [
+          "You can safely pause briefly during work",
+          "You can breathe comfortably"
+        ],
+        "description": "When you notice feelings of annoyance, tension, or stress building during work, immediately pause and perform 3 cycles of box breathing: inhale 4 seconds, hold 4 seconds, exhale 4 seconds, hold 4 seconds. Focus only on your breath.",
+        "effort_level": "low",
+        "action_source": "generated",
+        "cooldown_logic": {
+          "max_times_per_week": 7,
+          "cooldown_days_after_fail": 0,
+          "cooldown_days_after_success": 1
+        },
+        "evaluation_mode": "user_rating",
+        "requires_user_rating": true,
+        "feasibility_constraints": {
+          "must_avoid": [
+            "continuing stressful task while breathing",
+            "rushing through cycles"
+          ],
+          "time_minutes": 2,
+          "requires_equipment": []
+        }
+      },
+      {
+        "tags": [
+          "sleep",
+          "sleep_hygiene",
+          "digital_detox",
+          "wind_down",
+          "goal_domain"
+        ],
+        "when": "evening",
+        "title": "Set a 9:45 PM 'digital sunset' alarm and read a physical book for 15 minutes",
+        "domain": "sleep",
+        "evidence": {
+          "state_refs": [
+            "slopes.sleep_onset_time_minutes.slope_fast",
+            "domain_summaries.sleep.observation",
+            "day_constraints.soft_constraints"
+          ],
+          "bundle_refs": [
+            "watch.sleep.sleep_onset_time_minutes",
+            "watch.sleep.sleep_duration_hours"
+          ],
+          "history_refs": []
+        },
+        "priority": 3,
+        "action_id": "96a6c2cda43e164f",
+        "fallbacks": [
+          "If 9:45 PM is too early, set for 10:00 PM but commit to the screen boundary",
+          "If no book available, write in a journal or do light stretching in dim light"
+        ],
+        "rationale": "LAST NIGHT's sleep was excellent in duration (9.55h) and efficiency (88.02%) but occurred at an extremely late and volatile time (23:31 onset, +128 slope_fast volatility). This screen boundary directly addresses the 'volatile sleep schedule with strong recovery' cross-domain signal, reinforces the 'prioritize wind-down routine before late bedtime' soft constraint, and serves your goal domain of sleep by creating structure to prevent repeat of extreme schedule instability while preserving sleep quality.",
+        "evaluation": {
+          "mode": "mixed",
+          "signal_refs": [
+            {
+              "path": "watch.sleep.sleep_onset_time_minutes",
+              "label": "sleep onset earlier than last night's 23:31",
+              "source": "bundle",
+              "operator": "<",
+              "threshold_num": 1411
+            }
+          ],
+          "completion_prompt": "Did you honor the 9:45 PM screen boundary and read for 15 minutes?",
+          "success_definition": "User reports avoiding screens after 9:45 PM and engaging in screen-free reading, aiming for earlier sleep onset than last night's extremely late 23:31 to address schedule volatility."
+        },
+        "assumptions": [
+          "You have a smartphone with alarms",
+          "You have access to non-screen reading material",
+          "You have dim lighting available"
+        ],
+        "description": "When your phone alarm goes off at 9:45 PM, immediately put away all screens (phone, laptop, TV). Spend the next 15 minutes reading a physical book or magazine under a soft lamp or dim light.",
+        "effort_level": "medium",
+        "action_source": "generated",
+        "cooldown_logic": {
+          "max_times_per_week": 7,
+          "cooldown_days_after_fail": 0,
+          "cooldown_days_after_success": 1
+        },
+        "evaluation_mode": "mixed",
+        "requires_user_rating": true,
+        "feasibility_constraints": {
+          "must_avoid": [
+            "using any screens after 9:45 PM",
+            "bright overhead lights",
+            "checking phone notifications"
+          ],
+          "time_minutes": 15,
+          "requires_equipment": [
+            "smartphone/alarm",
+            "book/magazine",
+            "bedside lamp"
+          ]
+        }
+      },
+      {
+        "tags": [
+          "activity",
+          "microbreak",
+          "sedentary_break",
+          "implementation_intention",
+          "focus"
+        ],
+        "when": "afternoon",
+        "title": "Set a 50-minute 'stand and stretch' timer during your deepest work period",
+        "domain": "activity",
+        "evidence": {
+          "state_refs": [
+            "day_constraints.hard_constraints",
+            "cross_domain_signals.sedentary_stress_spiral.observation"
+          ],
+          "bundle_refs": [
+            "watch.activity.sedentary_minutes",
+            "watch.activity.steps"
+          ],
+          "history_refs": []
+        },
+        "priority": 5,
+        "action_id": "67226c7f3dbfa3ca",
+        "fallbacks": [
+          "If timer is disruptive, take the break after completing a natural task",
+          "If standing isn't possible, do seated shoulder rolls and neck stretches"
+        ],
+        "rationale": "YESTERDAY's critically low activity (1866 steps, 0 MVPA) coincided with 900 sedentary minutes and rising subjective stress—a sedentary stress spiral. This implementation intention creates rhythmic breaks to disrupt prolonged sitting during your 'high workload' and 'tight schedule', supports focus (which was low at 38 yesterday), and provides micro-movement opportunities without requiring significant time commitment.",
+        "evaluation": {
+          "mode": "user_rating",
+          "signal_refs": [],
+          "completion_prompt": "Did you use the 50-minute timer to take a standing stretch break during work?",
+          "success_definition": "User reports setting the timer and taking at least one standing stretch break when it chimed, disrupting prolonged sitting."
+        },
+        "assumptions": [
+          "You have a timer/phone",
+          "You can pause work briefly",
+          "You can stand and stretch safely"
+        ],
+        "description": "During your most focused work block today, set a timer for 50 minutes. When it chimes, stand up immediately, walk to a window or different room, and do 30 seconds of light stretching (reach for ceiling, side bends).",
+        "effort_level": "low",
+        "action_source": "generated",
+        "cooldown_logic": {
+          "max_times_per_week": 5,
+          "cooldown_days_after_fail": 0,
+          "cooldown_days_after_success": 1
+        },
+        "evaluation_mode": "user_rating",
+        "requires_user_rating": true,
+        "feasibility_constraints": {
+          "must_avoid": [
+            "ignoring the timer",
+            "working through multiple chimes",
+            "staying seated over 60 minutes"
+          ],
+          "time_minutes": 1,
+          "requires_equipment": [
+            "timer"
+          ]
+        }
+      }
+    ]
+  },
+  "morning_briefing": {
+    "plan_id": "8d918950-8f29-4af9-bd2f-3514326a555e",
+    "morning_message": "Good morning Ameena — 89/100 this morning tells me you're feeling strong and ready.\n\nLast night was a recovery win: **9.55 hours** of deep, efficient sleep (88% efficiency) and your HRV hit a solid 108 — your body absolutely recharged. That's the good news. The twist is that you fell asleep after 11:30 PM, continuing a really volatile sleep schedule. Meanwhile, yesterday told a different story: your stress was high at 69/100, your coping capacity dropped to 44, and you felt Annoyed and Tense. That's a classic **stress-recovery dissociation** — your physiology is strong, but your mind is carrying a heavy load.\n\nHere's where it connects: yesterday you were also extremely sedentary (15 hours sitting) with zero moderate activity and only 1866 steps. When high stress meets prolonged stillness, it often creates a spiral — the body recovers but the mind doesn't get the movement it needs to process tension.\n\nToday is about bridging that gap. You have this great physiological foundation from last night, so let's use that energy to gently shift both your movement patterns and your stress response.\n\nThe actions today focus on simple, rhythmic breaks — a walk to disrupt the sedentary pattern, breathing to intercept stress spikes, and an evening screen boundary to protect your sleep timing.\n\nYou've got the recovery fuel in the tank; today's about directing it toward movement and calm.",
+    "selected_domains": [
+      "stress",
+      "sleep",
+      "activity"
+    ],
+    "day_constraints": {
+      "risk_flags": [
+        "sleep_debt",
+        "low_recovery",
+        "burnout_risk",
+        "volatility",
+        "mismatch_pattern",
+        "low_data_confidence",
+        "nutrition_gap"
+      ],
+      "assumptions": [
+        "Ramadan observance with evening meals",
+        "Access to smartphone/alarms for implementation intentions",
+        "User can safely perform light movement/stretching",
+        "No medical conditions preventing basic activity or dietary changes"
+      ],
+      "energy_mode": "high",
+      "evidence_used": {
+        "activity_low": "1866 steps, 0 MVPA - significant decline from baseline",
+        "workload_high": "workload_score 67 above baseline",
+        "caffeine_pattern": "100mg total, no caffeine after 2pm (positive pattern)",
+        "sleep_onset_late": "1411 minutes (23:31) - schedule volatility",
+        "stress_coping_gap": "stress_score 69 vs coping_capacity_score 44 (25 point gap)",
+        "overall_score_high": "89 indicates high energy mode",
+        "sleep_duration_high": "9.55 hours (above goal target)",
+        "nutrition_confidence_low": "nutrition_confidence_day 0.5876",
+        "subjective_objective_mismatch": "gap_today 38, 9-day run of overall > proxy"
+      },
+      "today_priority": "sleep schedule consolidation and stress management",
+      "high_stakes_day": false,
+      "hard_constraints": [
+        "tight schedule",
+        "high workload",
+        "6am basketball practices midweek"
+      ],
+      "soft_constraints": [
+        "reinforce early caffeine cutoff (no caffeine after 2pm)",
+        "prioritize wind-down routine before late bedtime",
+        "manage high subjective energy to prevent burnout",
+        "improve nutrition logging confidence",
+        "address high stress and low coping capacity gap"
+      ],
+      "high_stakes_reason": null
+    },
+    "updated_at": "2026-05-06T15:07:12.065083+00:00"
+  },
+  "generated_actions": [
+    {
+      "tags": [
+        "activity",
+        "movement",
+        "lunch",
+        "sedentary_break"
+      ],
+      "when": "midday",
+      "title": "Take a 12-minute brisk walk after lunch",
+      "domain": "activity",
+      "evidence": {
+        "state_refs": [
+          "slopes.steps.slope_fast",
+          "domain_summaries.activity.status"
+        ],
+        "bundle_refs": [
+          "watch.activity.steps",
+          "watch.activity.mvpa_minutes",
+          "watch.activity.sedentary_minutes"
+        ],
+        "history_refs": []
+      },
+      "priority": 1,
+      "action_id": "14073a105826692a",
+      "fallbacks": [
+        "If weather prevents outdoor walking, walk indoors for 12 minutes (around your home/office)",
+        "If 12 minutes feels too long, do 8 minutes but maintain brisk pace"
+      ],
+      "rationale": "YESTERDAY's activity was critically poor with 0 MVPA, only 1866 steps (-556 slope_fast decline), and 900 sedentary minutes. This directly counters the sedentary stress spiral identified in the holistic report, disrupts the sharp decline in movement, and leverages your high subjective energy (89) to add moderate-effort movement that fits within your tight schedule. The 12-minute duration is specific and achievable.",
+      "evaluation": {
+        "mode": "auto",
+        "signal_refs": [
+          {
+            "path": "watch.activity.steps",
+            "label": "steps higher than yesterday",
+            "source": "bundle",
+            "operator": ">",
+            "threshold_num": 1866
+          },
+          {
+            "path": "watch.activity.mvpa_minutes",
+            "label": "some MVPA minutes logged",
+            "source": "bundle",
+            "operator": ">",
+            "threshold_num": 0
+          }
+        ],
+        "completion_prompt": null,
+        "success_definition": "Today's step count exceeds yesterday's critically low 1866 steps, and at least some MVPA minutes are recorded (breaking the 0 MVPA streak)."
+      },
+      "assumptions": [
+        "You have safe walking routes available",
+        "You can spare 12 minutes after lunch"
+      ],
+      "description": "When you finish your lunch today, immediately put on your shoes and walk outside for exactly 12 minutes at a brisk pace. Focus on moving your body rather than distance.",
+      "effort_level": "medium",
+      "action_source": "generated",
+      "cooldown_logic": {
+        "max_times_per_week": 5,
+        "cooldown_days_after_fail": 0,
+        "cooldown_days_after_success": 1
+      },
+      "evaluation_mode": "auto",
+      "requires_user_rating": false,
+      "feasibility_constraints": {
+        "must_avoid": [
+          "checking phone during walk",
+          "making it strenuous or exhausting"
+        ],
+        "time_minutes": 12,
+        "requires_equipment": [
+          "comfortable shoes"
+        ]
+      }
+    },
+    {
+      "tags": [
+        "stress",
+        "breathing",
+        "implementation_intention",
+        "microbreak"
+      ],
+      "when": "anytime",
+      "title": "When you feel tension rising, do 3 rounds of box breathing",
+      "domain": "stress",
+      "evidence": {
+        "state_refs": [
+          "slopes.stress_score.slope_fast",
+          "slopes.stress_minus_coping.slope_fast",
+          "domain_summaries.subjective.status"
+        ],
+        "bundle_refs": [
+          "checkin.raw.stress_score",
+          "checkin.raw.coping_capacity_score",
+          "checkin.raw.emotions"
+        ],
+        "history_refs": []
+      },
+      "priority": 2,
+      "action_id": "32d7a8b7dc44ffc9",
+      "fallbacks": [
+        "If 3 rounds feels too long, do just 1 complete cycle (16 seconds)",
+        "If you forget during stress, do it as soon as you remember"
+      ],
+      "rationale": "YESTERDAY's subjective state showed high stress (69) with low coping capacity (44) and negative emotions (Annoyed, Tense), with a 25-point stress-coping gap. The stress-recovery dissociation signal shows psychological stress isn't aligned with your strong physiological recovery. This implementation intention provides a concrete tool to interrupt the stress spiral when it occurs, addressing the 'address high stress and low coping capacity gap' soft constraint directly.",
+      "evaluation": {
+        "mode": "user_rating",
+        "signal_refs": [],
+        "completion_prompt": "Did you use the box breathing technique when you felt stress or tension today?",
+        "success_definition": "User reports intentionally using the breathing technique at least once when noticing stress or tension, creating a brief pause in the stress response."
+      },
+      "assumptions": [
+        "You can safely pause briefly during work",
+        "You can breathe comfortably"
+      ],
+      "description": "When you notice feelings of annoyance, tension, or stress building during work, immediately pause and perform 3 cycles of box breathing: inhale 4 seconds, hold 4 seconds, exhale 4 seconds, hold 4 seconds. Focus only on your breath.",
+      "effort_level": "low",
+      "action_source": "generated",
+      "cooldown_logic": {
+        "max_times_per_week": 7,
+        "cooldown_days_after_fail": 0,
+        "cooldown_days_after_success": 1
+      },
+      "evaluation_mode": "user_rating",
+      "requires_user_rating": true,
+      "feasibility_constraints": {
+        "must_avoid": [
+          "continuing stressful task while breathing",
+          "rushing through cycles"
+        ],
+        "time_minutes": 2,
+        "requires_equipment": []
+      }
+    },
+    {
+      "tags": [
+        "sleep",
+        "sleep_hygiene",
+        "digital_detox",
+        "wind_down",
+        "goal_domain"
+      ],
+      "when": "evening",
+      "title": "Set a 9:45 PM 'digital sunset' alarm and read a physical book for 15 minutes",
+      "domain": "sleep",
+      "evidence": {
+        "state_refs": [
+          "slopes.sleep_onset_time_minutes.slope_fast",
+          "domain_summaries.sleep.observation",
+          "day_constraints.soft_constraints"
+        ],
+        "bundle_refs": [
+          "watch.sleep.sleep_onset_time_minutes",
+          "watch.sleep.sleep_duration_hours"
+        ],
+        "history_refs": []
+      },
+      "priority": 3,
+      "action_id": "96a6c2cda43e164f",
+      "fallbacks": [
+        "If 9:45 PM is too early, set for 10:00 PM but commit to the screen boundary",
+        "If no book available, write in a journal or do light stretching in dim light"
+      ],
+      "rationale": "LAST NIGHT's sleep was excellent in duration (9.55h) and efficiency (88.02%) but occurred at an extremely late and volatile time (23:31 onset, +128 slope_fast volatility). This screen boundary directly addresses the 'volatile sleep schedule with strong recovery' cross-domain signal, reinforces the 'prioritize wind-down routine before late bedtime' soft constraint, and serves your goal domain of sleep by creating structure to prevent repeat of extreme schedule instability while preserving sleep quality.",
+      "evaluation": {
+        "mode": "mixed",
+        "signal_refs": [
+          {
+            "path": "watch.sleep.sleep_onset_time_minutes",
+            "label": "sleep onset earlier than last night's 23:31",
+            "source": "bundle",
+            "operator": "<",
+            "threshold_num": 1411
+          }
+        ],
+        "completion_prompt": "Did you honor the 9:45 PM screen boundary and read for 15 minutes?",
+        "success_definition": "User reports avoiding screens after 9:45 PM and engaging in screen-free reading, aiming for earlier sleep onset than last night's extremely late 23:31 to address schedule volatility."
+      },
+      "assumptions": [
+        "You have a smartphone with alarms",
+        "You have access to non-screen reading material",
+        "You have dim lighting available"
+      ],
+      "description": "When your phone alarm goes off at 9:45 PM, immediately put away all screens (phone, laptop, TV). Spend the next 15 minutes reading a physical book or magazine under a soft lamp or dim light.",
+      "effort_level": "medium",
+      "action_source": "generated",
+      "cooldown_logic": {
+        "max_times_per_week": 7,
+        "cooldown_days_after_fail": 0,
+        "cooldown_days_after_success": 1
+      },
+      "evaluation_mode": "mixed",
+      "requires_user_rating": true,
+      "feasibility_constraints": {
+        "must_avoid": [
+          "using any screens after 9:45 PM",
+          "bright overhead lights",
+          "checking phone notifications"
+        ],
+        "time_minutes": 15,
+        "requires_equipment": [
+          "smartphone/alarm",
+          "book/magazine",
+          "bedside lamp"
+        ]
+      }
+    },
+    {
+      "tags": [
+        "activity",
+        "microbreak",
+        "sedentary_break",
+        "implementation_intention",
+        "focus"
+      ],
+      "when": "afternoon",
+      "title": "Set a 50-minute 'stand and stretch' timer during your deepest work period",
+      "domain": "activity",
+      "evidence": {
+        "state_refs": [
+          "day_constraints.hard_constraints",
+          "cross_domain_signals.sedentary_stress_spiral.observation"
+        ],
+        "bundle_refs": [
+          "watch.activity.sedentary_minutes",
+          "watch.activity.steps"
+        ],
+        "history_refs": []
+      },
+      "priority": 5,
+      "action_id": "67226c7f3dbfa3ca",
+      "fallbacks": [
+        "If timer is disruptive, take the break after completing a natural task",
+        "If standing isn't possible, do seated shoulder rolls and neck stretches"
+      ],
+      "rationale": "YESTERDAY's critically low activity (1866 steps, 0 MVPA) coincided with 900 sedentary minutes and rising subjective stress—a sedentary stress spiral. This implementation intention creates rhythmic breaks to disrupt prolonged sitting during your 'high workload' and 'tight schedule', supports focus (which was low at 38 yesterday), and provides micro-movement opportunities without requiring significant time commitment.",
+      "evaluation": {
+        "mode": "user_rating",
+        "signal_refs": [],
+        "completion_prompt": "Did you use the 50-minute timer to take a standing stretch break during work?",
+        "success_definition": "User reports setting the timer and taking at least one standing stretch break when it chimed, disrupting prolonged sitting."
+      },
+      "assumptions": [
+        "You have a timer/phone",
+        "You can pause work briefly",
+        "You can stand and stretch safely"
+      ],
+      "description": "During your most focused work block today, set a timer for 50 minutes. When it chimes, stand up immediately, walk to a window or different room, and do 30 seconds of light stretching (reach for ceiling, side bends).",
+      "effort_level": "low",
+      "action_source": "generated",
+      "cooldown_logic": {
+        "max_times_per_week": 5,
+        "cooldown_days_after_fail": 0,
+        "cooldown_days_after_success": 1
+      },
+      "evaluation_mode": "user_rating",
+      "requires_user_rating": true,
+      "feasibility_constraints": {
+        "must_avoid": [
+          "ignoring the timer",
+          "working through multiple chimes",
+          "staying seated over 60 minutes"
+        ],
+        "time_minutes": 1,
+        "requires_equipment": [
+          "timer"
+        ]
+      }
+    }
+  ],
+  "previous_day_generated_actions": [
+    {
+      "tags": [
+        "sleep",
+        "caffeine",
+        "habit_stacking",
+        "implementation_intention",
+        "ramadan"
+      ],
+      "when": "evening",
+      "title": "Set a strict 2pm caffeine cutoff and a 10pm 'prepare for bed' alarm",
+      "domain": "sleep",
+      "evidence": {
+        "state_refs": [
+          "slopes.sleep_onset_time_minutes.slope_fast",
+          "day_constraints.soft_constraints"
+        ],
+        "bundle_refs": [
+          "nutrition.meal_context.caffeine_after_2pm",
+          "watch.sleep.sleep_onset_time_minutes",
+          "nutrition.meal_context.estimated_caffeine_mg_day"
+        ],
+        "history_refs": []
+      },
+      "priority": 1,
+      "action_id": "cac72871993e90a9",
+      "fallbacks": [
+        "If 2pm is too early, set cutoff for 3pm but commit to it.",
+        "If you miss the 10pm alarm, start wind-down as soon as you remember."
+      ],
+      "rationale": "LAST NIGHT's sleep onset was extremely late (23:47), 12 fast-scale deviations above baseline, continuing severe schedule volatility. Yesterday's caffeine (65mg) was not after 2pm—keep that positive pattern. Reinforcing a strict morning/early afternoon caffeine cutoff and anchoring a pre-sleep ritual to a 10pm alarm directly addresses the 'volatility' risk flag and the 'reinforce early caffeine cutoff' and 'prioritize wind-down routine' soft constraints. This builds on your goal domain of sleep by creating structure to prevent repeat of last night's late onset.",
+      "evaluation": {
+        "mode": "mixed",
+        "signal_refs": [
+          {
+            "path": "nutrition.meal_context.caffeine_after_2pm",
+            "label": "no caffeine after 2pm today",
+            "source": "bundle",
+            "operator": "==",
+            "threshold_bool": false
+          }
+        ],
+        "completion_prompt": "Did you honor the 2pm caffeine cutoff and start your screen-free wind-down at 10pm?",
+        "success_definition": "User reports no caffeine after 2pm and initiating a screen-free wind-down by 10pm, aiming to stabilize tonight's sleep onset earlier than last night's extreme 23:47."
+      },
+      "assumptions": [
+        "You have a smartphone with alarms",
+        "You have access to caffeine-free beverages",
+        "You have a quiet, dimly lit space for wind-down"
+      ],
+      "description": "When your phone alarm goes off at 2pm, have your last caffeinated drink. At 10pm, set a second alarm to start your wind-down: put away screens, dim lights, and begin a quiet activity like reading.",
+      "effort_level": "medium",
+      "action_source": "generated",
+      "cooldown_logic": {
+        "max_times_per_week": 7,
+        "cooldown_days_after_fail": 0,
+        "cooldown_days_after_success": 1
+      },
+      "evaluation_mode": "mixed",
+      "requires_user_rating": true,
+      "feasibility_constraints": {
+        "must_avoid": [
+          "caffeine after 2pm",
+          "screens after 10pm wind-down start"
+        ],
+        "time_minutes": 5,
+        "requires_equipment": [
+          "smartphone or timer"
+        ]
+      }
+    },
+    {
+      "tags": [
+        "nutrition",
+        "protein",
+        "meal_planning",
+        "ramadan"
+      ],
+      "when": "evening",
+      "title": "At your first evening meal, double the protein portion from yesterday's dinner",
+      "domain": "nutrition",
+      "priority": 2,
+      "action_id": "a69396ec58638beb",
+      "fallbacks": [
+        "If no whole protein available, add a scoop of protein powder to a drink or have a large handful of nuts."
+      ],
+      "rationale": "YESTERDAY's nutrition was 'critical' with total intake very low (991 kcal) and protein sharply declining (-10.32 slope_fast, 53.7g vs. 84.66 baseline). Your dinner was a boiled egg and yogurt—a good base. Doubling that portion directly counters the steep decline, addresses the 'nutrition_gap' risk flag and 'low energy intake' cross-domain signal, and supports physiological recovery (proxy 36) by providing essential building blocks. This is meal-aware, referencing yesterday's actual foods to promote consistency.",
+      "evaluation": {
+        "mode": "mixed",
+        "signal_refs": [
+          {
+            "path": "nutrition.daily_nutrition.protein_g_day",
+            "label": "protein intake at least 70g today",
+            "source": "bundle",
+            "operator": ">=",
+            "threshold_num": 70
+          }
+        ],
+        "completion_prompt": "Did you intentionally include a double protein portion with your first meal?",
+        "success_definition": "User reports adding a substantial protein source to their evening meal, and today's total protein reaches at least 70g (improving on yesterday's critically low 53.7g)."
+      },
+      "assumptions": [
+        "You are observing Ramadan with an evening meal",
+        "You have access to eggs, yogurt, or another protein source"
+      ],
+      "description": "When you break your fast tonight, include two boiled eggs or a double serving of Greek yogurt alongside your meal, aiming for at least 25g of protein in that sitting.",
+      "effort_level": "low",
+      "action_source": "generated",
+      "cooldown_logic": {
+        "max_times_per_week": 5,
+        "cooldown_days_after_fail": 0,
+        "cooldown_days_after_success": 2
+      },
+      "evaluation_mode": "mixed",
+      "requires_user_rating": true,
+      "feasibility_constraints": {
+        "must_avoid": [
+          "skipping protein",
+          "relying only on carbs/sweets like yesterday's chocolate petit fours"
+        ],
+        "time_minutes": 2,
+        "requires_equipment": []
+      }
+    },
+    {
+      "tags": [
+        "stability",
+        "activity",
+        "microbreak",
+        "implementation_intention"
+      ],
+      "when": "afternoon",
+      "title": "Take a 7-minute 'reset walk' after your deepest work block",
+      "domain": "stability",
+      "priority": 3,
+      "action_id": "33d23c583402d6ec",
+      "fallbacks": [
+        "If you can't walk, stand by a window and do 3 minutes of light stretching or marching in place."
+      ],
+      "rationale": "YESTERDAY's activity was 'critical' with 0 MVPA, low steps (2850), and high sedentary time (788 min) trending upward. A timed, intentional walk disrupts the sedentary spiral, provides a cognitive reset (your focus is high at 84), and supports physiological recovery by increasing blood flow. It fits within day constraints by being brief and anchored to a work transition, differing from recent marching or shoulder-roll suggestions.",
+      "evaluation": {
+        "mode": "auto",
+        "signal_refs": [
+          {
+            "path": "watch.activity.steps",
+            "label": "steps higher than yesterday",
+            "source": "bundle",
+            "operator": ">",
+            "threshold_num": 2850
+          }
+        ],
+        "completion_prompt": null,
+        "success_definition": "Today's step count exceeds yesterday's 2850, indicating you added light movement despite a 'tight schedule' and 'high workload'."
+      },
+      "assumptions": [
+        "You can step away from work briefly",
+        "You can walk safely indoors or outdoors"
+      ],
+      "description": "When you finish your most demanding work task or hit a natural stopping point, step outside (or walk indoors) for exactly 7 minutes at a gentle pace. Focus on your breathing and surroundings.",
+      "effort_level": "low",
+      "action_source": "generated",
+      "cooldown_logic": {
+        "max_times_per_week": 5,
+        "cooldown_days_after_fail": 0,
+        "cooldown_days_after_success": 1
+      },
+      "evaluation_mode": "auto",
+      "requires_user_rating": false,
+      "feasibility_constraints": {
+        "must_avoid": [
+          "making it strenuous",
+          "checking your phone during the walk"
+        ],
+        "time_minutes": 7,
+        "requires_equipment": []
+      }
+    },
+    {
+      "tags": [
+        "sleep",
+        "stress",
+        "wind_down",
+        "mindfulness"
+      ],
+      "when": "before_bed",
+      "title": "Perform a 5-minute body scan while lying in bed before sleep",
+      "domain": "sleep",
+      "priority": 4,
+      "action_id": "4fab36534e6385ae",
+      "fallbacks": [
+        "If 5 minutes feels long, do a 2-minute version focusing only on feet, hands, and shoulders."
+      ],
+      "rationale": "LAST NIGHT's sleep had low REM (15.25%) and you report a persistent 8-day subjective-objective mismatch (gap 35). A body scan promotes parasympathetic activation and somatic awareness, which may improve sleep architecture and help bridge the perception-recovery gap. It addresses the 'mismatch_pattern' risk flag and serves your sleep goal by providing a non-screen, calming pre-sleep ritual, varying from recent breathing or reading actions.",
+      "evaluation": {
+        "mode": "user_rating",
+        "signal_refs": [],
+        "completion_prompt": "Did you complete the 5-minute body scan as the first activity upon getting into bed?",
+        "success_definition": "User reports performing the body scan exercise immediately upon lying down, using it as a deliberate transition to sleep."
+      },
+      "assumptions": [
+        "You can lie down safely",
+        "You have a quiet environment"
+      ],
+      "description": "When you get into bed tonight, lie on your back and spend 5 minutes mentally scanning your body from toes to head, noticing any tension and consciously relaxing each part. Breathe naturally.",
+      "effort_level": "low",
+      "action_source": "generated",
+      "cooldown_logic": {
+        "max_times_per_week": 7,
+        "cooldown_days_after_fail": 0,
+        "cooldown_days_after_success": 1
+      },
+      "evaluation_mode": "user_rating",
+      "requires_user_rating": true,
+      "feasibility_constraints": {
+        "must_avoid": [
+          "using screens during or after",
+          "rushing through it"
+        ],
+        "time_minutes": 5,
+        "requires_equipment": []
+      }
+    }
+  ],
+  "previous_day_briefing": {
+    "brief_date": "2026-03-24",
+    "plan_id": "2f90f3ae-c35a-44d7-a9eb-c8beb3511304",
+    "morning_message": "Morning Ameena.\n\nYou said you're at a 71 with high energy this morning — that's a solid place to start, especially considering what's happening underneath. Last night you got 6.95 hours of sleep, which is just under your baseline, but you fell asleep extremely late at 11:47pm — that's the biggest shift we've seen in weeks. The bigger story is what your body's telling us: your recovery proxy dropped to 36, your HRV is down to 78, and your resting heart rate climbed to 65. These are all clear signs your system is under real physiological strain, even though you *feel* resilient. That's the 8th day in a row where your subjective energy has been running ahead of what your body can actually sustain.\n\nYesterday you also had critically low nutrition (991 calories, 53g protein) and zero exercise — when energy intake is that low and activity is that minimal, it creates a double deficit that makes recovery even harder. The late sleep onset and early first meal at 4:20am point to your Ramadan rhythm, but it's creating a compounding effect where sleep debt and energy debt are stacking up.\n\nToday is about breaking that cycle — giving your body what it needs to actually match how you feel.\n\nWe're focusing on stabilizing your sleep schedule and rebuilding your energy reserves with intentional protein and movement.\n\nYou've shown incredible mental resilience for 8 straight days — today's about giving your physiology the same support."
+  },
+  "prepared_context": {
+    "input_bundle_row": {
+      "user_id": "bf8434ee-b495-4da4-96d0-d919c5b4a957",
+      "date": "2026-03-25",
+      "bundle_version": "v1",
+      "timezone": "Africa/Cairo",
+      "generated_at": "2026-05-06T15:03:14.891+00:00",
+      "overall_true_today": 89,
+      "physio_proxy_score_0_100": 51,
+      "gap_today": 38,
+      "missingness_json": {
+        "missing_hrv": false,
+        "missing_goals": true,
+        "missing_proxy": false,
+        "missing_sleep": false,
+        "missing_checkin": false,
+        "missing_journal": false,
+        "missing_activity": false,
+        "missing_nutrition": false,
+        "missing_overnight": false
+      },
+      "confidence_json": {
+        "confidence_goals": 0,
+        "confidence_proxy": 1,
+        "confidence_sleep": 1,
+        "confidence_checkin": 1,
+        "confidence_journal": 0.8,
+        "confidence_activity": 1,
+        "confidence_recovery": 1,
+        "confidence_nutrition": 0.5876
+      },
+      "bundle_json": {
+        "meta": {
+          "date": "2026-03-25",
+          "user_id": "bf8434ee-b495-4da4-96d0-d919c5b4a957",
+          "timezone": "Africa/Cairo",
+          "generated_at": "2026-05-06T15:03:14.891Z",
+          "source_local_date": "2026-03-24"
+        },
+        "watch": {
+          "hrv": {
+            "hrv_deep_rmssd": 105.614,
+            "hrv_daily_rmssd": 108.038
+          },
+          "sleep": {
+            "rem_ratio_pct": 19.2,
+            "deep_ratio_pct": 17.36,
+            "wake_ratio_pct": 11.98,
+            "sleep_efficiency": 88.02,
+            "wake_time_minutes": 622,
+            "sleep_duration_hours": 9.55,
+            "sleep_midpoint_minutes": 416,
+            "sleep_onset_time_minutes": 1411,
+            "sleep_fragmentation_index": 0.1198
+          },
+          "activity": {
+            "steps": 1866,
+            "active_ratio": 0.1559,
+            "bmr_calories": 1475,
+            "mvpa_minutes": 0,
+            "sedentary_ratio": 1.1407,
+            "activity_calories": 355,
+            "distance_total_km": 1.2414,
+            "sedentary_minutes": 900,
+            "resting_heart_rate": 64,
+            "total_active_minutes": 123,
+            "energy_burned_calories_out": 1776
+          },
+          "overnight": {
+            "spo2_avg": null,
+            "breathing_rate": 17.6,
+            "blood_oxygen_avg": null,
+            "oxygen_variation": null,
+            "skin_temp_relative": -0.7
+          }
+        },
+        "checkin": {
+          "raw": {
+            "emotions": [
+              "Annoyed",
+              "Tense"
+            ],
+            "mood_score": 53,
+            "focus_score": 38,
+            "energy_score": 63,
+            "social_score": 66,
+            "stress_score": 69,
+            "sleep_quality": 55,
+            "workload_score": 67,
+            "mood_stability_score": 0,
+            "coping_capacity_score": 44,
+            "stress_unexpected_score": 55
+          },
+          "intrarelations": {
+            "emotion_count": 2,
+            "mood_minus_energy": -10,
+            "mood_minus_stress": -16,
+            "social_minus_mood": 13,
+            "focus_minus_energy": -25,
+            "focus_minus_stress": -31,
+            "sleep_minus_energy": -8,
+            "stress_minus_sleep": 14,
+            "stress_minus_coping": 25,
+            "coping_minus_workload": -23,
+            "stress_minus_workload": 2
+          }
+        },
+        "journal": {
+          "themes": [
+            "academic stress",
+            "digital fatigue"
+          ],
+          "barriers": [
+            "screen fatigue",
+            "exam anxiety"
+          ],
+          "tone_hint": "neutral",
+          "risk_flags": [],
+          "coping_actions": [],
+          "stressor_types": [
+            {
+              "type": "other",
+              "confidence": 0.8,
+              "controllability": "med"
+            },
+            {
+              "type": "other",
+              "confidence": 0.7,
+              "controllability": "med"
+            }
+          ],
+          "episodic_events": [
+            {
+              "status": "resolved",
+              "confidence": 0.9,
+              "event_type": "online exam",
+              "time_horizon": "today"
+            }
+          ],
+          "evidence_quotes": [
+            "I spent the whole day in front of screens and my eyes were hurting",
+            "My exam also didnt go very well"
+          ],
+          "goals_conflict_today": null,
+          "self_appraisal_style": null,
+          "self_efficacy_language": "low"
+        },
+        "nutrition": {
+          "meal_context": {
+            "meal_descriptions": [
+              {
+                "meal_id": "61d0ed9a-891a-4e69-b121-ea46c11f090b",
+                "meal_type": "breakfast",
+                "description": "One brown toast with labneh and one brown toast with cheddar cheese and instant coffee",
+                "logged_at_local": "08:29",
+                "estimated_caffeine_mg": 60
+              },
+              {
+                "meal_id": "9f89d8a1-2fa7-4aa9-bcd9-13f46601e5c1",
+                "meal_type": "snack",
+                "description": "Karak tea and 2 sugar covered baked sweets",
+                "logged_at_local": null,
+                "estimated_caffeine_mg": 40
+              },
+              {
+                "meal_id": "4e495ed7-217c-4e11-b815-fa4039a7f973",
+                "meal_type": "lunch",
+                "description": "2 large spoons of macaroni with red sauce, 1 chicken pane and 1 beef escalope and a handful of fries",
+                "logged_at_local": null,
+                "estimated_caffeine_mg": 0
+              },
+              {
+                "meal_id": "1bee993a-1989-4780-a68f-a7d51dcce219",
+                "meal_type": "dinner",
+                "description": "Cheese sandwich and some grapes",
+                "logged_at_local": null,
+                "estimated_caffeine_mg": 0
+              }
+            ],
+            "caffeine_after_2pm": false,
+            "estimated_caffeine_mg_day": 100
+          },
+          "daily_nutrition": {
+            "fat_g_day": 77.2,
+            "carbs_g_day": 212,
+            "sugar_g_day": 89,
+            "lunch_logged": true,
+            "dinner_logged": true,
+            "protein_g_day": 94.6,
+            "meal_count_day": 4,
+            "total_kcal_day": 1875,
+            "breakfast_logged": true,
+            "meals_missing_day": false,
+            "eating_window_minutes": 0,
+            "time_last_meal_minutes": 509,
+            "time_first_meal_minutes": 509,
+            "nutrition_confidence_day": 0.5876
+          }
+        },
+        "confidence": {
+          "confidence_goals": 0,
+          "confidence_proxy": 1,
+          "confidence_sleep": 1,
+          "confidence_checkin": 1,
+          "confidence_journal": 0.8,
+          "confidence_activity": 1,
+          "confidence_recovery": 1,
+          "confidence_nutrition": 0.5876
+        },
+        "missingness": {
+          "missing_hrv": false,
+          "missing_goals": true,
+          "missing_proxy": false,
+          "missing_sleep": false,
+          "missing_checkin": false,
+          "missing_journal": false,
+          "missing_activity": false,
+          "missing_nutrition": false,
+          "missing_overnight": false
+        },
+        "core_signals": {
+          "gap_today": 38,
+          "overall_true_today": 89,
+          "physio_proxy_score_0_100": 51
+        },
+        "bundle_version": "v1"
+      }
+    },
+    "state_history_row": {
+      "date": "2026-03-25",
+      "state_version": "v1",
+      "state_snapshot_json": {
+        "slopes": {
+          "steps": {
+            "slope_fast": -556.4729,
+            "slope_slow": -353.3789
+          },
+          "gap_today": {
+            "slope_fast": 2.4302,
+            "slope_slow": 1.8124
+          },
+          "mood_score": {
+            "slope_fast": -2.658,
+            "slope_slow": -0.8053
+          },
+          "focus_score": {
+            "slope_fast": -8.3982,
+            "slope_slow": -2.0669
+          },
+          "energy_score": {
+            "slope_fast": 1.8674,
+            "slope_slow": 0.1512
+          },
+          "mvpa_minutes": {
+            "slope_fast": -3.3662,
+            "slope_slow": -3.0809
+          },
+          "social_score": {
+            "slope_fast": -2.4675,
+            "slope_slow": -1.1133
+          },
+          "stress_score": {
+            "slope_fast": 11.7781,
+            "slope_slow": 3.1675
+          },
+          "emotion_count": {
+            "slope_fast": -0.0146,
+            "slope_slow": -0.0164
+          },
+          "protein_g_day": {
+            "slope_fast": 2.6939,
+            "slope_slow": 1.3617
+          },
+          "sleep_quality": {
+            "slope_fast": -2.3037,
+            "slope_slow": -0.962
+          },
+          "meal_count_day": {
+            "slope_fast": -0.1406,
+            "slope_slow": 0.054
+          },
+          "total_kcal_day": {
+            "slope_fast": 77.0198,
+            "slope_slow": 35.716
+          },
+          "workload_score": {
+            "slope_fast": 7.5881,
+            "slope_slow": 2.487
+          },
+          "hrv_daily_rmssd": {
+            "slope_fast": 6.3544,
+            "slope_slow": 1.4607
+          },
+          "sleep_efficiency": {
+            "slope_fast": 0.1423,
+            "slope_slow": 0.1009
+          },
+          "mood_minus_stress": {
+            "slope_fast": -14.436,
+            "slope_slow": -3.9728
+          },
+          "sedentary_minutes": {
+            "slope_fast": 26.6545,
+            "slope_slow": 15.0148
+          },
+          "wake_time_minutes": {
+            "slope_fast": 27.2478,
+            "slope_slow": 1.8118
+          },
+          "focus_minus_stress": {
+            "slope_fast": -20.1763,
+            "slope_slow": -5.2344
+          },
+          "overall_true_today": {
+            "slope_fast": 4.853,
+            "slope_slow": 2.2446
+          },
+          "resting_heart_rate": {
+            "slope_fast": 0.2451,
+            "slope_slow": 0.1416
+          },
+          "stress_minus_coping": {
+            "slope_fast": 19.8442,
+            "slope_slow": 5.4232
+          },
+          "sleep_duration_hours": {
+            "slope_fast": 0.7561,
+            "slope_slow": 0.2122
+          },
+          "coping_capacity_score": {
+            "slope_fast": -8.0662,
+            "slope_slow": -2.2557
+          },
+          "stress_minus_workload": {
+            "slope_fast": 4.1899,
+            "slope_slow": 0.6805
+          },
+          "time_last_meal_minutes": {
+            "slope_fast": -16.7197,
+            "slope_slow": 0.0897
+          },
+          "physio_proxy_score_0_100": {
+            "slope_fast": 2.4229,
+            "slope_slow": 0.3461
+          },
+          "sleep_onset_time_minutes": {
+            "slope_fast": 128.3252,
+            "slope_slow": 64.1479
+          }
+        },
+        "baselines": {
+          "steps": {
+            "vol_fast": 1620.4818,
+            "vol_class": "volatile",
+            "fast_scale": 1620.4818,
+            "slow_scale": 5272.8669,
+            "fast_center": 3535.4187,
+            "slow_center": 6636.6149,
+            "regime_shift": -0.5881,
+            "z_fast_today": -1.0302,
+            "z_slow_today": -0.9047
+          },
+          "gap_today": {
+            "vol_fast": 5.9304,
+            "vol_class": "moderate",
+            "fast_scale": 5.9304,
+            "slow_scale": 22.239,
+            "fast_center": 30.7095,
+            "slow_center": 16.2508,
+            "regime_shift": 0.6502,
+            "z_fast_today": 1.2293,
+            "z_slow_today": 0.978
+          },
+          "mood_score": {
+            "vol_fast": 26.6868,
+            "vol_class": "volatile",
+            "fast_scale": 26.6868,
+            "slow_scale": 22.239,
+            "fast_center": 60.9739,
+            "slow_center": 61.8581,
+            "regime_shift": -0.0398,
+            "z_fast_today": -0.2988,
+            "z_slow_today": -0.3983
+          },
+          "focus_score": {
+            "vol_fast": 25.2042,
+            "vol_class": "volatile",
+            "fast_scale": 25.2042,
+            "slow_scale": 32.6172,
+            "fast_center": 63.1946,
+            "slow_center": 60.7361,
+            "regime_shift": 0.0754,
+            "z_fast_today": -0.9996,
+            "z_slow_today": -0.6971
+          },
+          "energy_score": {
+            "vol_fast": 26.6868,
+            "vol_class": "volatile",
+            "fast_scale": 26.6868,
+            "slow_scale": 34.0998,
+            "fast_center": 57.3977,
+            "slow_center": 61.3365,
+            "regime_shift": -0.1155,
+            "z_fast_today": 0.2099,
+            "z_slow_today": 0.0488
+          },
+          "mvpa_minutes": {
+            "vol_fast": 0,
+            "vol_class": "stable",
+            "fast_scale": 0,
+            "slow_scale": 18.5325,
+            "fast_center": 10.0986,
+            "slow_center": 41.5927,
+            "regime_shift": -1.6994,
+            "z_fast_today": null,
+            "z_slow_today": -2.2443
+          },
+          "social_score": {
+            "vol_fast": 11.8608,
+            "vol_class": "moderate",
+            "fast_scale": 11.8608,
+            "slow_scale": 11.8608,
+            "fast_center": 73.4026,
+            "slow_center": 78.2464,
+            "regime_shift": -0.4084,
+            "z_fast_today": -0.6241,
+            "z_slow_today": -1.0325
+          },
+          "stress_score": {
+            "vol_fast": 17.7912,
+            "vol_class": "volatile",
+            "fast_scale": 17.7912,
+            "slow_scale": 31.1346,
+            "fast_center": 33.6658,
+            "slow_center": 34.1573,
+            "regime_shift": -0.0158,
+            "z_fast_today": 1.986,
+            "z_slow_today": 1.1191
+          },
+          "emotion_count": {
+            "vol_fast": 0,
+            "vol_class": "stable",
+            "fast_scale": 0,
+            "slow_scale": 0,
+            "fast_center": 2.0439,
+            "slow_center": 2.1805,
+            "regime_shift": null,
+            "z_fast_today": null,
+            "z_slow_today": null
+          },
+          "protein_g_day": {
+            "vol_fast": 25.649,
+            "vol_class": "volatile",
+            "fast_scale": 25.649,
+            "slow_scale": 12.3056,
+            "fast_center": 86.5184,
+            "slow_center": 79.6211,
+            "regime_shift": 0.5605,
+            "z_fast_today": 0.3151,
+            "z_slow_today": 1.2172
+          },
+          "sleep_quality": {
+            "vol_fast": 26.6868,
+            "vol_class": "volatile",
+            "fast_scale": 26.6868,
+            "slow_scale": 17.7912,
+            "fast_center": 61.9111,
+            "slow_center": 65.5822,
+            "regime_shift": -0.2063,
+            "z_fast_today": -0.259,
+            "z_slow_today": -0.5948
+          },
+          "meal_count_day": {
+            "vol_fast": 1.4826,
+            "vol_class": "volatile",
+            "fast_scale": 1.4826,
+            "slow_scale": 1.4826,
+            "fast_center": 4.4219,
+            "slow_center": 3.2164,
+            "regime_shift": 0.8131,
+            "z_fast_today": -0.2846,
+            "z_slow_today": 0.5285
+          },
+          "total_kcal_day": {
+            "vol_fast": 610.8312,
+            "vol_class": "volatile",
+            "fast_scale": 610.8312,
+            "slow_scale": 385.476,
+            "fast_center": 1643.9407,
+            "slow_center": 1482.1242,
+            "regime_shift": 0.4198,
+            "z_fast_today": 0.3783,
+            "z_slow_today": 1.0192
+          },
+          "workload_score": {
+            "vol_fast": 44.478,
+            "vol_class": "volatile",
+            "fast_scale": 44.478,
+            "slow_scale": 20.7564,
+            "fast_center": 44.2356,
+            "slow_center": 39.6433,
+            "regime_shift": 0.2212,
+            "z_fast_today": 0.5118,
+            "z_slow_today": 1.318
+          },
+          "hrv_daily_rmssd": {
+            "vol_fast": 17.8342,
+            "vol_class": "moderate",
+            "fast_scale": 17.8342,
+            "slow_scale": 29.2354,
+            "fast_center": 88.9747,
+            "slow_center": 88.318,
+            "regime_shift": 0.0225,
+            "z_fast_today": 1.0689,
+            "z_slow_today": 0.6745
+          },
+          "sleep_efficiency": {
+            "vol_fast": 1.4233,
+            "vol_class": "stable",
+            "fast_scale": 1.4233,
+            "slow_scale": 4.8778,
+            "fast_center": 87.5932,
+            "slow_center": 86.5564,
+            "regime_shift": 0.2126,
+            "z_fast_today": 0.2999,
+            "z_slow_today": 0.3001
+          },
+          "mood_minus_stress": {
+            "vol_fast": 47.4432,
+            "vol_class": "volatile",
+            "fast_scale": 47.4432,
+            "slow_scale": 54.8562,
+            "fast_center": 27.3081,
+            "slow_center": 27.7008,
+            "regime_shift": -0.0072,
+            "z_fast_today": -0.9128,
+            "z_slow_today": -0.7966
+          },
+          "sedentary_minutes": {
+            "vol_fast": 118.608,
+            "vol_class": "moderate",
+            "fast_scale": 118.608,
+            "slow_scale": 111.195,
+            "fast_center": 820.0364,
+            "slow_center": 697.3007,
+            "regime_shift": 1.1038,
+            "z_fast_today": 0.6742,
+            "z_slow_today": 1.8229
+          },
+          "wake_time_minutes": {
+            "vol_fast": 123.0558,
+            "vol_class": "moderate",
+            "fast_scale": 123.0558,
+            "slow_scale": 116.3841,
+            "fast_center": 540.2566,
+            "slow_center": 595.729,
+            "regime_shift": -0.4766,
+            "z_fast_today": 0.6643,
+            "z_slow_today": 0.2257
+          },
+          "focus_minus_stress": {
+            "vol_fast": 53.3736,
+            "vol_class": "volatile",
+            "fast_scale": 53.3736,
+            "slow_scale": 63.7518,
+            "fast_center": 29.5288,
+            "slow_center": 26.5788,
+            "regime_shift": 0.0463,
+            "z_fast_today": -1.1341,
+            "z_slow_today": -0.9032
+          },
+          "overall_true_today": {
+            "vol_fast": 5.9304,
+            "vol_class": "stable",
+            "fast_scale": 5.9304,
+            "slow_scale": 31.8759,
+            "fast_center": 74.4409,
+            "slow_center": 56.4533,
+            "regime_shift": 0.5643,
+            "z_fast_today": 2.455,
+            "z_slow_today": 1.021
+          },
+          "resting_heart_rate": {
+            "vol_fast": 1.4826,
+            "vol_class": "stable",
+            "fast_scale": 1.4826,
+            "slow_scale": 1.4826,
+            "fast_center": 63.2646,
+            "slow_center": 62.0886,
+            "regime_shift": 0.7932,
+            "z_fast_today": 0.496,
+            "z_slow_today": 1.2892
+          },
+          "stress_minus_coping": {
+            "vol_fast": 50.4084,
+            "vol_class": "volatile",
+            "fast_scale": 50.4084,
+            "slow_scale": 45.9606,
+            "fast_center": -34.5327,
+            "slow_center": -34.655,
+            "regime_shift": 0.0027,
+            "z_fast_today": 1.181,
+            "z_slow_today": 1.298
+          },
+          "sleep_duration_hours": {
+            "vol_fast": 1.9274,
+            "vol_class": "volatile",
+            "fast_scale": 1.9274,
+            "slow_scale": 2.602,
+            "fast_center": 7.2818,
+            "slow_center": 6.4735,
+            "regime_shift": 0.3106,
+            "z_fast_today": 1.1768,
+            "z_slow_today": 1.1824
+          },
+          "coping_capacity_score": {
+            "vol_fast": 28.1694,
+            "vol_class": "volatile",
+            "fast_scale": 28.1694,
+            "slow_scale": 22.239,
+            "fast_center": 68.1985,
+            "slow_center": 68.8123,
+            "regime_shift": -0.0276,
+            "z_fast_today": -0.859,
+            "z_slow_today": -1.1157
+          },
+          "stress_minus_workload": {
+            "vol_fast": 25.2042,
+            "vol_class": "volatile",
+            "fast_scale": 25.2042,
+            "slow_scale": 16.3086,
+            "fast_center": -10.5698,
+            "slow_center": -5.4859,
+            "regime_shift": -0.3117,
+            "z_fast_today": 0.4987,
+            "z_slow_today": 0.459
+          },
+          "time_last_meal_minutes": {
+            "vol_fast": 535.2186,
+            "vol_class": "volatile",
+            "fast_scale": 535.2186,
+            "slow_scale": 192.738,
+            "fast_center": 559.1592,
+            "slow_center": 508.1034,
+            "regime_shift": 0.2649,
+            "z_fast_today": -0.0937,
+            "z_slow_today": 0.0047
+          },
+          "physio_proxy_score_0_100": {
+            "vol_fast": 7.413,
+            "vol_class": "moderate",
+            "fast_scale": 7.413,
+            "slow_scale": 16.3086,
+            "fast_center": 43.7314,
+            "slow_center": 46.5001,
+            "regime_shift": -0.1698,
+            "z_fast_today": 0.9805,
+            "z_slow_today": 0.2759
+          },
+          "sleep_onset_time_minutes": {
+            "vol_fast": 42.9954,
+            "vol_class": "stable",
+            "fast_scale": 42.9954,
+            "slow_scale": 162.3447,
+            "fast_center": 1026.0244,
+            "slow_center": 480.8548,
+            "regime_shift": 3.3581,
+            "z_fast_today": 8.9539,
+            "z_slow_today": 5.7294
+          }
+        },
+        "uncertainty": {
+          "baseline_stability_flags": {
+            "fast_ready": true,
+            "slow_ready": true
+          },
+          "modality_availability_rates_14d": {
+            "hrv": 1,
+            "proxy": 0.9286,
+            "sleep": 1,
+            "checkin": 0.8571,
+            "journal": 0.8571,
+            "activity": 0.9286,
+            "nutrition": 0.8571
+          }
+        },
+        "advice_memory": {
+          "last_themes": [],
+          "last_questions": [],
+          "theme_repeat_count": {}
+        },
+        "lag_relations": [
+          {
+            "corr": -0.241,
+            "name": "sleep_duration_vs_overall",
+            "x_key": "sleep_duration_hours",
+            "y_key": "overall_true_today",
+            "n_points": 14,
+            "confidence": 1,
+            "window_days": 14
+          },
+          {
+            "corr": 0.2094,
+            "name": "hrv_vs_overall",
+            "x_key": "hrv_daily_rmssd",
+            "y_key": "overall_true_today",
+            "n_points": 14,
+            "confidence": 1,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "workload_vs_stress",
+            "x_key": "workload_score",
+            "y_key": "stress_score",
+            "n_points": 12,
+            "confidence": 0.8571,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "stress_vs_sleep_quality",
+            "x_key": "stress_score",
+            "y_key": "sleep_quality",
+            "n_points": 12,
+            "confidence": 0.8571,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "mvpa_vs_sleep_duration",
+            "x_key": "mvpa_minutes",
+            "y_key": "sleep_duration_hours",
+            "n_points": 13,
+            "confidence": 0.9286,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "mvpa_vs_hrv",
+            "x_key": "mvpa_minutes",
+            "y_key": "hrv_daily_rmssd",
+            "n_points": 13,
+            "confidence": 0.9286,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "protein_vs_energy",
+            "x_key": "protein_g_day",
+            "y_key": "energy_score",
+            "n_points": 12,
+            "confidence": 0.8571,
+            "window_days": 14
+          }
+        ],
+        "episodic_memory": {
+          "active_events": [
+            {
+              "status": "started",
+              "confidence": 0.8,
+              "event_type": "work session",
+              "start_date": "2026-03-15",
+              "last_seen_date": "2026-03-15"
+            },
+            {
+              "status": "ongoing",
+              "confidence": 0.9,
+              "event_type": "back pain",
+              "start_date": "2026-03-16",
+              "last_seen_date": "2026-03-16"
+            },
+            {
+              "status": "ongoing",
+              "confidence": 0.9,
+              "event_type": "back recovery",
+              "start_date": "2026-03-18",
+              "last_seen_date": "2026-03-18"
+            },
+            {
+              "status": "ongoing",
+              "confidence": 0.8,
+              "event_type": "international conflict",
+              "start_date": "2026-03-19",
+              "last_seen_date": "2026-03-19"
+            },
+            {
+              "status": "ongoing",
+              "confidence": 0.9,
+              "event_type": "exam study",
+              "start_date": "2026-03-23",
+              "last_seen_date": "2026-03-23"
+            }
+          ],
+          "recent_stressor_distribution": [
+            {
+              "type": "other",
+              "count_14d": 12,
+              "confidence": 0.775
+            }
+          ]
+        },
+        "residual_signature": {
+          "gap": {
+            "fast": {
+              "scale": 5.9304,
+              "center": 30.7095,
+              "n_valid": 7
+            },
+            "slow": {
+              "scale": 22.239,
+              "center": 16.2508,
+              "n_valid": 25
+            },
+            "run_length": {
+              "current_direction": "overall_gt_proxy",
+              "current_mismatch_days": 9
+            },
+            "direction_bias": {
+              "aligned_rate": 0,
+              "overall_gt_proxy_rate": 0.8571,
+              "overall_lt_proxy_rate": 0.1429
+            }
+          }
+        }
+      },
+      "actions_generated_json": {
+        "themes": [
+          "stress",
+          "sleep",
+          "activity"
+        ],
+        "actions": [
+          {
+            "tags": [
+              "activity",
+              "movement",
+              "lunch",
+              "sedentary_break"
+            ],
+            "when": "midday",
+            "title": "Take a 12-minute brisk walk after lunch",
+            "domain": "activity",
+            "evidence": {
+              "state_refs": [
+                "slopes.steps.slope_fast",
+                "domain_summaries.activity.status"
+              ],
+              "bundle_refs": [
+                "watch.activity.steps",
+                "watch.activity.mvpa_minutes",
+                "watch.activity.sedentary_minutes"
+              ],
+              "history_refs": []
+            },
+            "priority": 1,
+            "action_id": "14073a105826692a",
+            "fallbacks": [
+              "If weather prevents outdoor walking, walk indoors for 12 minutes (around your home/office)",
+              "If 12 minutes feels too long, do 8 minutes but maintain brisk pace"
+            ],
+            "rationale": "YESTERDAY's activity was critically poor with 0 MVPA, only 1866 steps (-556 slope_fast decline), and 900 sedentary minutes. This directly counters the sedentary stress spiral identified in the holistic report, disrupts the sharp decline in movement, and leverages your high subjective energy (89) to add moderate-effort movement that fits within your tight schedule. The 12-minute duration is specific and achievable.",
+            "evaluation": {
+              "mode": "auto",
+              "signal_refs": [
+                {
+                  "path": "watch.activity.steps",
+                  "label": "steps higher than yesterday",
+                  "source": "bundle",
+                  "operator": ">",
+                  "threshold_num": 1866
+                },
+                {
+                  "path": "watch.activity.mvpa_minutes",
+                  "label": "some MVPA minutes logged",
+                  "source": "bundle",
+                  "operator": ">",
+                  "threshold_num": 0
+                }
+              ],
+              "completion_prompt": null,
+              "success_definition": "Today's step count exceeds yesterday's critically low 1866 steps, and at least some MVPA minutes are recorded (breaking the 0 MVPA streak)."
+            },
+            "assumptions": [
+              "You have safe walking routes available",
+              "You can spare 12 minutes after lunch"
+            ],
+            "description": "When you finish your lunch today, immediately put on your shoes and walk outside for exactly 12 minutes at a brisk pace. Focus on moving your body rather than distance.",
+            "effort_level": "medium",
+            "action_source": "generated",
+            "cooldown_logic": {
+              "max_times_per_week": 5,
+              "cooldown_days_after_fail": 0,
+              "cooldown_days_after_success": 1
+            },
+            "evaluation_mode": "auto",
+            "requires_user_rating": false,
+            "feasibility_constraints": {
+              "must_avoid": [
+                "checking phone during walk",
+                "making it strenuous or exhausting"
+              ],
+              "time_minutes": 12,
+              "requires_equipment": [
+                "comfortable shoes"
+              ]
+            }
+          },
+          {
+            "tags": [
+              "stress",
+              "breathing",
+              "implementation_intention",
+              "microbreak"
+            ],
+            "when": "anytime",
+            "title": "When you feel tension rising, do 3 rounds of box breathing",
+            "domain": "stress",
+            "evidence": {
+              "state_refs": [
+                "slopes.stress_score.slope_fast",
+                "slopes.stress_minus_coping.slope_fast",
+                "domain_summaries.subjective.status"
+              ],
+              "bundle_refs": [
+                "checkin.raw.stress_score",
+                "checkin.raw.coping_capacity_score",
+                "checkin.raw.emotions"
+              ],
+              "history_refs": []
+            },
+            "priority": 2,
+            "action_id": "32d7a8b7dc44ffc9",
+            "fallbacks": [
+              "If 3 rounds feels too long, do just 1 complete cycle (16 seconds)",
+              "If you forget during stress, do it as soon as you remember"
+            ],
+            "rationale": "YESTERDAY's subjective state showed high stress (69) with low coping capacity (44) and negative emotions (Annoyed, Tense), with a 25-point stress-coping gap. The stress-recovery dissociation signal shows psychological stress isn't aligned with your strong physiological recovery. This implementation intention provides a concrete tool to interrupt the stress spiral when it occurs, addressing the 'address high stress and low coping capacity gap' soft constraint directly.",
+            "evaluation": {
+              "mode": "user_rating",
+              "signal_refs": [],
+              "completion_prompt": "Did you use the box breathing technique when you felt stress or tension today?",
+              "success_definition": "User reports intentionally using the breathing technique at least once when noticing stress or tension, creating a brief pause in the stress response."
+            },
+            "assumptions": [
+              "You can safely pause briefly during work",
+              "You can breathe comfortably"
+            ],
+            "description": "When you notice feelings of annoyance, tension, or stress building during work, immediately pause and perform 3 cycles of box breathing: inhale 4 seconds, hold 4 seconds, exhale 4 seconds, hold 4 seconds. Focus only on your breath.",
+            "effort_level": "low",
+            "action_source": "generated",
+            "cooldown_logic": {
+              "max_times_per_week": 7,
+              "cooldown_days_after_fail": 0,
+              "cooldown_days_after_success": 1
+            },
+            "evaluation_mode": "user_rating",
+            "requires_user_rating": true,
+            "feasibility_constraints": {
+              "must_avoid": [
+                "continuing stressful task while breathing",
+                "rushing through cycles"
+              ],
+              "time_minutes": 2,
+              "requires_equipment": []
+            }
+          },
+          {
+            "tags": [
+              "sleep",
+              "sleep_hygiene",
+              "digital_detox",
+              "wind_down",
+              "goal_domain"
+            ],
+            "when": "evening",
+            "title": "Set a 9:45 PM 'digital sunset' alarm and read a physical book for 15 minutes",
+            "domain": "sleep",
+            "evidence": {
+              "state_refs": [
+                "slopes.sleep_onset_time_minutes.slope_fast",
+                "domain_summaries.sleep.observation",
+                "day_constraints.soft_constraints"
+              ],
+              "bundle_refs": [
+                "watch.sleep.sleep_onset_time_minutes",
+                "watch.sleep.sleep_duration_hours"
+              ],
+              "history_refs": []
+            },
+            "priority": 3,
+            "action_id": "96a6c2cda43e164f",
+            "fallbacks": [
+              "If 9:45 PM is too early, set for 10:00 PM but commit to the screen boundary",
+              "If no book available, write in a journal or do light stretching in dim light"
+            ],
+            "rationale": "LAST NIGHT's sleep was excellent in duration (9.55h) and efficiency (88.02%) but occurred at an extremely late and volatile time (23:31 onset, +128 slope_fast volatility). This screen boundary directly addresses the 'volatile sleep schedule with strong recovery' cross-domain signal, reinforces the 'prioritize wind-down routine before late bedtime' soft constraint, and serves your goal domain of sleep by creating structure to prevent repeat of extreme schedule instability while preserving sleep quality.",
+            "evaluation": {
+              "mode": "mixed",
+              "signal_refs": [
+                {
+                  "path": "watch.sleep.sleep_onset_time_minutes",
+                  "label": "sleep onset earlier than last night's 23:31",
+                  "source": "bundle",
+                  "operator": "<",
+                  "threshold_num": 1411
+                }
+              ],
+              "completion_prompt": "Did you honor the 9:45 PM screen boundary and read for 15 minutes?",
+              "success_definition": "User reports avoiding screens after 9:45 PM and engaging in screen-free reading, aiming for earlier sleep onset than last night's extremely late 23:31 to address schedule volatility."
+            },
+            "assumptions": [
+              "You have a smartphone with alarms",
+              "You have access to non-screen reading material",
+              "You have dim lighting available"
+            ],
+            "description": "When your phone alarm goes off at 9:45 PM, immediately put away all screens (phone, laptop, TV). Spend the next 15 minutes reading a physical book or magazine under a soft lamp or dim light.",
+            "effort_level": "medium",
+            "action_source": "generated",
+            "cooldown_logic": {
+              "max_times_per_week": 7,
+              "cooldown_days_after_fail": 0,
+              "cooldown_days_after_success": 1
+            },
+            "evaluation_mode": "mixed",
+            "requires_user_rating": true,
+            "feasibility_constraints": {
+              "must_avoid": [
+                "using any screens after 9:45 PM",
+                "bright overhead lights",
+                "checking phone notifications"
+              ],
+              "time_minutes": 15,
+              "requires_equipment": [
+                "smartphone/alarm",
+                "book/magazine",
+                "bedside lamp"
+              ]
+            }
+          },
+          {
+            "tags": [
+              "activity",
+              "microbreak",
+              "sedentary_break",
+              "implementation_intention",
+              "focus"
+            ],
+            "when": "afternoon",
+            "title": "Set a 50-minute 'stand and stretch' timer during your deepest work period",
+            "domain": "activity",
+            "evidence": {
+              "state_refs": [
+                "day_constraints.hard_constraints",
+                "cross_domain_signals.sedentary_stress_spiral.observation"
+              ],
+              "bundle_refs": [
+                "watch.activity.sedentary_minutes",
+                "watch.activity.steps"
+              ],
+              "history_refs": []
+            },
+            "priority": 5,
+            "action_id": "67226c7f3dbfa3ca",
+            "fallbacks": [
+              "If timer is disruptive, take the break after completing a natural task",
+              "If standing isn't possible, do seated shoulder rolls and neck stretches"
+            ],
+            "rationale": "YESTERDAY's critically low activity (1866 steps, 0 MVPA) coincided with 900 sedentary minutes and rising subjective stress—a sedentary stress spiral. This implementation intention creates rhythmic breaks to disrupt prolonged sitting during your 'high workload' and 'tight schedule', supports focus (which was low at 38 yesterday), and provides micro-movement opportunities without requiring significant time commitment.",
+            "evaluation": {
+              "mode": "user_rating",
+              "signal_refs": [],
+              "completion_prompt": "Did you use the 50-minute timer to take a standing stretch break during work?",
+              "success_definition": "User reports setting the timer and taking at least one standing stretch break when it chimed, disrupting prolonged sitting."
+            },
+            "assumptions": [
+              "You have a timer/phone",
+              "You can pause work briefly",
+              "You can stand and stretch safely"
+            ],
+            "description": "During your most focused work block today, set a timer for 50 minutes. When it chimes, stand up immediately, walk to a window or different room, and do 30 seconds of light stretching (reach for ceiling, side bends).",
+            "effort_level": "low",
+            "action_source": "generated",
+            "cooldown_logic": {
+              "max_times_per_week": 5,
+              "cooldown_days_after_fail": 0,
+              "cooldown_days_after_success": 1
+            },
+            "evaluation_mode": "user_rating",
+            "requires_user_rating": true,
+            "feasibility_constraints": {
+              "must_avoid": [
+                "ignoring the timer",
+                "working through multiple chimes",
+                "staying seated over 60 minutes"
+              ],
+              "time_minutes": 1,
+              "requires_equipment": [
+                "timer"
+              ]
+            }
+          }
+        ],
+        "questions": []
+      },
+      "outcomes_json": null
+    },
+    "previous_state_history_row": {
+      "date": "2026-03-24",
+      "state_version": "v1",
+      "state_snapshot_json": {
+        "slopes": {
+          "steps": {
+            "slope_fast": -518.7339,
+            "slope_slow": -308.8286
+          },
+          "gap_today": {
+            "slope_fast": 2.2996,
+            "slope_slow": 1.091
+          },
+          "mood_score": {
+            "slope_fast": -0.739,
+            "slope_slow": 0.5522
+          },
+          "focus_score": {
+            "slope_fast": 1.7627,
+            "slope_slow": 1.6589
+          },
+          "energy_score": {
+            "slope_fast": -3.9143,
+            "slope_slow": -0.7634
+          },
+          "mvpa_minutes": {
+            "slope_fast": -6.3274,
+            "slope_slow": -4.74
+          },
+          "social_score": {
+            "slope_fast": -1.646,
+            "slope_slow": -0.4814
+          },
+          "stress_score": {
+            "slope_fast": -0.5076,
+            "slope_slow": -1.8068
+          },
+          "emotion_count": {
+            "slope_fast": -0.0195,
+            "slope_slow": -0.0313
+          },
+          "protein_g_day": {
+            "slope_fast": -10.3203,
+            "slope_slow": -2.1683
+          },
+          "sleep_quality": {
+            "slope_fast": -6.4417,
+            "slope_slow": -2.0629
+          },
+          "meal_count_day": {
+            "slope_fast": -0.1875,
+            "slope_slow": 0.0378
+          },
+          "total_kcal_day": {
+            "slope_fast": -193.1602,
+            "slope_slow": -46.0924
+          },
+          "workload_score": {
+            "slope_fast": 8.9028,
+            "slope_slow": 1.6926
+          },
+          "hrv_daily_rmssd": {
+            "slope_fast": -3.9628,
+            "slope_slow": -0.8413
+          },
+          "sleep_efficiency": {
+            "slope_fast": 0.8401,
+            "slope_slow": 0.2004
+          },
+          "mood_minus_stress": {
+            "slope_fast": -0.2314,
+            "slope_slow": 2.3589
+          },
+          "sedentary_minutes": {
+            "slope_fast": 9.0034,
+            "slope_slow": 9.0786
+          },
+          "wake_time_minutes": {
+            "slope_fast": -14.7993,
+            "slope_slow": -10.0225
+          },
+          "focus_minus_stress": {
+            "slope_fast": 2.2703,
+            "slope_slow": 3.4657
+          },
+          "overall_true_today": {
+            "slope_fast": -0.3599,
+            "slope_slow": 0.51
+          },
+          "resting_heart_rate": {
+            "slope_fast": 0.7195,
+            "slope_slow": 0.2369
+          },
+          "stress_minus_coping": {
+            "slope_fast": -2.6255,
+            "slope_slow": -3.0168
+          },
+          "sleep_duration_hours": {
+            "slope_fast": 0.0536,
+            "slope_slow": 0.0179
+          },
+          "coping_capacity_score": {
+            "slope_fast": 2.1179,
+            "slope_slow": 1.21
+          },
+          "stress_minus_workload": {
+            "slope_fast": -9.4104,
+            "slope_slow": -3.4994
+          },
+          "time_last_meal_minutes": {
+            "slope_fast": -108.8525,
+            "slope_slow": -24.5338
+          },
+          "physio_proxy_score_0_100": {
+            "slope_fast": -2.6594,
+            "slope_slow": -0.9379
+          },
+          "sleep_onset_time_minutes": {
+            "slope_fast": 189.3074,
+            "slope_slow": 71.44
+          }
+        },
+        "baselines": {
+          "steps": {
+            "vol_fast": 2618.2716,
+            "vol_class": "volatile",
+            "fast_scale": 2618.2716,
+            "slow_scale": 5858.4939,
+            "fast_center": 4406.2017,
+            "slow_center": 7019.1863,
+            "regime_shift": -0.446,
+            "z_fast_today": -0.5944,
+            "z_slow_today": -0.7116
+          },
+          "gap_today": {
+            "vol_fast": 5.9304,
+            "vol_class": "moderate",
+            "fast_scale": 5.9304,
+            "slow_scale": 22.239,
+            "fast_center": 28.1013,
+            "slow_center": 21.9077,
+            "regime_shift": 0.2785,
+            "z_fast_today": 1.1633,
+            "z_slow_today": 0.5887
+          },
+          "mood_score": {
+            "vol_fast": 23.7216,
+            "vol_class": "volatile",
+            "fast_scale": 23.7216,
+            "slow_scale": 22.239,
+            "fast_center": 70.217,
+            "slow_center": 61.9261,
+            "regime_shift": 0.3728,
+            "z_fast_today": -0.0935,
+            "z_slow_today": 0.2731
+          },
+          "focus_score": {
+            "vol_fast": 26.6868,
+            "vol_class": "volatile",
+            "fast_scale": 26.6868,
+            "slow_scale": 35.5824,
+            "fast_center": 78.7119,
+            "slow_center": 65.752,
+            "regime_shift": 0.3642,
+            "z_fast_today": 0.1982,
+            "z_slow_today": 0.5128
+          },
+          "energy_score": {
+            "vol_fast": 28.1694,
+            "vol_class": "volatile",
+            "fast_scale": 28.1694,
+            "slow_scale": 38.5476,
+            "fast_center": 66.7429,
+            "slow_center": 63.3971,
+            "regime_shift": 0.0868,
+            "z_fast_today": -0.4169,
+            "z_slow_today": -0.2178
+          },
+          "mvpa_minutes": {
+            "vol_fast": 0,
+            "vol_class": "stable",
+            "fast_scale": 0,
+            "slow_scale": 31.8759,
+            "fast_center": 18.9822,
+            "slow_center": 63.9901,
+            "regime_shift": -1.412,
+            "z_fast_today": null,
+            "z_slow_today": -2.0075
+          },
+          "social_score": {
+            "vol_fast": 7.413,
+            "vol_class": "stable",
+            "fast_scale": 7.413,
+            "slow_scale": 10.3782,
+            "fast_center": 76.938,
+            "slow_center": 77.2953,
+            "regime_shift": -0.0344,
+            "z_fast_today": -0.6661,
+            "z_slow_today": -0.5102
+          },
+          "stress_score": {
+            "vol_fast": 13.3434,
+            "vol_class": "volatile",
+            "fast_scale": 13.3434,
+            "slow_scale": 31.1346,
+            "fast_center": 13.5227,
+            "slow_center": 31.8745,
+            "regime_shift": -0.5894,
+            "z_fast_today": -0.1141,
+            "z_slow_today": -0.6383
+          },
+          "emotion_count": {
+            "vol_fast": 0,
+            "vol_class": "stable",
+            "fast_scale": 0,
+            "slow_scale": 0,
+            "fast_center": 2.0586,
+            "slow_center": 2.3443,
+            "regime_shift": null,
+            "z_fast_today": null,
+            "z_slow_today": null
+          },
+          "protein_g_day": {
+            "vol_fast": 7.5613,
+            "vol_class": "stable",
+            "fast_scale": 7.5613,
+            "slow_scale": 12.3056,
+            "fast_center": 84.661,
+            "slow_center": 77.5517,
+            "regime_shift": 0.5777,
+            "z_fast_today": -4.0947,
+            "z_slow_today": -1.9383
+          },
+          "sleep_quality": {
+            "vol_fast": 10.3782,
+            "vol_class": "moderate",
+            "fast_scale": 10.3782,
+            "slow_scale": 11.8608,
+            "fast_center": 63.325,
+            "slow_center": 66.6917,
+            "regime_shift": -0.2839,
+            "z_fast_today": -1.8621,
+            "z_slow_today": -1.9132
+          },
+          "meal_count_day": {
+            "vol_fast": 1.4826,
+            "vol_class": "volatile",
+            "fast_scale": 1.4826,
+            "slow_scale": 1.4826,
+            "fast_center": 4.5625,
+            "slow_center": 3.4515,
+            "regime_shift": 0.7494,
+            "z_fast_today": -0.3794,
+            "z_slow_today": 0.37
+          },
+          "total_kcal_day": {
+            "vol_fast": 244.629,
+            "vol_class": "moderate",
+            "fast_scale": 244.629,
+            "slow_scale": 385.476,
+            "fast_center": 1570.4805,
+            "slow_center": 1498.0165,
+            "regime_shift": 0.188,
+            "z_fast_today": -2.3688,
+            "z_slow_today": -1.3153
+          },
+          "workload_score": {
+            "vol_fast": 11.8608,
+            "vol_class": "volatile",
+            "fast_scale": 11.8608,
+            "slow_scale": 20.7564,
+            "fast_center": 36.2915,
+            "slow_center": 44.3814,
+            "regime_shift": -0.3898,
+            "z_fast_today": 2.2518,
+            "z_slow_today": 0.897
+          },
+          "hrv_daily_rmssd": {
+            "vol_fast": 17.8342,
+            "vol_class": "moderate",
+            "fast_scale": 17.8342,
+            "slow_scale": 32.3392,
+            "fast_center": 90.2073,
+            "slow_center": 89.677,
+            "regime_shift": 0.0164,
+            "z_fast_today": -0.6666,
+            "z_slow_today": -0.3512
+          },
+          "sleep_efficiency": {
+            "vol_fast": 2.639,
+            "vol_class": "stable",
+            "fast_scale": 2.639,
+            "slow_scale": 6.1602,
+            "fast_center": 85.8296,
+            "slow_center": 85.4436,
+            "regime_shift": 0.0627,
+            "z_fast_today": 0.9551,
+            "z_slow_today": 0.4718
+          },
+          "mood_minus_stress": {
+            "vol_fast": 38.5476,
+            "vol_class": "volatile",
+            "fast_scale": 38.5476,
+            "slow_scale": 47.4432,
+            "fast_center": 56.6943,
+            "slow_center": 30.0516,
+            "regime_shift": 0.5616,
+            "z_fast_today": -0.018,
+            "z_slow_today": 0.5469
+          },
+          "sedentary_minutes": {
+            "vol_fast": 42.9954,
+            "vol_class": "stable",
+            "fast_scale": 42.9954,
+            "slow_scale": 111.9363,
+            "fast_center": 760.9897,
+            "slow_center": 665.4385,
+            "regime_shift": 0.8536,
+            "z_fast_today": 0.6282,
+            "z_slow_today": 1.0949
+          },
+          "wake_time_minutes": {
+            "vol_fast": 191.2554,
+            "vol_class": "volatile",
+            "fast_scale": 191.2554,
+            "slow_scale": 116.3841,
+            "fast_center": 503.3979,
+            "slow_center": 604.3257,
+            "regime_shift": -0.8672,
+            "z_fast_today": -0.2321,
+            "z_slow_today": -1.2487
+          },
+          "focus_minus_stress": {
+            "vol_fast": 41.5128,
+            "vol_class": "volatile",
+            "fast_scale": 41.5128,
+            "slow_scale": 53.3736,
+            "fast_center": 65.1892,
+            "slow_center": 33.8775,
+            "regime_shift": 0.5867,
+            "z_fast_today": 0.1641,
+            "z_slow_today": 0.7143
+          },
+          "overall_true_today": {
+            "vol_fast": 5.9304,
+            "vol_class": "stable",
+            "fast_scale": 5.9304,
+            "slow_scale": 31.8759,
+            "fast_center": 72.0796,
+            "slow_center": 63.6052,
+            "regime_shift": 0.2659,
+            "z_fast_today": -0.182,
+            "z_slow_today": 0.232
+          },
+          "resting_heart_rate": {
+            "vol_fast": 1.4826,
+            "vol_class": "stable",
+            "fast_scale": 1.4826,
+            "slow_scale": 1.4826,
+            "fast_center": 62.8416,
+            "slow_center": 61.8018,
+            "regime_shift": 0.7013,
+            "z_fast_today": 1.4558,
+            "z_slow_today": 2.1572
+          },
+          "stress_minus_coping": {
+            "vol_fast": 38.5476,
+            "vol_class": "volatile",
+            "fast_scale": 38.5476,
+            "slow_scale": 40.0302,
+            "fast_center": -66.1235,
+            "slow_center": -40.8154,
+            "regime_shift": -0.6322,
+            "z_fast_today": -0.2043,
+            "z_slow_today": -0.829
+          },
+          "sleep_duration_hours": {
+            "vol_fast": 1.6309,
+            "vol_class": "moderate",
+            "fast_scale": 1.6309,
+            "slow_scale": 2.6316,
+            "fast_center": 6.7891,
+            "slow_center": 6.6907,
+            "regime_shift": 0.0374,
+            "z_fast_today": 0.0987,
+            "z_slow_today": 0.0985
+          },
+          "coping_capacity_score": {
+            "vol_fast": 20.7564,
+            "vol_class": "volatile",
+            "fast_scale": 20.7564,
+            "slow_scale": 19.2738,
+            "fast_center": 79.6462,
+            "slow_center": 72.69,
+            "regime_shift": 0.3609,
+            "z_fast_today": 0.3061,
+            "z_slow_today": 0.6906
+          },
+          "stress_minus_workload": {
+            "vol_fast": 19.2738,
+            "vol_class": "volatile",
+            "fast_scale": 19.2738,
+            "slow_scale": 17.7912,
+            "fast_center": -22.7688,
+            "slow_center": -12.5069,
+            "regime_shift": -0.5768,
+            "z_fast_today": -1.4647,
+            "z_slow_today": -2.1636
+          },
+          "time_last_meal_minutes": {
+            "vol_fast": 207.564,
+            "vol_class": "volatile",
+            "fast_scale": 207.564,
+            "slow_scale": 191.2554,
+            "fast_center": 586.5576,
+            "slow_center": 505.3381,
+            "regime_shift": 0.4247,
+            "z_fast_today": -1.5733,
+            "z_slow_today": -1.2828
+          },
+          "physio_proxy_score_0_100": {
+            "vol_fast": 7.413,
+            "vol_class": "moderate",
+            "fast_scale": 7.413,
+            "slow_scale": 16.3086,
+            "fast_center": 43.9783,
+            "slow_center": 48.1926,
+            "regime_shift": -0.2584,
+            "z_fast_today": -1.0763,
+            "z_slow_today": -0.7476
+          },
+          "sleep_onset_time_minutes": {
+            "vol_fast": 462.5712,
+            "vol_class": "volatile",
+            "fast_scale": 462.5712,
+            "slow_scale": 152.7078,
+            "fast_center": 859.0779,
+            "slow_center": 391.1195,
+            "regime_shift": 3.0644,
+            "z_fast_today": 1.2278,
+            "z_slow_today": 6.7834
+          }
+        },
+        "uncertainty": {
+          "baseline_stability_flags": {
+            "fast_ready": true,
+            "slow_ready": true
+          },
+          "modality_availability_rates_14d": {
+            "hrv": 0.9286,
+            "proxy": 0.8571,
+            "sleep": 1,
+            "checkin": 0.7857,
+            "journal": 0.7857,
+            "activity": 0.8571,
+            "nutrition": 0.7857
+          }
+        },
+        "advice_memory": {
+          "last_themes": [],
+          "last_questions": [],
+          "theme_repeat_count": {}
+        },
+        "lag_relations": [
+          {
+            "corr": 0.0863,
+            "name": "sleep_duration_vs_overall",
+            "x_key": "sleep_duration_hours",
+            "y_key": "overall_true_today",
+            "n_points": 14,
+            "confidence": 1,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "hrv_vs_overall",
+            "x_key": "hrv_daily_rmssd",
+            "y_key": "overall_true_today",
+            "n_points": 13,
+            "confidence": 0.9286,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "workload_vs_stress",
+            "x_key": "workload_score",
+            "y_key": "stress_score",
+            "n_points": 11,
+            "confidence": 0.7857,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "stress_vs_sleep_quality",
+            "x_key": "stress_score",
+            "y_key": "sleep_quality",
+            "n_points": 11,
+            "confidence": 0.7857,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "mvpa_vs_sleep_duration",
+            "x_key": "mvpa_minutes",
+            "y_key": "sleep_duration_hours",
+            "n_points": 12,
+            "confidence": 0.8571,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "mvpa_vs_hrv",
+            "x_key": "mvpa_minutes",
+            "y_key": "hrv_daily_rmssd",
+            "n_points": 12,
+            "confidence": 0.8571,
+            "window_days": 14
+          },
+          {
+            "corr": null,
+            "name": "protein_vs_energy",
+            "x_key": "protein_g_day",
+            "y_key": "energy_score",
+            "n_points": 11,
+            "confidence": 0.7857,
+            "window_days": 14
+          }
+        ],
+        "episodic_memory": {
+          "active_events": [
+            {
+              "status": "started",
+              "confidence": 0.8,
+              "event_type": "work session",
+              "start_date": "2026-03-15",
+              "last_seen_date": "2026-03-15"
+            },
+            {
+              "status": "ongoing",
+              "confidence": 0.9,
+              "event_type": "back pain",
+              "start_date": "2026-03-16",
+              "last_seen_date": "2026-03-16"
+            },
+            {
+              "status": "ongoing",
+              "confidence": 0.9,
+              "event_type": "back recovery",
+              "start_date": "2026-03-18",
+              "last_seen_date": "2026-03-18"
+            },
+            {
+              "status": "ongoing",
+              "confidence": 0.8,
+              "event_type": "international conflict",
+              "start_date": "2026-03-19",
+              "last_seen_date": "2026-03-19"
+            },
+            {
+              "status": "ongoing",
+              "confidence": 0.9,
+              "event_type": "exam study",
+              "start_date": "2026-03-23",
+              "last_seen_date": "2026-03-23"
+            }
+          ],
+          "recent_stressor_distribution": [
+            {
+              "type": "other",
+              "count_14d": 10,
+              "confidence": 0.78
+            }
+          ]
+        },
+        "residual_signature": {
+          "gap": {
+            "fast": {
+              "scale": 5.9304,
+              "center": 28.1013,
+              "n_valid": 7
+            },
+            "slow": {
+              "scale": 22.239,
+              "center": 21.9077,
+              "n_valid": 25
+            },
+            "run_length": {
+              "current_direction": "overall_gt_proxy",
+              "current_mismatch_days": 8
+            },
+            "direction_bias": {
+              "aligned_rate": 0.0714,
+              "overall_gt_proxy_rate": 0.7857,
+              "overall_lt_proxy_rate": 0.1429
+            }
+          }
+        }
+      },
+      "actions_generated_json": {
+        "themes": [
+          "sleep",
+          "stability",
+          "nutrition"
+        ],
+        "actions": [
+          {
+            "tags": [
+              "sleep",
+              "caffeine",
+              "habit_stacking",
+              "implementation_intention",
+              "ramadan"
+            ],
+            "when": "evening",
+            "title": "Set a strict 2pm caffeine cutoff and a 10pm 'prepare for bed' alarm",
+            "domain": "sleep",
+            "evidence": {
+              "state_refs": [
+                "slopes.sleep_onset_time_minutes.slope_fast",
+                "day_constraints.soft_constraints"
+              ],
+              "bundle_refs": [
+                "nutrition.meal_context.caffeine_after_2pm",
+                "watch.sleep.sleep_onset_time_minutes",
+                "nutrition.meal_context.estimated_caffeine_mg_day"
+              ],
+              "history_refs": []
+            },
+            "priority": 1,
+            "action_id": "cac72871993e90a9",
+            "fallbacks": [
+              "If 2pm is too early, set cutoff for 3pm but commit to it.",
+              "If you miss the 10pm alarm, start wind-down as soon as you remember."
+            ],
+            "rationale": "LAST NIGHT's sleep onset was extremely late (23:47), 12 fast-scale deviations above baseline, continuing severe schedule volatility. Yesterday's caffeine (65mg) was not after 2pm—keep that positive pattern. Reinforcing a strict morning/early afternoon caffeine cutoff and anchoring a pre-sleep ritual to a 10pm alarm directly addresses the 'volatility' risk flag and the 'reinforce early caffeine cutoff' and 'prioritize wind-down routine' soft constraints. This builds on your goal domain of sleep by creating structure to prevent repeat of last night's late onset.",
+            "evaluation": {
+              "mode": "mixed",
+              "signal_refs": [
+                {
+                  "path": "nutrition.meal_context.caffeine_after_2pm",
+                  "label": "no caffeine after 2pm today",
+                  "source": "bundle",
+                  "operator": "==",
+                  "threshold_bool": false
+                }
+              ],
+              "completion_prompt": "Did you honor the 2pm caffeine cutoff and start your screen-free wind-down at 10pm?",
+              "success_definition": "User reports no caffeine after 2pm and initiating a screen-free wind-down by 10pm, aiming to stabilize tonight's sleep onset earlier than last night's extreme 23:47."
+            },
+            "assumptions": [
+              "You have a smartphone with alarms",
+              "You have access to caffeine-free beverages",
+              "You have a quiet, dimly lit space for wind-down"
+            ],
+            "description": "When your phone alarm goes off at 2pm, have your last caffeinated drink. At 10pm, set a second alarm to start your wind-down: put away screens, dim lights, and begin a quiet activity like reading.",
+            "effort_level": "medium",
+            "action_source": "generated",
+            "cooldown_logic": {
+              "max_times_per_week": 7,
+              "cooldown_days_after_fail": 0,
+              "cooldown_days_after_success": 1
+            },
+            "evaluation_mode": "mixed",
+            "requires_user_rating": true,
+            "feasibility_constraints": {
+              "must_avoid": [
+                "caffeine after 2pm",
+                "screens after 10pm wind-down start"
+              ],
+              "time_minutes": 5,
+              "requires_equipment": [
+                "smartphone or timer"
+              ]
+            }
+          },
+          {
+            "tags": [
+              "nutrition",
+              "protein",
+              "meal_planning",
+              "ramadan"
+            ],
+            "when": "evening",
+            "title": "At your first evening meal, double the protein portion from yesterday's dinner",
+            "domain": "nutrition",
+            "priority": 2,
+            "action_id": "a69396ec58638beb",
+            "fallbacks": [
+              "If no whole protein available, add a scoop of protein powder to a drink or have a large handful of nuts."
+            ],
+            "rationale": "YESTERDAY's nutrition was 'critical' with total intake very low (991 kcal) and protein sharply declining (-10.32 slope_fast, 53.7g vs. 84.66 baseline). Your dinner was a boiled egg and yogurt—a good base. Doubling that portion directly counters the steep decline, addresses the 'nutrition_gap' risk flag and 'low energy intake' cross-domain signal, and supports physiological recovery (proxy 36) by providing essential building blocks. This is meal-aware, referencing yesterday's actual foods to promote consistency.",
+            "evaluation": {
+              "mode": "mixed",
+              "signal_refs": [
+                {
+                  "path": "nutrition.daily_nutrition.protein_g_day",
+                  "label": "protein intake at least 70g today",
+                  "source": "bundle",
+                  "operator": ">=",
+                  "threshold_num": 70
+                }
+              ],
+              "completion_prompt": "Did you intentionally include a double protein portion with your first meal?",
+              "success_definition": "User reports adding a substantial protein source to their evening meal, and today's total protein reaches at least 70g (improving on yesterday's critically low 53.7g)."
+            },
+            "assumptions": [
+              "You are observing Ramadan with an evening meal",
+              "You have access to eggs, yogurt, or another protein source"
+            ],
+            "description": "When you break your fast tonight, include two boiled eggs or a double serving of Greek yogurt alongside your meal, aiming for at least 25g of protein in that sitting.",
+            "effort_level": "low",
+            "action_source": "generated",
+            "cooldown_logic": {
+              "max_times_per_week": 5,
+              "cooldown_days_after_fail": 0,
+              "cooldown_days_after_success": 2
+            },
+            "evaluation_mode": "mixed",
+            "requires_user_rating": true,
+            "feasibility_constraints": {
+              "must_avoid": [
+                "skipping protein",
+                "relying only on carbs/sweets like yesterday's chocolate petit fours"
+              ],
+              "time_minutes": 2,
+              "requires_equipment": []
+            }
+          },
+          {
+            "tags": [
+              "stability",
+              "activity",
+              "microbreak",
+              "implementation_intention"
+            ],
+            "when": "afternoon",
+            "title": "Take a 7-minute 'reset walk' after your deepest work block",
+            "domain": "stability",
+            "priority": 3,
+            "action_id": "33d23c583402d6ec",
+            "fallbacks": [
+              "If you can't walk, stand by a window and do 3 minutes of light stretching or marching in place."
+            ],
+            "rationale": "YESTERDAY's activity was 'critical' with 0 MVPA, low steps (2850), and high sedentary time (788 min) trending upward. A timed, intentional walk disrupts the sedentary spiral, provides a cognitive reset (your focus is high at 84), and supports physiological recovery by increasing blood flow. It fits within day constraints by being brief and anchored to a work transition, differing from recent marching or shoulder-roll suggestions.",
+            "evaluation": {
+              "mode": "auto",
+              "signal_refs": [
+                {
+                  "path": "watch.activity.steps",
+                  "label": "steps higher than yesterday",
+                  "source": "bundle",
+                  "operator": ">",
+                  "threshold_num": 2850
+                }
+              ],
+              "completion_prompt": null,
+              "success_definition": "Today's step count exceeds yesterday's 2850, indicating you added light movement despite a 'tight schedule' and 'high workload'."
+            },
+            "assumptions": [
+              "You can step away from work briefly",
+              "You can walk safely indoors or outdoors"
+            ],
+            "description": "When you finish your most demanding work task or hit a natural stopping point, step outside (or walk indoors) for exactly 7 minutes at a gentle pace. Focus on your breathing and surroundings.",
+            "effort_level": "low",
+            "action_source": "generated",
+            "cooldown_logic": {
+              "max_times_per_week": 5,
+              "cooldown_days_after_fail": 0,
+              "cooldown_days_after_success": 1
+            },
+            "evaluation_mode": "auto",
+            "requires_user_rating": false,
+            "feasibility_constraints": {
+              "must_avoid": [
+                "making it strenuous",
+                "checking your phone during the walk"
+              ],
+              "time_minutes": 7,
+              "requires_equipment": []
+            }
+          },
+          {
+            "tags": [
+              "sleep",
+              "stress",
+              "wind_down",
+              "mindfulness"
+            ],
+            "when": "before_bed",
+            "title": "Perform a 5-minute body scan while lying in bed before sleep",
+            "domain": "sleep",
+            "priority": 4,
+            "action_id": "4fab36534e6385ae",
+            "fallbacks": [
+              "If 5 minutes feels long, do a 2-minute version focusing only on feet, hands, and shoulders."
+            ],
+            "rationale": "LAST NIGHT's sleep had low REM (15.25%) and you report a persistent 8-day subjective-objective mismatch (gap 35). A body scan promotes parasympathetic activation and somatic awareness, which may improve sleep architecture and help bridge the perception-recovery gap. It addresses the 'mismatch_pattern' risk flag and serves your sleep goal by providing a non-screen, calming pre-sleep ritual, varying from recent breathing or reading actions.",
+            "evaluation": {
+              "mode": "user_rating",
+              "signal_refs": [],
+              "completion_prompt": "Did you complete the 5-minute body scan as the first activity upon getting into bed?",
+              "success_definition": "User reports performing the body scan exercise immediately upon lying down, using it as a deliberate transition to sleep."
+            },
+            "assumptions": [
+              "You can lie down safely",
+              "You have a quiet environment"
+            ],
+            "description": "When you get into bed tonight, lie on your back and spend 5 minutes mentally scanning your body from toes to head, noticing any tension and consciously relaxing each part. Breathe naturally.",
+            "effort_level": "low",
+            "action_source": "generated",
+            "cooldown_logic": {
+              "max_times_per_week": 7,
+              "cooldown_days_after_fail": 0,
+              "cooldown_days_after_success": 1
+            },
+            "evaluation_mode": "user_rating",
+            "requires_user_rating": true,
+            "feasibility_constraints": {
+              "must_avoid": [
+                "using screens during or after",
+                "rushing through it"
+              ],
+              "time_minutes": 5,
+              "requires_equipment": []
+            }
+          }
+        ],
+        "questions": []
+      },
+      "outcomes_json": {
+        "evaluated_at": "2026-05-06T15:03:17.712Z",
+        "action_results": [
+          {
+            "title": "Set a strict 2pm caffeine cutoff and a 10pm 'prepare for bed' alarm",
+            "reason": "no caffeine after 2pm today: comparison == failed",
+            "action_id": "cac72871993e90a9",
+            "evidence_used": {
+              "state": {},
+              "bundle": {
+                "nutrition.meal_context.caffeine_after_2pm": false
+              },
+              "ignored_refs": []
+            },
+            "outcome_score": "fail",
+            "evaluation_mode": "mixed",
+            "requires_user_rating_next_time": true
+          },
+          {
+            "title": "At your first evening meal, double the protein portion from yesterday's dinner",
+            "reason": "protein intake at least 70g today: comparison >= passed",
+            "action_id": "a69396ec58638beb",
+            "evidence_used": {
+              "state": {},
+              "bundle": {
+                "nutrition.daily_nutrition.protein_g_day": 94.6
+              },
+              "ignored_refs": []
+            },
+            "outcome_score": "success",
+            "evaluation_mode": "mixed",
+            "requires_user_rating_next_time": true
+          },
+          {
+            "title": "Take a 7-minute 'reset walk' after your deepest work block",
+            "reason": "steps higher than yesterday: comparison > failed",
+            "action_id": "33d23c583402d6ec",
+            "evidence_used": {
+              "state": {},
+              "bundle": {
+                "watch.activity.steps": 1866
+              },
+              "ignored_refs": []
+            },
+            "outcome_score": "fail",
+            "evaluation_mode": "auto",
+            "requires_user_rating_next_time": false
+          },
+          {
+            "title": "Perform a 5-minute body scan while lying in bed before sleep",
+            "reason": "Action requires user-reported completion",
+            "action_id": "4fab36534e6385ae",
+            "evidence_used": {
+              "state": {},
+              "bundle": {},
+              "ignored_refs": []
+            },
+            "outcome_score": "tbd",
+            "evaluation_mode": "user_rating",
+            "requires_user_rating_next_time": true
+          }
+        ],
+        "evaluation_source_date": "2026-03-24",
+        "evaluated_on_submission_date": "2026-03-25"
+      }
+    }
+  }
+}

@@ -7,6 +7,7 @@ const STATE_VERSION = "v1";
 const FAST_EFFECTIVE_DAYS = 7;
 const SLOW_EFFECTIVE_DAYS_CAP = 30;
 const CORRELATION_WINDOW_DAYS = 14;
+const GAP_ALIGNMENT_THRESHOLD = 10;
 
 const TRACKED_FEATURE_KEYS = [
   "overall_true_today",
@@ -125,6 +126,7 @@ type StateHistorySnapshot = {
       z_slow_today: number | null;
       vol_fast: number | null;
       vol_class: "stable" | "moderate" | "volatile";
+      regime_shift: number | null;
     }
   >;
   slopes: Record<
@@ -276,8 +278,8 @@ function pearsonCorrelation(xValues: number[], yValues: number[]): number | null
 
 function directionFromGap(gap: number | null): "overall_lt_proxy" | "overall_gt_proxy" | "aligned" {
   if (gap === null) return "aligned";
-  if (gap <= -5) return "overall_lt_proxy";
-  if (gap >= 5) return "overall_gt_proxy";
+  if (gap <= -GAP_ALIGNMENT_THRESHOLD) return "overall_lt_proxy";
+  if (gap >= GAP_ALIGNMENT_THRESHOLD) return "overall_gt_proxy";
   return "aligned";
 }
 
@@ -694,6 +696,7 @@ function buildCompactSnapshot(
           z_slow_today: featureState.slow.z_today,
           vol_fast: featureState.volatility.vol_fast,
           vol_class: featureState.volatility.class,
+          regime_shift: featureState.regime_shift,
         },
       ];
     })
@@ -823,6 +826,7 @@ function buildStateJson(
             last_value: featureState.slow.last_value,
             last_updated: updatedAt,
           },
+          regime_shift: featureState.regime_shift,
         },
       ])
     ),
@@ -1029,7 +1033,9 @@ export async function update_state(
 
   return {
     localDate: date,
-    shouldRunSummary: readiness.fast_ready,
+    // Keep readiness flags for uncertainty and baseline metadata, but do not
+    // block morning brief generation when history is shorter than the fast window.
+    shouldRunSummary: true,
     stateReady: readiness,
     currentStateRow,
     historyRow,
