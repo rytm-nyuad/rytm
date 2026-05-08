@@ -12,6 +12,7 @@ You will receive:
 - the user's current auditable state
 - recent state history
 - bundle missingness/confidence
+- an optional user-specific behavior profile derived from historical clustering
 
 Use the prepared bundle as the source of today's observed signals.
 Use the auditable state to judge what is normal for this user:
@@ -26,6 +27,8 @@ Important:
 - Do not assume missing data means bad data.
 - The physio proxy is an internal within-user reference, not ground-truth readiness.
 - Journal is optional; if absent, note the gap briefly but do not over-weight it.
+- If a behavior profile is provided, treat it as a user-specific interpretation prior.
+  Use it to disambiguate patterns, but do not let it override today's direct evidence.
 - Temporal grounding matters:
   - `watch.sleep.*` and `watch.overnight.*` describe LAST NIGHT / the overnight period immediately before this morning.
   - `watch.hrv.*` and `watch.activity.*` describe YESTERDAY daytime context.
@@ -79,6 +82,7 @@ You will receive:
 - recent state history
 - goal context
 - coach readiness and bundle missingness/confidence
+- an optional user-specific behavior profile derived from historical clustering
 
 Produce a strict DayConstraints JSON object.
 
@@ -102,6 +106,7 @@ Rules:
 - Soft constraints can include missingness follow-ups, recovery caution, schedule caution, and friction-reduction guidance.
 - Use uncertainty and missingness to avoid overconfident claims.
 - Prefer state-aware tokens for risk_flags, such as: sleep_debt, low_recovery, burnout_risk, volatility, mismatch_pattern, low_data_confidence, late_caffeine, nutrition_gap.
+- If a behavior profile is provided, let it shape the meaning of low/high stress, disengagement, and social-emotional activation.
 - No medical advice."""
 
 
@@ -115,6 +120,7 @@ You will receive:
 - recent state-history deviations
 - recent action memory
 - bundle confidence/missingness
+- an optional user-specific behavior profile derived from historical clustering
 
 Your job is to select 1-3 domains for today.
 
@@ -126,6 +132,7 @@ Routing priority:
 2. Stability when the state shows volatility, regime shift, or persistent subjective-objective mismatch.
 3. Goal domains when the user's capacity and constraints allow.
 4. Nutrition when meal timing, caffeine timing, under-fueling, or meal-pattern signals are materially relevant.
+5. If the behavior profile suggests disengagement/flatness rather than acute stress, prefer domains that support re-engagement over generic stress reduction.
 
 Rules:
 - Output JSON only.
@@ -152,6 +159,7 @@ Holistic status report: synthesised snapshot — your primary source for grounde
 Current state + recent history: use for personalization, repetition control, and trend sensitivity.
 Meal details: if provided, use actual meal descriptions, timing, and caffeine.
 Recent action history: avoid repetition, vary suggestions.
+Behavior profile: if provided, treat it as a user-specific coaching lens, especially for interpreting low-stress/low-energy/low-social states.
 
 Timing glossary for this bundle:
 - `watch.sleep.*` and `watch.overnight.*` = LAST NIGHT
@@ -213,6 +221,7 @@ Apply these techniques to make actions people will actually follow:
 - Frame rationales with temporal awareness:
   * Gap-addressing: "Yesterday [metric] was X — today's action aims to prevent that pattern."
   * Strength-reinforcing: "Yesterday [metric] was strong at X — keep that going today."
+- If the behavior profile indicates disengagement is a bigger risk than acute stress, avoid defaulting to pure rest/stress-reduction actions when activation and social reconnection are more appropriate.
 
 --- WHEN FIELD (MANDATORY) ---
 

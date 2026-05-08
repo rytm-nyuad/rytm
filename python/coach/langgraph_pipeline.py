@@ -39,6 +39,7 @@ class PipelineState(TypedDict):
     current_state: Dict[str, Any]
     recent_state_history: List[Dict[str, Any]]
     coach_readiness: Dict[str, Any]
+    behavior_profile: Dict[str, Any]
 
     # User context
     user_name: str
@@ -66,6 +67,42 @@ class PipelineState(TypedDict):
 
 class MorningCoachPipeline:
     """LangGraph-based morning coach pipeline"""
+
+    HARDCODED_BEHAVIOR_PROFILES = {
+        "bf8434ee-b495-4da4-96d0-d919c5b4a957": {
+            "profile_version": "cluster_profile_v1_hardcoded",
+            "summary": (
+                "Agentic User Profile Summary: This user shows a social-emotional behavioral "
+                "system where wellbeing depends heavily on the alignment of mood, focus, energy, "
+                "social connectedness, and sleep quality. Low stress is not always positive for "
+                "this user. When low stress appears together with low mood, low focus, low energy, "
+                "and low social connectedness, it likely reflects disengagement or emotional "
+                "flatness rather than recovery."
+            ),
+            "cluster_interpretations": {
+                "cluster_2": (
+                    "Highest-scoring productive state: high focus, energy, mood, and good social "
+                    "interaction. Preserve momentum and recommend light recovery breaks."
+                ),
+                "cluster_1": (
+                    "Most balanced state: best sleep quality, lowest stress, highest social "
+                    "connectedness, and strong mood, focus, and energy. Treat this as the target "
+                    "state for long-term coaching."
+                ),
+                "cluster_0": (
+                    "Lowest state: low mood, focus, social connectedness, and energy, with higher "
+                    "caffeine. This likely reflects disengagement, boredom, or passive low "
+                    "activation rather than acute stress. Recommend gentle re-engagement, light "
+                    "movement, hydration, meaningful social contact, and one small achievable task. "
+                    "Avoid advice focused only on rest or stress reduction."
+                ),
+            },
+            "primary_coaching_rule": (
+                "Do not optimize for stress reduction alone. Optimize for social-emotional "
+                "engagement, cognitive activation, and balanced recovery."
+            ),
+        }
+    }
     
     def __init__(self, supabase_client, openrouter_api_key: str):
         self.client = supabase_client
@@ -189,6 +226,15 @@ class MorningCoachPipeline:
             'bundle_missingness': input_bundle.get('missingness_json') or {},
             'bundle_confidence': input_bundle.get('confidence_json') or {},
         }
+        state['behavior_profile'] = self.HARDCODED_BEHAVIOR_PROFILES.get(
+            state['user_id'],
+            {
+                'profile_version': 'none',
+                'summary': '',
+                'cluster_interpretations': {},
+                'primary_coaching_rule': '',
+            }
+        )
         return state
     
     def node_holistic_status_report(self, state: PipelineState) -> PipelineState:
@@ -214,6 +260,9 @@ Recent state history (most recent first):
 
 Coach readiness and data quality:
 {json.dumps(state['coach_readiness'], indent=2)}
+
+Behavior profile:
+{json.dumps(state.get('behavior_profile', {}), indent=2)}
 
 Generate the holistic status report JSON."""
         
@@ -333,6 +382,9 @@ Recent state history:
 Coach readiness:
 {json.dumps(state['coach_readiness'], indent=2)}
 
+Behavior profile:
+{json.dumps(state.get('behavior_profile', {}), indent=2)}
+
 Generate day constraints JSON.
 """
         
@@ -398,6 +450,9 @@ Current auditable state:
 
 Recent state-history deviations:
 {json.dumps(recent_deviations, indent=2)}
+
+Behavior profile:
+{json.dumps(state.get('behavior_profile', {}), indent=2)}
 
 Select 2-3 domains. 
 """
@@ -485,6 +540,9 @@ Recent state history:
 
 Meal context from the prepared bundle:
 {json.dumps(meal_context, indent=2)}
+
+Behavior profile:
+{json.dumps(state.get('behavior_profile', {}), indent=2)}
 {action_history_context}
 Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, generate 3-4 actions for those domains.
  If different, generate at least 3 for selected domains and at least 1 (ideally 1-2) for the goal domain(s).
@@ -932,6 +990,7 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
             'current_state': {},
             'recent_state_history': [],
             'coach_readiness': {},
+            'behavior_profile': {},
             'user_name': '',
             'recent_action_history': [],
             'user_goal': None,
@@ -957,6 +1016,7 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
                 'selected_domains': final_state['selected_domains'],
                 'day_constraints': final_state['day_constraints'],
                 'confidence': final_state['coach_readiness'].get('bundle_confidence', {}),
+                'behavior_profile': final_state.get('behavior_profile', {}),
                 'attempts': final_state['attempt'],
                 'holistic_status_report': final_state['holistic_status_report']
             }
