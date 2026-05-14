@@ -9,7 +9,6 @@ from supabase import create_client, Client
 from data_fetcher import DataFetcher
 from feature_computer import FeatureComputer
 
-
 class IngestionAgent:
     """Ingestion & Validation Agent - Ensures data quality"""
     
@@ -206,14 +205,57 @@ class PersistenceAgent:
             'morning_message': morning_message,
             'budget_policy_json': budget_result['budget_applied'],
             'budget_applied_json': budget_result['budget_applied'],
-            'plan_json': {
-                'version': 'mvp-v2-state-history-actions',
-                'display_action_ids': [action.get('action_id') for action in display_actions],
-                'display_actions_count': len(display_actions),
-            }
+            'plan_json': {'version': 'mvp-v1'}
         }).execute()
         
         plan_id = plan_result.data[0]['plan_id']
+        
+        # Insert plan actions
+        valid_evaluation_modes = ['auto', 'user_rating', 'mixed']
+        valid_effort_levels = ['low', 'medium', 'high']
+        effort_level_aliases = {
+            'moderate': 'medium',
+            'med': 'medium',
+            'avg': 'medium',
+            'average': 'medium'
+        }
+        for action in display_actions:
+            eval_mode = action.get('evaluation_mode', 'mixed')
+            # Ensure evaluation_mode is valid
+            if eval_mode not in valid_evaluation_modes:
+                print(f"[WARNING] Invalid evaluation_mode: {eval_mode}, defaulting to 'mixed'", file=__import__('sys').stderr)
+                eval_mode = 'mixed'
+
+            raw_effort_level = action.get('effort_level')
+            effort_level = str(raw_effort_level).strip().lower() if raw_effort_level is not None else 'medium'
+            effort_level = effort_level_aliases.get(effort_level, effort_level)
+            if effort_level not in valid_effort_levels:
+                print(
+                    f"[WARNING] Invalid effort_level: {raw_effort_level}, defaulting to 'medium'",
+                    file=__import__('sys').stderr
+                )
+                effort_level = 'medium'
+            
+            self.client.table('plan_actions1').insert({
+                'plan_id': plan_id,
+                'ingestion_run_id': ingestion_run_id,
+                'user_id': user_id,
+                'for_date': for_date.isoformat(),
+                'action_id': action['action_id'],
+                'action_source': action.get('action_source', 'generated'),
+                'domain': action.get('domain'),
+                'priority': action.get('priority'),
+                'effort_level': effort_level,
+                'tags': action.get('tags', []) + ([f"when:{action['when']}"] if action.get('when') else []),
+                'reason': action.get('rationale'),
+                'assumptions_json': {'assumptions': action.get('assumptions', [])},
+                'feasibility_constraints_json': action.get('feasibility_constraints', {}),
+                'evaluation_mode': eval_mode,
+                'success_criteria_json': action.get('success_criteria', {}),
+                'required_feature_keys': action.get('required_feature_keys', []),
+                'requires_user_rating': action.get('requires_user_rating', False),
+                'fallbacks_json': action.get('fallbacks', [])
+            }).execute()
         
         return plan_id
     
