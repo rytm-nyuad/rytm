@@ -93,13 +93,6 @@ To inspect the issues:
 ```bash
 npm audit
 ```
-
-Avoid running the following unless you are prepared to test for breaking dependency changes:
-
-```bash
-npm audit fix --force
-```
-
 ---
 
 ## 3. Set Up Environment Variables
@@ -122,19 +115,7 @@ SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key>
 OPENROUTER_API_KEY=<your-openrouter-api-key>
 OPENAI_API_KEY=<your-openai-api-key>
 ```
-
-Do not commit `.env.local` or any real secrets to GitHub.
-
-Check that `.env.local` is ignored by Git:
-
-```bash
-git status
-```
-
-If `.env.local` appears as an untracked file, make sure it is listed in `.gitignore`.
-
 ---
-
 ## 4. Set Up the Python Coach Pipeline
 
 The project includes a Python-based coach pipeline under `python/coach`.
@@ -224,69 +205,6 @@ public/                      # Static assets
 * AI-guided and free-form journaling
 * Python coach pipeline for personalized recommendations
 * Secure database access patterns using Supabase and RLS
-
----
-
-## Common Setup Issues
-
-### Repository not found
-
-If cloning fails with:
-
-```text
-Repository not found
-```
-
-check that:
-
-* The repository URL is correct
-* Your GitHub account has access to the private repository
-* You are authenticated with GitHub CLI, SSH, or a Personal Access Token
-
-### Password authentication is not supported
-
-If you see:
-
-```text
-Password authentication is not supported for Git operations
-```
-
-do not enter your normal GitHub password.
-
-Use one of:
-
-```bash
-gh auth login
-```
-
-or clone with SSH:
-
-```bash
-git clone git@github.com:rytm-nyuad/rytm.git
-```
-
-or use a GitHub Personal Access Token as the HTTPS password.
-
-### `npm run dev` fails inside `python/coach`
-
-Make sure you returned to the project root before running the app:
-
-```bash
-cd ../..
-npm run dev
-```
-
-The command should be run from the folder containing `package.json`.
-
-### Missing environment variables
-
-If the app fails because of missing Supabase, OpenRouter, or OpenAI keys, check that:
-
-```bash
-.env.local
-```
-
-exists in the project root and contains the required values.
 
 ---
 
