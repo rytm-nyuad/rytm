@@ -37,6 +37,29 @@ npm install
    - Copy `.env.example` to `.env.local`
    - Fill in your Supabase project URL and anon key
    - Add your OpenRouter API key
+   - Add any other required keys such as `SUPABASE_SERVICE_ROLE_KEY` and `OPENAI_API_KEY` all can be found in .env.example
+
+Example `.env.local`:
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://<your-supabase-url>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+OPENROUTER_API_KEY=<your-openrouter-api-key>
+OPENAI_API_KEY=<your-openai-api-key>
+```
+
+4. Set up the Python virtual environment for the coach pipeline:
+```bash
+cd python/coach
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+5. Run the development server:
+```bash
+npm run dev
+```
 
 4. Run the development server:
 ```bash
@@ -75,36 +98,6 @@ supabase/
 public/                      # Static assets
 ```
 
-## LLM (AI Journal) Flow
-
-- **Free mode:**
-    - User messages are saved directly to `journal_messages` (mode = 'free'), no AI call
-    - No thread, just daily log
-- **Guided mode:**
-    - Each day (or on "New Entry") creates a new `journal_thread`
-    - User and AI messages are saved to `journal_messages` (mode = 'guided', thread_id)
-    - On each user message, the last 3 user+AI message pairs (6 messages) are sent to the LLM
-    - LLM is called via OpenRouter (see `src/lib/llms/config.ts`)
-    - System prompt is editable in `JOURNAL_SYSTEM_PROMPT`
-    - LLM response is saved to DB and shown in UI
-
-**API:**
-- `POST /api/journal` — Handles both free and guided journal messages
-- `POST /api/journal/new-thread` — Closes current thread and creates a new one
-
-**LLM Provider:**
-- OpenRouter (proxy for OpenAI, Anthropic, etc)
-- Model: `openai/gpt-4o-mini` (configurable)
-- API key in `.env.local` as `OPENROUTER_API_KEY` (and `OPENAI_API_KEY` for compatibility)
-
-## Database Schema (Journal)
-
-- `journal_threads`: id, user_id, title, status, created_at, updated_at, last_message_at
-- `journal_messages`: id, user_id, thread_id (nullable), mode ('free'|'guided'), role ('user'|'assistant'), content, created_at
-- RLS policies: Only owner can read/write their threads/messages
-- Triggers: Auto-update thread timestamps on new message
-- Helper function: `get_or_create_active_thread(user_id)`
-
 ## Current Status
 
 ✅ Full dashboard with logging, check-ins, streaks, and journal
@@ -113,14 +106,11 @@ public/                      # Static assets
 ✅ Consent flow and signature required for account
 ✅ AI-guided and free-form journaling (LangChain.js + OpenRouter)
 ✅ Secure authentication and RLS everywhere
-⏳ Analytics, calendar, and leaderboard (coming soon)
-
-## Current Status
-
 ✅ Landing page with authentication CTAs  
 ✅ Authentication page placeholders  
 ✅ Supabase integration setup  
 ⏳ Dashboard and data collection features (coming soon)
+⏳ Analytics, calendar (coming soon)
 
 ## License
 
