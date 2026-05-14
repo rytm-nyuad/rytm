@@ -2,53 +2,145 @@
 
 **Master your flow**
 
-A modern web platform for human performance optimization and wellbeing data collection. Built for NYUAD Capstone.
+A modern web platform for human performance optimization and wellbeing data collection. Built for the NYUAD Capstone project.
 
 ## Tech Stack
 
-- **Frontend framework**: Next.js 14+ (App Router) + TypeScript
+- **Frontend framework**: Next.js 14+ App Router + TypeScript
 - **Styling**: Tailwind CSS
 - **Authentication + Database**: Supabase
-- **AI layer**: OpenRouter API (LLM provider gateway)
-- **Deployment**: Vercel
+- **AI layer**: OpenRouter API and OpenAI API
+- **Python pipeline**: Coach pipeline under `python/coach`
+- **Deployment**: Vercel / Node.js-compatible hosting
+
+---
 
 ## Getting Started
 
 ### Prerequisites
 
+Before setting up the project, make sure you have:
+
 - Node.js 18+ and npm
+- Python 3.10+ recommended
+- Git
+- Access to the private GitHub repository
 - A Supabase account and project
-- OpenRouter API key (for AI features)
+- An OpenRouter API key
+- An OpenAI API key, if using OpenAI-backed features
 
-### Installation
+---
 
-1. Clone the repository:
+## 1. Clone the Repository
+
+This repository is private, so your GitHub account must have access to the `rytm-nyuad` organization/repository.
+
+GitHub no longer supports password authentication for Git operations over HTTPS. Use one of the following authentication methods.
+
+### Option A: Clone using GitHub CLI
+
+First authenticate:
+
 ```bash
-git clone https://github.com/youssof1/rytm.git
-cd rytm/rytm
+gh auth login
+````
+
+Follow the prompts, then check that authentication worked:
+
+```bash
+gh auth status
 ```
 
-2. Install dependencies:
+Then clone the repository:
+
+```bash
+git clone https://github.com/rytm-nyuad/rytm.git
+cd rytm
+```
+
+### Option B: Clone using SSH
+
+If you have SSH set up with GitHub:
+
+```bash
+git clone git@github.com:rytm-nyuad/rytm.git
+cd rytm
+```
+
+### Option C: Clone using HTTPS with a Personal Access Token
+
+```bash
+git clone https://github.com/rytm-nyuad/rytm.git
+cd rytm
+```
+
+When prompted for your password, paste a GitHub Personal Access Token instead of your GitHub password.
+
+---
+
+## 2. Install Node Dependencies
+
+From the project root:
+
 ```bash
 npm install
 ```
 
-3. Set up environment variables:
-   - Copy `.env.example` to `.env.local`
-   - Fill in your Supabase project URL and anon key
-   - Add your OpenRouter API key
-   - Add any other required keys such as `SUPABASE_SERVICE_ROLE_KEY` and `OPENAI_API_KEY` all can be found in .env.example
+You may see npm warnings about deprecated packages or vulnerabilities from transitive dependencies. These warnings do not necessarily prevent the app from running.
 
-Example `.env.local`:
+To inspect the issues:
+
+```bash
+npm audit
+```
+
+Avoid running the following unless you are prepared to test for breaking dependency changes:
+
+```bash
+npm audit fix --force
+```
+
+---
+
+## 3. Set Up Environment Variables
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env.local
+```
+
+Then open `.env.local` and fill in the required values.
+
+At minimum, the app may require values such as:
+
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://<your-supabase-url>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-anon-key>
-SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+NEXT_PUBLIC_SUPABASE_URL=https://<your-supabase-project-url>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key>
+
 OPENROUTER_API_KEY=<your-openrouter-api-key>
 OPENAI_API_KEY=<your-openai-api-key>
 ```
 
-4. Set up the Python virtual environment for the coach pipeline:
+Do not commit `.env.local` or any real secrets to GitHub.
+
+Check that `.env.local` is ignored by Git:
+
+```bash
+git status
+```
+
+If `.env.local` appears as an untracked file, make sure it is listed in `.gitignore`.
+
+---
+
+## 4. Set Up the Python Coach Pipeline
+
+The project includes a Python-based coach pipeline under `python/coach`.
+
+From the project root:
+
 ```bash
 cd python/coach
 python3 -m venv .venv
@@ -56,64 +148,151 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-5. Run the development server:
+Then return to the project root before running the Next.js app:
+
+```bash
+cd ../..
+```
+
+If you are on Windows, activate the virtual environment with:
+
+```bash
+.venv\Scripts\activate
+```
+
+---
+
+## 5. Run the Development Server
+
+From the project root:
+
 ```bash
 npm run dev
 ```
 
-4. Run the development server:
-```bash
-npm run dev
+Then open:
+
+```text
+http://localhost:3000
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+---
 
-src/
+## Project Structure
 
-## Project Structure (2025)
-
-```
+```text
 src/
 ├── app/
-│   ├── (auth)/              # Authentication routes (sign-in, sign-up, callback)
-│   ├── api/
-│   │   └── journal/         # Journal API endpoints (LLM, new thread)
-│   ├── consent/             # Consent form and signing
+│   ├── (auth)/              # Authentication routes
+│   ├── api/                 # API routes
+│   ├── consent/             # Consent flow and signature page
 │   ├── dashboard/           # Main dashboard UI
 │   ├── layout.tsx           # Root layout
 │   ├── page.tsx             # Landing page
 │   └── globals.css          # Global styles
 ├── components/
-│   ├── dashboard/           # Dashboard widgets (JournalChat, LogMealModal, etc)
-│   └── ui/                  # Reusable UI components (Button, Input, Card, Field)
+│   ├── dashboard/           # Dashboard widgets and modals
+│   └── ui/                  # Reusable UI components
 ├── lib/
-│   ├── db/                  # Database logic (journal, dashboard)
-│   ├── llms/                # LLM config and system prompt
+│   ├── db/                  # Database logic
+│   ├── llms/                # LLM configuration and prompts
 │   ├── supabase/            # Supabase client utilities
 │   └── utils.ts             # Utility functions
 ├── types/                   # TypeScript types
+
+python/
+└── coach/                   # Python coach pipeline
+
 supabase/
-├── journal_schema.sql       # Full journal DB schema (threads, messages, RLS)
-├── ...other SQL files       # Table and RLS setup
+├── journal_schema.sql       # Journal database schema
+└── ...                      # Other SQL setup files
+
 public/                      # Static assets
 ```
 
-## Current Status
+---
 
-✅ Full dashboard with logging, check-ins, streaks, and journal
-✅ Image upload for meals (Supabase Storage)
-✅ Water and meal logging with custom UI
-✅ Consent flow and signature required for account
-✅ AI-guided and free-form journaling (LangChain.js + OpenRouter)
-✅ Secure authentication and RLS everywhere
-✅ Landing page with authentication CTAs  
-✅ Authentication page placeholders  
-✅ Supabase integration setup  
-⏳ Dashboard and data collection features (coming soon)
-⏳ Analytics, calendar (coming soon)
+## Main Features
+
+* Landing page with authentication calls to action
+* Supabase authentication
+* Consent flow with signature requirement
+* Dashboard for wellbeing and performance data collection
+* Daily check-ins and logging flows
+* Meal and water logging
+* Image upload support for meal logs using Supabase Storage
+* AI-guided and free-form journaling
+* Python coach pipeline for personalized recommendations
+* Secure database access patterns using Supabase and RLS
+
+---
+
+## Common Setup Issues
+
+### Repository not found
+
+If cloning fails with:
+
+```text
+Repository not found
+```
+
+check that:
+
+* The repository URL is correct
+* Your GitHub account has access to the private repository
+* You are authenticated with GitHub CLI, SSH, or a Personal Access Token
+
+### Password authentication is not supported
+
+If you see:
+
+```text
+Password authentication is not supported for Git operations
+```
+
+do not enter your normal GitHub password.
+
+Use one of:
+
+```bash
+gh auth login
+```
+
+or clone with SSH:
+
+```bash
+git clone git@github.com:rytm-nyuad/rytm.git
+```
+
+or use a GitHub Personal Access Token as the HTTPS password.
+
+### `npm run dev` fails inside `python/coach`
+
+Make sure you returned to the project root before running the app:
+
+```bash
+cd ../..
+npm run dev
+```
+
+The command should be run from the folder containing `package.json`.
+
+### Missing environment variables
+
+If the app fails because of missing Supabase, OpenRouter, or OpenAI keys, check that:
+
+```bash
+.env.local
+```
+
+exists in the project root and contains the required values.
+
+---
 
 ## License
 
 Private research project for NYUAD Capstone.
 
-
+```
+```
