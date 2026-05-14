@@ -64,6 +64,11 @@ WORKDIR /app
 # Tools for proper signal handling + healthcheck
 RUN apk add --no-cache dumb-init curl
 
+# Python runtime for LangGraph coach pipeline
+RUN apk add --no-cache python3 py3-pip
+COPY python/coach/requirements.txt /tmp/coach-requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/coach-requirements.txt
+
 # Copy package files
 COPY package*.json ./
 
@@ -74,6 +79,9 @@ RUN npm ci
 # Copy build output and public assets
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+
+# Copy Python coach pipeline
+COPY python ./python
 
 # Optional: if you use next/image with sharp, you may need it installed via deps.
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Send, Plus, MessageSquare, Trash2, BookOpen, Lightbulb } from "lucide-react";
+import { VoiceInputButton } from "@/components/ui/VoiceInputButton";
 import { createBrowserClient } from "@supabase/ssr";
 import type { ChatMessage } from "@/types/dashboard";
 import { formatLocalDate } from "@/lib/time";
@@ -553,6 +554,11 @@ export function JournalChat({
               onKeyDown={(e) => e.key === "Enter" && handleSend()}
               placeholder="Write here..."
               className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600 text-sm"
+            />
+            <VoiceInputButton
+              onTranscript={(t) => setInput(t)}
+              currentValue={input}
+              disabled={loading}
             />
             <button
               onClick={handleSend}

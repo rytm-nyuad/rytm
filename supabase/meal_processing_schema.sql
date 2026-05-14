@@ -1,6 +1,6 @@
 -- ============================================================
 -- RYTM v1 – Meal Processing Pipeline Schema
--- Pipeline version: v1.0
+-- Pipeline version: v1.1
 -- Created: 2026-02-17
 -- ============================================================
 -- This migration creates three tables:
@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS meal_items_v1 (
   carbs_g         numeric,
   fat_g           numeric,
   sugar_g         numeric,
+  caffeine_mg     numeric,
   source          text,
   created_at      timestamptz DEFAULT now()
 );
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS food_cache_v1 (
   carbs_g         numeric,
   fat_g           numeric,
   sugar_g         numeric,
+  caffeine_mg     numeric,
   serving_notes   text,
   source          text,
   updated_at      timestamptz DEFAULT now()

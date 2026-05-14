@@ -297,6 +297,7 @@ export async function processMeal(
         carbs_g: macros?.carbs_g ?? null,
         fat_g: macros?.fat_g ?? null,
         sugar_g: macros?.sugar_g ?? null,
+        caffeine_mg: macros?.caffeine_mg ?? null,
         source,
       };
     });
@@ -325,6 +326,7 @@ export async function processMeal(
           carbs_g: estimated.carbs_g,
           fat_g: estimated.fat_g,
           sugar_g: estimated.sugar_g,
+          caffeine_mg: estimated.caffeine_mg,
           serving_notes: ext.portion_text,
           source: 'llm',
         };

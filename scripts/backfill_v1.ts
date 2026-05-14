@@ -1,12 +1,14 @@
 // ============================================================
 // RYTM v1 – Backfill Script for Meal Processing
 // ============================================================
-// Processes all meals from the past 14 days that have not yet
+// Processes all meals from the past 14 local dates that have not yet
 // been processed by pipeline v1.0.
 //
 // Usage (from project root):
 //   npm run meal:backfill
 //   npm run meal:backfill -- --days=7
+//   npm run meal:backfill -- --user=<user-uuid>
+//   npm run meal:backfill -- --user=<user-uuid> --days=7 --dry-run
 //   npm run meal:backfill -- --dry-run
 //
 // Requirements:
@@ -34,17 +36,21 @@ function parseArgs() {
   const args = process.argv.slice(2);
   let days = DEFAULT_DAYS;
   let dryRun = false;
+  let userId: string | undefined;
 
   for (const arg of args) {
     if (arg.startsWith('--days=')) {
       days = parseInt(arg.split('=')[1], 10);
+    }
+    if (arg.startsWith('--user=')) {
+      userId = arg.split('=')[1];
     }
     if (arg === '--dry-run') {
       dryRun = true;
     }
   }
 
-  return { days, dryRun };
+  return { days, dryRun, userId };
 }
 
 // ---- Supabase service client ----
@@ -66,22 +72,31 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---- Main ----
 async function main() {
-  const { days, dryRun } = parseArgs();
+  const { days, dryRun, userId } = parseArgs();
   console.log(`\n🍽  RYTM Meal Processing Backfill (v1.0)`);
   console.log(`   Days back: ${days}`);
-  console.log(`   Dry run: ${dryRun}\n`);
+  console.log(`   User:     ${userId ?? 'all users'}`);
+  console.log(`   Dry run:  ${dryRun}\n`);
 
   const supabase = getServiceClient();
 
-  // Fetch unprocessed meals within the window
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
+  // Fetch unprocessed meals within the local-date window
+  const cutoffLocalDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
 
-  const { data: meals, error: fetchErr } = await supabase
+  let query = supabase
     .from('meal_logs')
-    .select('id, user_id, description, photo_url, meal_datetime')
-    .gte('meal_datetime', cutoff.toISOString())
-    .order('meal_datetime', { ascending: true });
+    .select('id, user_id, description, photo_url, meal_local_date, meal_datetime')
+    .gte('meal_local_date', cutoffLocalDate)
+    .order('meal_local_date', { ascending: true })
+    .order('meal_datetime', { ascending: true, nullsFirst: false });
+
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data: meals, error: fetchErr } = await query;
 
   if (fetchErr) {
     console.error('❌ Failed to fetch meals:', fetchErr.message);
@@ -111,7 +126,9 @@ async function main() {
   if (dryRun) {
     console.log('🔍 Dry run — listing meals that would be processed:\n');
     for (const m of toProcess) {
-      console.log(`   ${m.id}  ${m.meal_datetime}  ${(m.description ?? '').slice(0, 60)}`);
+      console.log(
+        `   ${m.id}  ${m.meal_local_date}  ${m.meal_datetime ?? 'time-not-set'}  ${(m.description ?? '').slice(0, 60)}`
+      );
     }
     process.exit(0);
   }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { X, Send, Plus, MessageSquare, Trash2, Calendar, Heart, Zap, TrendingUp } from "lucide-react";
+import { VoiceInputButton } from "@/components/ui/VoiceInputButton";
 import {
   getCoachConversations,
   getCoachMessages,
@@ -362,6 +363,11 @@ export function FullScreenCoach({ isOpen, onClose, userId, firstName, initialMes
                       focus:outline-none
                       text-sm font-medium
                     "
+                    disabled={loading}
+                  />
+                  <VoiceInputButton
+                    onTranscript={(t) => setInput(t)}
+                    currentValue={input}
                     disabled={loading}
                   />
                   <button

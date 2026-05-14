@@ -1,0 +1,23 @@
+{
+  "run_id": "judging__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-02-03__2026-03-28__2026-05-07T09-30-03-952Z",
+  "created_at": "2026-05-07T09:30:03.952Z",
+  "inputs_dir": "python/coach/evals/runs/merged_inputs/merged_inputs__2026-05-06T18-30-58-232Z/judge_inputs",
+  "rubric_path": "/home/nyuad/rytm/python/coach/evals/rubrics/morning_brief_rubric_v1.json",
+  "rubric_id": "morning_brief_rubric",
+  "rubric_version": "v1",
+  "judge_prompt_version": "judge_prompt_v1",
+  "judge_models": [
+    "openai/gpt-5.5"
+  ],
+  "example_count": 50,
+  "results": [
+    {
+      "judge_model": "openai/gpt-5.5",
+      "raw_path": "/home/nyuad/rytm/python/coach/evals/runs/judging/judging__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-02-03__2026-03-28__2026-05-07T09-30-03-952Z/raw/openai_gpt-5.5.jsonl",
+      "csv_path": "/home/nyuad/rytm/python/coach/evals/runs/judging/judging__bf8434ee-b495-4da4-96d0-d919c5b4a957__2026-02-03__2026-03-28__2026-05-07T09-30-03-952Z/csv/openai_gpt-5.5.csv",
+      "rows_written": 50,
+      "error_count": 0,
+      "errors": []
+    }
+  ]
+}

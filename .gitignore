@@ -36,3 +36,9 @@ next-env.d.ts
 # OS
 .DS_Store
 Thumbs.db
+
+# Python coach pipeline
+python/coach/venv/
+python/coach/__pycache__/
+python/coach/*.pyc
+python/__pycache__/

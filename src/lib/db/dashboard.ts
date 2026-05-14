@@ -2,6 +2,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import type { DailyOverall, MealLogEntry } from "@/types/dashboard";
 import { formatLocalDate, getBrowserTimeZone } from "@/lib/time";
 import { getCanonicalTimeZone } from "@/lib/time";
+import { invalidateCanonicalTimeZone } from "@/lib/time";
 
 
 const supabase = createBrowserClient(
@@ -155,6 +156,21 @@ function invalidateSnapshot(userId: string) {
   snapshotCache.delete(cacheKey(userId));
 }
 
+function scheduleForwardRecompute(
+  changedLocalDate: string,
+  semantic: "source" | "submission"
+) {
+  void fetch("/api/workflows/recompute-forward", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ changedLocalDate, semantic }),
+  }).catch((error) => {
+    console.error("Failed to schedule forward recompute:", error);
+  });
+}
+
 
 /* ============================================================
    NEW: date-aware summary read for checklist/backlogging
@@ -211,22 +227,31 @@ export async function submitDailyOverall(
   score: number,
   date?: Date
 ): Promise<boolean> {
-  const tz = await getCanonicalTimeZone(supabase, userId);
-  const target = date ?? new Date();
-  const localDate = formatLocalDate(target, tz);
+  let localDate: string | undefined = undefined;
 
-  const { data, error } = await supabase.rpc("submit_overall_for_date", {
-    p_user_id: userId,
-    p_local_date: localDate,
-    p_score: score,
+  if (date) {
+    const tz = await getCanonicalTimeZone(supabase, userId);
+    localDate = formatLocalDate(date, tz);
+  }
+
+  const res = await fetch("/api/dashboard/submit-overall", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      score,
+      localDate: localDate ?? null,
+    }),
   });
 
-  if (error || data !== true) {
-    console.error("submit_overall_for_date failed:", error);
+  const payload = await res.json().catch(() => null);
+
+  if (!res.ok || payload?.ok !== true) {
+    console.error("submit-overall API failed:", payload);
     return false;
   }
 
   invalidateSnapshot(userId);
+  invalidateCanonicalTimeZone(userId);
   return true;
 }
 
@@ -248,7 +273,8 @@ export async function getTodayMealsCount(userId: string, date?: Date): Promise<n
 // CHANGE: logMeal now uses ONLY the RPC wrapper (no direct insert)
 // - Supports backlogging via p_local_date
 // - Supports user-entered local time (e.g. "06:02 PM") via p_local_time
-// - Preserves exact timestamp for today via p_at when no mealTime provided
+// - Leaves p_at null when no mealTime is provided so SQL can persist an
+//   unknown-time meal on the selected local date
 // - RPC handles daily_summary refresh + timezone correctness
 // ============================================================
 export async function logMeal(
@@ -260,14 +286,13 @@ export async function logMeal(
   mealTime?: string // CHANGE: expects "06:02 PM" style string (or undefined)
 ): Promise<boolean> {
   try {
-    // KEEP: snapshot gives canonical tz + todayLocal
+    // KEEP: snapshot gives canonical tz
     const snap = await getSnapshot(userId);
     const tz = snap.tz;
 
     // KEEP: target day is selectedDate (backlog) or today
     const target = date ?? new Date();
     const localDate = formatLocalDate(target, tz); // "YYYY-MM-DD"
-    const isTodayLocal = localDate === snap.todayLocal;
 
     // CHANGE: call the RPC wrapper (the ONLY write path)
     const { data, error } = await supabase.rpc("log_meal_for_date", {
@@ -285,11 +310,9 @@ export async function logMeal(
       // If provided, SQL will parse and compute the correct UTC timestamp.
       p_local_time: mealTime ?? null,
 
-      // CHANGE: only pass "now" timestamp when:
-      // - user is logging for TODAY in canonical tz
-      // - and they did NOT provide an explicit mealTime
-      // Otherwise keep null -> SQL will fallback to noon local for backlogs.
-      p_at: isTodayLocal && !mealTime ? new Date().toISOString() : null,
+      // Keep null when no explicit time is supplied so the SQL RPC controls
+      // exact timestamp behavior. Missing times should remain unknown.
+      p_at: null,
     });
 
     console.log("log_meal_for_date rpc result:", { data, error });
@@ -297,6 +320,10 @@ export async function logMeal(
     if (error || data !== true) {
       console.error("log_meal_for_date failed:", error);
       return false;
+    }
+
+    if (localDate < snap.todayLocal) {
+      scheduleForwardRecompute(localDate, "source");
     }
 
     // KEEP: invalidate snapshot so dashboard refresh reflects the new daily_summary state
@@ -359,29 +386,19 @@ export async function getMealsForDate(
   const tz = await getCanonicalTimeZone(supabase, userId);
   const localDate = formatLocalDate(date, tz);
 
-  // Query meal_logs with a broad filter, then narrow client-side to the exact local date.
-  // We over-fetch starting from midnight UTC of the local date (which will cover most timezones).
   const { data, error } = await supabase
     .from('meal_logs')
-    .select('id, user_id, meal_type, description, photo_url, meal_datetime')
+    .select('id, user_id, meal_type, description, photo_url, meal_local_date, meal_datetime')
     .eq('user_id', userId)
-    .gte('meal_datetime', `${localDate}T00:00:00+00:00`)
-    .order('meal_datetime', { ascending: true });
+    .eq('meal_local_date', localDate)
+    .order('meal_datetime', { ascending: true, nullsFirst: false });
 
   if (error) {
     console.error('getMealsForDate failed:', error);
     return [];
   }
 
-  // Client-side filter: only keep entries whose meal_datetime falls on the target local date
-  const filtered = (data ?? []).filter((row: MealLogEntry) => {
-    const dt = new Date(row.meal_datetime);
-    const rowLocalDate = formatLocalDate(dt, tz);
-    return rowLocalDate === localDate;
-  });
-
-  // Sort: by meal_datetime ascending (already from DB), stable.
-  return filtered;
+  return (data ?? []) as MealLogEntry[];
 }
 
 export async function hasCheckInToday(userId: string, date?: Date): Promise<boolean> {
@@ -434,6 +451,10 @@ export async function submitDailyCheckIn(
   if (error || data !== true) {
     console.error("submit_checkin_for_date failed:", error);
     return false;
+  }
+
+  if (localDate < snap.todayLocal) {
+    scheduleForwardRecompute(localDate, "source");
   }
 
   invalidateSnapshot(userId);

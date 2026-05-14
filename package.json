@@ -12,6 +12,12 @@
     "meal:nightly": "tsx scripts/nightly_meal_processing.ts",
     "meal:test": "tsx scripts/test_single_meal.ts",
     "meal:check-env": "tsx scripts/check_env.ts",
+    "workflows:test-day": "tsx -r dotenv/config scripts/test_overall_submission_workflows.ts",
+    "workflows:backfill-range": "tsx -r dotenv/config scripts/backfill_morning_preparation_range.ts",
+    "workflows:recompute-forward": "tsx -r dotenv/config scripts/recompute_morning_preparation_forward.ts",
+    "coach-evals:replay": "tsx -r dotenv/config python/coach/evals/replay_morning_briefs.ts",
+    "coach-evals:merge": "tsx -r dotenv/config python/coach/evals/merge_judge_inputs.ts",
+    "coach-evals:judge": "tsx -r dotenv/config python/coach/evals/run_judging.ts",
     "test": "jest --runInBand"
   },
   "dependencies": {

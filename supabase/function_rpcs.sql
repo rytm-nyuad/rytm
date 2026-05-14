@@ -82,8 +82,7 @@ BEGIN
   SELECT EXISTS (
     SELECT 1 FROM public.meal_logs m
     WHERE m.user_id = p_user_id
-      AND m.meal_datetime >= start_utc
-      AND m.meal_datetime < end_utc
+      AND m.meal_local_date = local_date
   ) INTO v_has_meal;
 
   SELECT EXISTS (
@@ -296,27 +295,25 @@ BEGIN
 
       -- Safety: ensure computed ts lands inside that day's window
       IF NOT (ts >= start_utc AND ts < end_utc) THEN
-        ts := public._safe_event_time_utc(p_local_date, tz, NULL); -- noon local fallback
+        ts := NULL;
       END IF;
 
     EXCEPTION WHEN others THEN
-      -- If parsing fails, fallback to safe time logic
-      ts := public._safe_event_time_utc(p_local_date, tz, COALESCE(p_at, now()));
+      -- If parsing fails, preserve the meal's day but leave exact time unknown.
+      ts := NULL;
     END;
 
   ELSE
-    -- CASE 2: no local time provided:
-    -- - if p_at is today-ish, it will be within window
-    -- - else it falls back to noon local (because now() will be outside window for backlogs)
-    ts := public._safe_event_time_utc(p_local_date, tz, COALESCE(p_at, now()));
+    -- CASE 2: no local time provided. Preserve the day membership only.
+    ts := NULL;
   END IF;
 
   -- Insert meal log
   INSERT INTO public.meal_logs (
-    user_id, meal_type, description, photo_url, meal_datetime
+    user_id, meal_type, description, photo_url, meal_local_date, meal_datetime
   )
   VALUES (
-    p_user_id, p_meal_type, p_description, p_photo_url, ts
+    p_user_id, p_meal_type, p_description, p_photo_url, p_local_date, ts
   );
 
   -- Refresh daily summary for that local date
@@ -555,6 +552,214 @@ $$;
 
 REVOKE ALL ON FUNCTION public.submit_overall_for_date(UUID, DATE, INTEGER) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_overall_for_date(UUID, DATE, INTEGER) TO authenticated;
+
+-- ----------------------------
+-- Compute daily_nutrition2 for a local date
+-- ----------------------------
+CREATE OR REPLACE FUNCTION public.compute_daily_nutrition2(
+  p_user_id UUID,
+  p_date DATE,
+  p_tz TEXT
+)
+RETURNS public.daily_nutrition2
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_tz TEXT;
+  start_utc TIMESTAMPTZ;
+  end_utc TIMESTAMPTZ;
+  result_row public.daily_nutrition2%ROWTYPE;
+BEGIN
+  IF auth.role() <> 'service_role' AND (auth.uid() IS NULL OR auth.uid() <> p_user_id) THEN
+    RAISE EXCEPTION 'Not allowed';
+  END IF;
+
+  v_tz := NULLIF(trim(p_tz), '');
+  IF v_tz IS NULL THEN
+    v_tz := 'UTC';
+  END IF;
+
+  start_utc := (p_date::timestamp AT TIME ZONE v_tz);
+  end_utc := ((p_date + 1)::timestamp AT TIME ZONE v_tz);
+
+  WITH successful_runs AS (
+    SELECT
+      ml.id AS meal_id,
+      ml.user_id,
+      ml.meal_type,
+      ml.meal_local_date,
+      ml.meal_datetime,
+      CASE
+        WHEN ml.meal_datetime IS NULL THEN NULL
+        ELSE FLOOR(
+          EXTRACT(
+            EPOCH FROM ((ml.meal_datetime AT TIME ZONE v_tz)::time - time '00:00')
+          ) / 60.0
+        )::int
+      END AS meal_minutes_local,
+      GREATEST(COALESCE((mpr.totals->>'kcal')::numeric, 0), 50) AS confidence_weight,
+      GREATEST(LEAST(COALESCE(mpr.confidence_score, 0), 100), 0) / 100.0 AS confidence_norm,
+      (mpr.totals->>'kcal')::numeric AS kcal,
+      (mpr.totals->>'protein_g')::numeric AS protein_g,
+      (mpr.totals->>'carbs_g')::numeric AS carbs_g,
+      (mpr.totals->>'fat_g')::numeric AS fat_g,
+      (mpr.totals->>'sugar_g')::numeric AS sugar_g
+    FROM public.meal_logs ml
+    JOIN LATERAL (
+      SELECT
+        mpr.meal_id,
+        mpr.confidence_score,
+        mpr.totals,
+        mpr.processed_at,
+        mpr.created_at
+      FROM public.meal_processing_runs mpr
+      WHERE mpr.meal_id = ml.id
+        AND mpr.user_id = p_user_id
+        AND mpr.status = 'success'
+      ORDER BY COALESCE(mpr.processed_at, mpr.created_at) DESC, mpr.created_at DESC
+      LIMIT 1
+    ) mpr ON TRUE
+    WHERE ml.user_id = p_user_id
+      AND ml.meal_local_date = p_date
+  ),
+  aggregated AS (
+    SELECT
+      p_user_id AS user_id,
+      p_date AS date,
+      'daily_nutrition2_v1'::text AS aggregation_pipeline_version,
+      SUM(sr.kcal) AS total_kcal_day,
+      SUM(sr.protein_g) AS protein_g_day,
+      SUM(sr.carbs_g) AS carbs_g_day,
+      SUM(sr.fat_g) AS fat_g_day,
+      SUM(sr.sugar_g) AS sugar_g_day,
+      COUNT(*)::int AS meal_count_day,
+      BOOL_OR(sr.meal_type = 'breakfast') AS breakfast_logged,
+      BOOL_OR(sr.meal_type = 'lunch') AS lunch_logged,
+      BOOL_OR(sr.meal_type = 'dinner') AS dinner_logged,
+      MIN(sr.meal_minutes_local) FILTER (WHERE sr.meal_minutes_local IS NOT NULL) AS time_first_meal_minutes,
+      MAX(sr.meal_minutes_local) FILTER (WHERE sr.meal_minutes_local IS NOT NULL) AS time_last_meal_minutes,
+      CASE
+        WHEN COUNT(sr.meal_minutes_local) = 0 THEN NULL
+        ELSE
+          MAX(sr.meal_minutes_local) FILTER (WHERE sr.meal_minutes_local IS NOT NULL)
+          - MIN(sr.meal_minutes_local) FILTER (WHERE sr.meal_minutes_local IS NOT NULL)
+      END AS eating_window_minutes,
+      CASE
+        WHEN COUNT(*) = 0 THEN 0.0
+        ELSE COALESCE(SUM(sr.confidence_weight * sr.confidence_norm) / NULLIF(SUM(sr.confidence_weight), 0), 0.0)
+      END AS nutrition_confidence_day,
+      (COUNT(*) = 0) AS meals_missing_day
+    FROM successful_runs sr
+  )
+  INSERT INTO public.daily_nutrition2 (
+    user_id,
+    date,
+    aggregation_pipeline_version,
+    total_kcal_day,
+    protein_g_day,
+    carbs_g_day,
+    fat_g_day,
+    sugar_g_day,
+    meal_count_day,
+    breakfast_logged,
+    lunch_logged,
+    dinner_logged,
+    time_first_meal_minutes,
+    time_last_meal_minutes,
+    eating_window_minutes,
+    nutrition_confidence_day,
+    meals_missing_day
+  )
+  SELECT
+    a.user_id,
+    a.date,
+    a.aggregation_pipeline_version,
+    a.total_kcal_day,
+    a.protein_g_day,
+    a.carbs_g_day,
+    a.fat_g_day,
+    a.sugar_g_day,
+    a.meal_count_day,
+    COALESCE(a.breakfast_logged, FALSE),
+    COALESCE(a.lunch_logged, FALSE),
+    COALESCE(a.dinner_logged, FALSE),
+    a.time_first_meal_minutes,
+    a.time_last_meal_minutes,
+    a.eating_window_minutes,
+    a.nutrition_confidence_day,
+    a.meals_missing_day
+  FROM aggregated a
+  ON CONFLICT (user_id, date)
+  DO UPDATE SET
+    aggregation_pipeline_version = EXCLUDED.aggregation_pipeline_version,
+    total_kcal_day = EXCLUDED.total_kcal_day,
+    protein_g_day = EXCLUDED.protein_g_day,
+    carbs_g_day = EXCLUDED.carbs_g_day,
+    fat_g_day = EXCLUDED.fat_g_day,
+    sugar_g_day = EXCLUDED.sugar_g_day,
+    meal_count_day = EXCLUDED.meal_count_day,
+    breakfast_logged = EXCLUDED.breakfast_logged,
+    lunch_logged = EXCLUDED.lunch_logged,
+    dinner_logged = EXCLUDED.dinner_logged,
+    time_first_meal_minutes = EXCLUDED.time_first_meal_minutes,
+    time_last_meal_minutes = EXCLUDED.time_last_meal_minutes,
+    eating_window_minutes = EXCLUDED.eating_window_minutes,
+    nutrition_confidence_day = EXCLUDED.nutrition_confidence_day,
+    meals_missing_day = EXCLUDED.meals_missing_day
+  RETURNING * INTO result_row;
+
+  IF NOT FOUND THEN
+    INSERT INTO public.daily_nutrition2 (
+      user_id,
+      date,
+      aggregation_pipeline_version,
+      meal_count_day,
+      breakfast_logged,
+      lunch_logged,
+      dinner_logged,
+      nutrition_confidence_day,
+      meals_missing_day
+    )
+    VALUES (
+      p_user_id,
+      p_date,
+      'daily_nutrition2_v1',
+      0,
+      FALSE,
+      FALSE,
+      FALSE,
+      0.0,
+      TRUE
+    )
+    ON CONFLICT (user_id, date)
+    DO UPDATE SET
+      aggregation_pipeline_version = EXCLUDED.aggregation_pipeline_version,
+      total_kcal_day = NULL,
+      protein_g_day = NULL,
+      carbs_g_day = NULL,
+      fat_g_day = NULL,
+      sugar_g_day = NULL,
+      meal_count_day = 0,
+      breakfast_logged = FALSE,
+      lunch_logged = FALSE,
+      dinner_logged = FALSE,
+      time_first_meal_minutes = NULL,
+      time_last_meal_minutes = NULL,
+      eating_window_minutes = NULL,
+      nutrition_confidence_day = 0.0,
+      meals_missing_day = TRUE
+    RETURNING * INTO result_row;
+  END IF;
+
+  RETURN result_row;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.compute_daily_nutrition2(UUID, DATE, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.compute_daily_nutrition2(UUID, DATE, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.compute_daily_nutrition2(UUID, DATE, TEXT) TO service_role;
 
 -- ----------------------------
 -- Log water for a date

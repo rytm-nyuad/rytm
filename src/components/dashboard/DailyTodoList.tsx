@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Plus, X, Check, Pencil } from "lucide-react";
+import { VoiceInputButton } from "@/components/ui/VoiceInputButton";
 import { createBrowserClient } from "@supabase/ssr";
 import { formatLocalDate, formatLocalDisplayDate } from "@/lib/time";
 import {
@@ -226,6 +227,11 @@ export function DailyTodoList({
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           placeholder="Add new task"
           className="flex-1 px-3 py-1.5 text-sm dark:bg-zinc-800 light:bg-gray-100 border dark:border-zinc-700 light:border-gray-300 rounded-lg dark:text-white light:text-slate-900 dark:placeholder-zinc-500 light:placeholder-slate-400 focus:outline-none focus:ring-2 dark:focus:ring-purple-600 light:focus:ring-blue-500"
+        />
+        <VoiceInputButton
+          onTranscript={(t) => setNewTask(t)}
+          currentValue={newTask}
+          size="sm"
         />
         <button
           onClick={handleAdd}

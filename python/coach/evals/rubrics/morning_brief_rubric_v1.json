@@ -1,0 +1,73 @@
+{
+  "rubric_id": "morning_brief_rubric",
+  "rubric_version": "v1",
+  "scale": {
+    "min": 1,
+    "max": 5,
+    "labels": {
+      "1": "Strongly disagree",
+      "2": "Disagree",
+      "3": "Neither agree nor disagree",
+      "4": "Agree",
+      "5": "Strongly agree"
+    }
+  },
+  "system_context": {
+    "coaching_goal": "This coaching system is a user goal oriented system that generates a personalized morning briefing that helps a user understand yesterday and last night, interpret how they feel this morning, and choose realistic actions for today.",
+    "user_profile": "The user is a female, 20-year-old university student-athlete who plays basketball on campus and has early morning practice three times a week. She is balancing academics, athletics, and social life. Her current goals are to improve her sleep schedule and to stay physically active every day.",
+    "timing_notes": [
+      "The morning briefing date is the submission date being judged.",
+      "Sleep and recovery signals mainly describe last night.",
+      "Most other behavioral signals describe yesterday.",
+      "The user's self-reported overall score describes this morning.",
+      "Do not treat the data as if it all happened on the same clock window."
+    ]
+  },
+  "questions": [
+    {
+      "id": "clarity_easy_to_follow",
+      "dimension": "Clarity & Presentation",
+      "statement": "The summary was easy to follow."
+    },
+    {
+      "id": "clarity_right_length",
+      "dimension": "Clarity & Presentation",
+      "statement": "The summary was the right length for a quick morning read."
+    },
+    {
+      "id": "clarity_tone_appropriate",
+      "dimension": "Clarity & Presentation",
+      "statement": "The tone of the summary felt appropriate for the kind of feedback being given."
+    },
+    {
+      "id": "relevance_uncertainty_communicated",
+      "dimension": "Personal Relevance",
+      "statement": "If information was missing or uncertain, the summary communicated that appropriately."
+    },
+    {
+      "id": "relevance_specific_not_generic",
+      "dimension": "Personal Relevance",
+      "statement": "The feedback felt specific rather than generic."
+    },
+    {
+      "id": "relevance_consistent_with_recent_context",
+      "dimension": "Personal Relevance",
+      "statement": "The summary was internally consistent and felt consistent with recent coaching context without contradicting the prior day without explanation."
+    },
+    {
+      "id": "usefulness_concrete_action",
+      "dimension": "Usefulness and Actionability",
+      "statement": "The summary gave at least one concrete action that could realistically be taken today."
+    },
+    {
+      "id": "usefulness_meaningful_understanding",
+      "dimension": "Usefulness and Actionability",
+      "statement": "The summary helped me understand something meaningful about the student's current state."
+    },
+    {
+      "id": "usefulness_day_planning",
+      "dimension": "Usefulness and Actionability",
+      "statement": "Overall, this summary would be useful in helping this student plan her day."
+    }
+  ]
+}

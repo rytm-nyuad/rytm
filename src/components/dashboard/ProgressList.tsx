@@ -24,8 +24,9 @@ interface ProgressListProps {
 /**
  * Format a timestamptz into a local time string like "7:30 AM".
  */
-function formatMealTime(datetime: string, tz: string): string {
+function formatMealTime(datetime: string | null, tz: string): string {
   try {
+    if (!datetime) return "Time not set";
     const d = new Date(datetime);
     if (isNaN(d.getTime())) return "—";
     return d.toLocaleTimeString("en-US", {

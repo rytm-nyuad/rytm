@@ -39,6 +39,7 @@ export interface MealItemV1 {
   carbs_g: number | null;
   fat_g: number | null;
   sugar_g: number | null;
+  caffeine_mg: number | null;
   source: string | null;
   created_at: string;
 }
@@ -51,6 +52,7 @@ export interface FoodCacheV1 {
   carbs_g: number | null;
   fat_g: number | null;
   sugar_g: number | null;
+  caffeine_mg: number | null;
   serving_notes: string | null;
   source: string | null;
   updated_at: string;
@@ -80,6 +82,7 @@ export interface EstimatedItem {
   carbs_g: number;
   fat_g: number;
   sugar_g: number;
+  caffeine_mg: number;
   notes?: string;
 }
 
@@ -89,6 +92,7 @@ export interface MealTotals {
   carbs_g: number;
   fat_g: number;
   sugar_g: number;
+  caffeine_mg: number;
 }
 
 export interface ScoringBreakdown {
@@ -147,6 +151,7 @@ export interface WeeklyMealSummary {
   total_carbs: number;
   total_fat: number;
   total_sugar: number;
+  total_caffeine_mg: number;
   meals_processed: number;
   avg_confidence: number;
   high_conf_meals: number;

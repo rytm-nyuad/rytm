@@ -1,9 +1,15 @@
 // ============================================================
-// RYTM v1 – OpenAI Utility Wrapper for Meal Processing
+// RYTM v1 – LLM Utility Wrapper for Meal Processing
 // ============================================================
+// Primary gateway:
+//   OpenRouter (OpenAI-compatible API)
+//
+// Fallback:
+//   Direct OpenAI API
+//
 // Models used:
-//   Extraction: gpt-4.1-nano  (vision-capable, structured extraction)
-//   Estimation: gpt-4.1-mini  (text-only, macro estimation + confidence)
+//   Extraction: GPT-4.1 Nano  (vision-capable, structured extraction)
+//   Estimation: GPT-4.1 Mini  (text-only, macro estimation + confidence)
 // ============================================================
 
 import OpenAI from 'openai';
@@ -17,15 +23,17 @@ import type {
 
 // ---- Constants ----
 
-export const PIPELINE_VERSION = 'v1.0';
+export const PIPELINE_VERSION = 'v1.1';
 
 export const MODELS = {
-  extraction: 'gpt-4.1-nano',
-  estimation: 'gpt-4.1-mini',
+  extraction: process.env.MEAL_EXTRACTION_MODEL || 'openai/gpt-4.1-nano',
+  estimation: process.env.MEAL_ESTIMATION_MODEL || 'openai/gpt-4.1-mini',
 } as const;
 
 /** Pricing per 1 M tokens (USD) — update when OpenAI changes pricing */
 const MODEL_PRICING: Record<string, ModelPricing> = {
+  'openai/gpt-4.1-nano': { input_per_million: 0.10, output_per_million: 0.40 },
+  'openai/gpt-4.1-mini': { input_per_million: 0.40, output_per_million: 1.60 },
   'gpt-4.1-nano': { input_per_million: 0.10, output_per_million: 0.40 },
   'gpt-4.1-mini': { input_per_million: 0.40, output_per_million: 1.60 },
 };
@@ -36,9 +44,23 @@ let _client: OpenAI | null = null;
 
 function getClient(): OpenAI {
   if (!_client) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error('OPENAI_API_KEY not found in environment variables');
-    _client = new OpenAI({ apiKey });
+    const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+    const openAiApiKey = process.env.OPENAI_API_KEY;
+
+    if (openRouterApiKey) {
+      _client = new OpenAI({
+        apiKey: openRouterApiKey,
+        baseURL: 'https://openrouter.ai/api/v1',
+        defaultHeaders: {
+          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000',
+          'X-Title': 'RYTM Meal Processing',
+        },
+      });
+    } else if (openAiApiKey) {
+      _client = new OpenAI({ apiKey: openAiApiKey });
+    } else {
+      throw new Error('Neither OPENROUTER_API_KEY nor OPENAI_API_KEY was found in environment variables');
+    }
   }
   return _client;
 }
@@ -60,7 +82,8 @@ Return STRICT JSON only.
 No markdown.
 No commentary.
 If an image is provided, use it as your primary source of information about the meal.
-If both image and description are provided, use both together.`;
+If both image and description are provided, use both together.
+If the meal contains likely caffeinated items, preserve that item identity clearly so caffeine can be estimated downstream.`;
 
 export interface ExtractionModelParams {
   description: string | null;
@@ -112,6 +135,12 @@ You MUST follow the confidence scoring rubric exactly.
 
 You are NOT allowed to give high confidence just because calories/macros look plausible.
 Confidence measures how well-constrained the estimate is from the input.
+
+You must also estimate caffeine in mg when relevant.
+- Track caffeine_mg per item and in totals.
+- Use 0 for clearly non-caffeinated items.
+- If an item is likely caffeinated but uncertain, make a conservative estimate and mention the assumption in notes.
+- Useful anchors: espresso shot ~64mg, brewed coffee ~95mg per cup, black tea ~40-50mg, green tea ~25-40mg, matcha serving ~60-70mg, cola can ~30-45mg, energy drink can ~80-200mg depending on brand.
 
 CRITICAL OVERRIDE RULE:
 - If the user's original meal description contains EXPLICIT nutrition numbers (kcal, protein_g, carbs_g, fat_g, sugar_g) for any item or the total meal, you MUST treat those as GROUND TRUTH.
@@ -170,7 +199,7 @@ Task:
 1) CHECK the original meal description for EXPLICIT nutrition numbers (kcal, protein_g, carbs_g, fat_g, sugar_g).
 2) If explicit numbers are present, use them as GROUND TRUTH — DO NOT override or adjust them.
 3) For fields without explicit numbers, estimate them.
-4) Produce per-item macro outputs.
+4) Produce per-item macro outputs, including caffeine_mg.
 5) Sum totals — totals MUST exactly match user-provided values if given.
 6) Compute confidence_score using the rubric below.
 7) Fill source_of_truth indicating which fields used user numbers vs. estimates.
@@ -217,6 +246,7 @@ Now output STRICT JSON in this schema:
       "carbs_g": number,
       "fat_g": number,
       "sugar_g": number,
+      "caffeine_mg": number,
       "notes": "short optional note about assumptions"
     }
   ],
@@ -225,7 +255,8 @@ Now output STRICT JSON in this schema:
     "protein_g": number,
     "carbs_g": number,
     "fat_g": number,
-    "sugar_g": number
+    "sugar_g": number,
+    "caffeine_mg": number
   },
   "confidence_score": number,
   "confidence_reasons": ["string","string"],

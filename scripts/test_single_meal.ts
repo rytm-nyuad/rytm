@@ -42,7 +42,7 @@ async function main() {
   // Verify meal exists
   const { data: meal, error: mealErr } = await supabase
     .from('meal_logs')
-    .select('id, user_id, description, photo_url, meal_datetime')
+    .select('id, user_id, description, photo_url, meal_local_date, meal_datetime')
     .eq('id', mealId)
     .single();
 
@@ -51,7 +51,8 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`   Meal datetime: ${meal.meal_datetime}`);
+  console.log(`   Meal local date: ${meal.meal_local_date}`);
+  console.log(`   Meal datetime:   ${meal.meal_datetime ?? 'time-not-set'}`);
   console.log(`   User ID:       ${meal.user_id}`);
   console.log(`   Description:   ${meal.description?.slice(0, 60) ?? '(none)'}...`);
   console.log(`   Has text:      ${!!meal.description}`);
