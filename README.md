@@ -4,6 +4,14 @@
 
 A modern web platform for human performance optimization and wellbeing data collection. Built for the NYUAD Capstone project.
 
+<p align="center">
+  <img
+    src="./docs/assets/rytm_poster_cap_final_page.jpg"
+    alt="RYTM project overview poster"
+    width="900"
+  />
+</p>
+
 ## Tech Stack
 
 - **Frontend framework**: Next.js 14+ App Router + TypeScript
