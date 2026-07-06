@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { runMorningPreparationForSubmissionDate } from '@/lib/overall-submission-workflows';
+import { getCoachReadiness } from '@/lib/coach/readiness';
 import { refreshFitbitProfileTimezoneForUser } from '@/lib/fitbit';
 import { formatLocalDate, getCanonicalTimeZone, shiftLocalDate } from '@/lib/time';
 
@@ -53,12 +54,29 @@ async function getExistingPreparationStatus(
 
   return {
     ready: bundleExists && !!stateHistory,
-    shouldRunSummary: !!flags?.fast_ready,
+    // Align with update_state: fast_ready is informational only.
+    shouldRunSummary: true,
     stateReady: {
       fast_ready: !!flags?.fast_ready,
       slow_ready: !!flags?.slow_ready,
     },
   };
+}
+
+function resolvePythonBin(): string {
+  const base = path.join(process.cwd(), 'python', 'coach');
+  const candidates = [
+    path.join(base, '.venv', 'Scripts', 'python.exe'),
+    path.join(base, 'venv', 'Scripts', 'python.exe'),
+    path.join(base, '.venv', 'bin', 'python3'),
+    path.join(base, 'venv', 'bin', 'python3'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  return process.platform === 'win32' ? 'python' : 'python3';
 }
 
 async function updateStateHistoryActions(
@@ -226,13 +244,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const readiness = await getCoachReadiness(supabaseAdmin, userId, submissionDate);
+
     if (!morningPreparation.state.shouldRunSummary) {
+      console.warn('[coach/morning-run] blocked by readiness gate', {
+        userId,
+        forDate: submissionDate,
+        readiness,
+        stateReady: morningPreparation.state.stateReady,
+      });
       return NextResponse.json({
         success: true,
         status: 'not_enough_history',
         forDate: submissionDate,
         processedDate: morningPreparation.processedLocalDate,
-        message: 'Not enough history yet to generate a morning coach summary. State was updated and the coach inputs are prepared.',
+        message:
+          'Not enough history yet to generate a morning coach summary. State was updated and the coach inputs are prepared.',
+        readiness,
         debug: {
           fast_ready: morningPreparation.state.stateReady.fast_ready,
           slow_ready: morningPreparation.state.stateReady.slow_ready,
@@ -288,11 +316,19 @@ export async function POST(request: NextRequest) {
       result
     );
 
+    console.log('[coach/morning-run] plan generated', {
+      userId,
+      forDate: submissionDate,
+      planId: result?.plan_id,
+      fast_ready: readiness.fast_ready,
+    });
+
     return NextResponse.json({
       success: true,
       status: 'ok',
       forDate: submissionDate,
       processedDate: morningPreparation.processedLocalDate,
+      readiness,
       ...result,
     });
   } catch (error: any) {
@@ -312,8 +348,7 @@ function runPythonPipeline(
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(process.cwd(), 'python', 'coach', 'run_pipeline.py');
-    const venvPython = path.join(process.cwd(), 'python', 'coach', 'venv', 'bin', 'python3');
-    const pythonBin = fs.existsSync(venvPython) ? venvPython : 'python3';
+    const pythonBin = resolvePythonBin();
 
     const python = spawn(pythonBin, [scriptPath, userId, forDate, overallScore.toString(), ingestionRunId]);
 

@@ -9,6 +9,7 @@ import { MorningSummaryCard } from "@/components/coach/MorningSummaryCard";
 import { GoalInterviewModal } from "@/components/coach/GoalInterviewModal";
 import { CoachChatPanel } from "@/components/coach/CoachChatPanel";
 import { ActiveGoal, DailyPlan } from "@/lib/coach/types";
+import type { CoachReadiness } from "@/lib/coach/readiness";
 import { CalendarPicker } from "@/components/coach/CalendarPicker";
 import { Zap, Target, AlertCircle, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import Link from "next/link";
@@ -45,6 +46,7 @@ export default function CoachPage() {
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<CoachReadiness | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,6 +85,7 @@ export default function CoachPage() {
 
       setGoal(data.goal || null);
       setPlan(data.plan || null);
+      setReadiness(data.readiness || null);
 
       if (!data.hasGoal) {
         setPageState("no-goal");
@@ -126,6 +129,15 @@ export default function CoachPage() {
       const data = await res.json();
       if (!res.ok) {
         setGenerateError(data.error || "Failed to generate plan");
+        setPageState("no-plan");
+        return;
+      }
+      if (data.status && data.status !== "ok") {
+        const blockerHint = Array.isArray(data.readiness?.blockers)
+          ? ` Blockers: ${data.readiness.blockers.join(", ")}.`
+          : "";
+        setGenerateError((data.message || `Generation stopped (${data.status}).`) + blockerHint);
+        if (data.readiness) setReadiness(data.readiness);
         setPageState("no-plan");
         return;
       }
@@ -261,6 +273,7 @@ export default function CoachPage() {
                   </button>
                 }
                 error={generateError}
+                readiness={readiness}
               />
             )}
 
@@ -338,18 +351,90 @@ function GoalBanner({
   );
 }
 
+const BLOCKER_COPY: Record<string, string> = {
+  no_active_goal: "No active goal set. Set or update your goal to personalize plans.",
+  no_daily_overall: "No daily check-in score for this date.",
+  no_input_bundle: "Coach inputs for this date are still being prepared.",
+  no_state_history: "State history for this date is not ready yet.",
+  fast_baseline_not_ready: "Personal baseline is still warming up (early history).",
+};
+
+function ReadinessIndicator({ label, ok }: { label: string; ok: boolean }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border dark:border-zinc-800 border-zinc-200 px-3 py-2">
+      <span className="text-xs dark:text-zinc-300 text-zinc-700">{label}</span>
+      <span
+        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+          ok
+            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+            : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+        }`}
+      >
+        {ok ? "Ready" : "Missing"}
+      </span>
+    </div>
+  );
+}
+
+function ReadinessDetails({ readiness }: { readiness: CoachReadiness }) {
+  const blockers = readiness.blockers?.length
+    ? readiness.blockers.map((code) => BLOCKER_COPY[code] || code.replaceAll("_", " "))
+    : [];
+
+  return (
+    <details className="mt-5 w-full max-w-lg text-left">
+      <summary className="cursor-pointer text-xs font-medium dark:text-zinc-400 text-zinc-500">
+        Why is there no plan?
+      </summary>
+      <div className="mt-2 rounded-lg dark:bg-zinc-950 bg-zinc-50 border dark:border-zinc-800 border-zinc-200 p-3 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <ReadinessIndicator label="Goal set" ok={readiness.hasGoal} />
+          <ReadinessIndicator label="Check-in score logged" ok={readiness.hasOverall} />
+          <ReadinessIndicator label="Inputs prepared" ok={readiness.hasBundle} />
+          <ReadinessIndicator label="State history ready" ok={readiness.hasStateHistory} />
+        </div>
+
+        <div className="rounded-lg border dark:border-zinc-800 border-zinc-200 px-3 py-2">
+          <p className="text-xs font-medium dark:text-zinc-300 text-zinc-700">Baseline status</p>
+          <p className="mt-1 text-[11px] dark:text-zinc-400 text-zinc-600">
+            Fast baseline: <span className="font-semibold">{readiness.fast_ready ? "Ready" : "Warming up"}</span> · Slow baseline:{" "}
+            <span className="font-semibold">{readiness.slow_ready ? "Ready" : "Warming up"}</span>
+          </p>
+        </div>
+
+        {blockers.length > 0 ? (
+          <div className="rounded-lg border dark:border-zinc-800 border-zinc-200 px-3 py-2">
+            <p className="text-xs font-medium dark:text-zinc-300 text-zinc-700">What is blocking generation</p>
+            <ul className="mt-1 space-y-1 text-[11px] dark:text-zinc-400 text-zinc-600 list-disc pl-4">
+              {blockers.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-[11px] dark:text-zinc-400 text-zinc-600">
+            No blockers detected. Try generating again if this date should have a plan.
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function EmptyState({
   icon: Icon,
   title,
   description,
   action,
   error,
+  readiness,
 }: {
   icon: any;
   title: string;
   description: string;
   action: React.ReactNode;
   error?: string | null;
+  readiness?: CoachReadiness | null;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 rounded-2xl dark:bg-zinc-900 bg-white border dark:border-zinc-800 border-zinc-200 text-center px-6">
@@ -360,6 +445,7 @@ function EmptyState({
       <p className="text-sm dark:text-zinc-500 text-zinc-400 max-w-xs mb-5">{description}</p>
       {action}
       {error && <p className="mt-4 text-xs text-red-400 max-w-xs">{error}</p>}
+      {readiness && <ReadinessDetails readiness={readiness} />}
     </div>
   );
 }

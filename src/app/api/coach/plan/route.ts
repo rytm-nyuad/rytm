@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getActiveGoal, getTodayPlan } from '@/lib/db/coachPipeline';
+import { getCoachReadiness } from '@/lib/coach/readiness';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { formatLocalDate, getCanonicalTimeZone } from '@/lib/time';
 
@@ -34,12 +35,14 @@ export async function GET(request: NextRequest) {
       forDate = formatLocalDate(new Date(), timezone);
     }
 
-    const [goal, plan] = await Promise.all([
+    const supabaseAdmin = createSupabaseAdminClient();
+    const [goal, plan, readiness] = await Promise.all([
       getActiveGoal(user.id),
       getTodayPlan(user.id, forDate),
+      getCoachReadiness(supabaseAdmin, user.id, forDate),
     ]);
 
-    return NextResponse.json({ plan, hasGoal: !!goal, goal });
+    return NextResponse.json({ plan, hasGoal: !!goal, goal, readiness });
   } catch (error: any) {
     console.error('Coach plan fetch error:', error);
     return NextResponse.json({ error: 'Failed to fetch plan' }, { status: 500 });

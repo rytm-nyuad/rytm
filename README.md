@@ -184,9 +184,11 @@ src/
 python/
 └── coach/                   # Python coach pipeline
 
-supabase/
-├── journal_schema.sql       # Journal database schema
-└── ...                      # Other SQL setup files
+supabase/                    # All database schemas and migrations (applied manually)
+├── function_rpcs.sql        # RPC functions for timezone-aware writes
+├── journal_schema.sql       # Journal tables
+├── meal_processing_schema.sql
+└── ...                      # Other schema, RLS, and migration SQL files
 
 public/                      # Static assets
 ```
