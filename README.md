@@ -2,6 +2,8 @@
 
 **Master your flow**
 
+**[Visit the RYTM landing page](https://rytm.rena-espinosa.com/)** for a general overview of the whole project.
+
 A modern web platform for human performance optimization and wellbeing data collection. 
 
 ## Visual Overview
