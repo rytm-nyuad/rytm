@@ -1,14 +1,24 @@
 # rytm
 
-**Master your flow**
-
+A modern web platform for human performance optimization and wellbeing data collection. 
 **[Visit the RYTM landing page](https://rytm.rena-espinosa.com/)** for a general overview of the whole project.
 
-A modern web platform for human performance optimization and wellbeing data collection. 
 
 ## Visual Overview
 
 The screenshots below, together with the a one pager diagram, provide a structured overview of RYTM’s concept, user experience, and core functionality.
+
+### Project One-Pager
+
+Project overview. Architecture, features, and results from research study for NYUAD Capstone.
+
+<p align="center">
+  <img
+    src="./docs/assets/rytm_poster_cap_final_page.jpg"
+    alt="RYTM capstone project overview poster"
+    width="900"
+  />
+</p>
 
 ### Dashboard
 
@@ -30,18 +40,6 @@ Personalized morning briefs that synthesize sleep, nutrition, mood, and wearable
   <img
     src="./docs/assets/InsightsExample.jpeg"
     alt="RYTM morning summary with AI-generated personalized health insights"
-    width="900"
-  />
-</p>
-
-### Project One-Pager
-
-Project overview. Architecture, features, and results from research study for NYUAD Capstone.
-
-<p align="center">
-  <img
-    src="./docs/assets/rytm_poster_cap_final_page.jpg"
-    alt="RYTM capstone project overview poster"
     width="900"
   />
 </p>
