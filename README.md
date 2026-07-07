@@ -4,10 +4,42 @@
 
 A modern web platform for human performance optimization and wellbeing data collection. Built for the NYUAD Capstone project.
 
+## Visual Overview
+
+You don't need to clone or run the repo to get a feel for the product — below are screenshots and the capstone poster.
+
+### Dashboard
+
+The main home screen: daily streak, weekly progress, and the RYTM Coach entry point.
+
+<p align="center">
+  <img
+    src="./docs/assets/mainpagerytm.png"
+    alt="RYTM dashboard showing streak tracking, weekly progress, and AI coach input"
+    width="900"
+  />
+</p>
+
+### AI Insights
+
+Personalized morning briefs that synthesize sleep, nutrition, mood, and wearable data into narrative insights and actionable next steps.
+
+<p align="center">
+  <img
+    src="./docs/assets/InsightsExample.jpeg"
+    alt="RYTM morning summary with AI-generated personalized health insights"
+    width="900"
+  />
+</p>
+
+### Capstone Poster
+
+Project overview — architecture, features, and research context from the NYUAD Capstone presentation.
+
 <p align="center">
   <img
     src="./docs/assets/rytm_poster_cap_final_page.jpg"
-    alt="RYTM project overview poster"
+    alt="RYTM capstone project overview poster"
     width="900"
   />
 </p>
