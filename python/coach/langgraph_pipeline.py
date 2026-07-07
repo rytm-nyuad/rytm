@@ -13,6 +13,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import json
 
 from data_fetcher import DataFetcher
+from behavior_profile_store import get_latest_active_profile, profile_payload_from_row
 from deterministic_agents import (
     BudgetEnforcerAgent,
     PersistenceAgent,
@@ -67,42 +68,6 @@ class PipelineState(TypedDict):
 
 class MorningCoachPipeline:
     """LangGraph-based morning coach pipeline"""
-
-    HARDCODED_BEHAVIOR_PROFILES = {
-        "bf8434ee-b495-4da4-96d0-d919c5b4a957": {
-            "profile_version": "cluster_profile_v1_hardcoded",
-            "summary": (
-                "Agentic User Profile Summary: This user shows a social-emotional behavioral "
-                "system where wellbeing depends heavily on the alignment of mood, focus, energy, "
-                "social connectedness, and sleep quality. Low stress is not always positive for "
-                "this user. When low stress appears together with low mood, low focus, low energy, "
-                "and low social connectedness, it likely reflects disengagement or emotional "
-                "flatness rather than recovery."
-            ),
-            "cluster_interpretations": {
-                "cluster_2": (
-                    "Highest-scoring productive state: high focus, energy, mood, and good social "
-                    "interaction. Preserve momentum and recommend light recovery breaks."
-                ),
-                "cluster_1": (
-                    "Most balanced state: best sleep quality, lowest stress, highest social "
-                    "connectedness, and strong mood, focus, and energy. Treat this as the target "
-                    "state for long-term coaching."
-                ),
-                "cluster_0": (
-                    "Lowest state: low mood, focus, social connectedness, and energy, with higher "
-                    "caffeine. This likely reflects disengagement, boredom, or passive low "
-                    "activation rather than acute stress. Recommend gentle re-engagement, light "
-                    "movement, hydration, meaningful social contact, and one small achievable task. "
-                    "Avoid advice focused only on rest or stress reduction."
-                ),
-            },
-            "primary_coaching_rule": (
-                "Do not optimize for stress reduction alone. Optimize for social-emotional "
-                "engagement, cognitive activation, and balanced recovery."
-            ),
-        }
-    }
     
     def __init__(self, supabase_client, openrouter_api_key: str):
         self.client = supabase_client
@@ -117,7 +82,7 @@ class MorningCoachPipeline:
 
         # LLM client via OpenRouter
         self.openrouter_api_key = openrouter_api_key
-        self.model_name = "deepseek/deepseek-v3.2"
+        self.model_name = "gpt-5.4-mini"
         self.llm = ChatOpenAI(
             model=self.model_name,
             api_key=openrouter_api_key,
@@ -226,14 +191,8 @@ class MorningCoachPipeline:
             'bundle_missingness': input_bundle.get('missingness_json') or {},
             'bundle_confidence': input_bundle.get('confidence_json') or {},
         }
-        state['behavior_profile'] = self.HARDCODED_BEHAVIOR_PROFILES.get(
-            state['user_id'],
-            {
-                'profile_version': 'none',
-                'summary': '',
-                'cluster_interpretations': {},
-                'primary_coaching_rule': '',
-            }
+        state['behavior_profile'] = profile_payload_from_row(
+            get_latest_active_profile(self.client, state['user_id'])
         )
         return state
     
