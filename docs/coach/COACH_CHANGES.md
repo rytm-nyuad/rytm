@@ -79,7 +79,7 @@ The Fitbit timezone refresh helper is now in [src/lib/fitbit.ts](/home/nyuad/ryt
 
 ### Known Gap / Next Planned Step
 
-`supabase-coach-inputs2.sql` was empty in the working tree at the time of this pass, so the new `daily_input_bundle_v12` and `idx_user_state_current2_asof` design has not been implemented yet.
+`supabase/coach_inputs2.sql` was empty in the working tree at the time of this pass, so the new `daily_input_bundle_v12` and `idx_user_state_current2_asof` design has not been implemented yet.
 
 The next intended workflow to add after overall submission is:
 

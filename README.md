@@ -1,8 +1,48 @@
 # rytm
 
-**Master your flow**
+A modern web platform for human performance optimization and wellbeing data collection. 
+**[Visit the RYTM landing page](https://rytm.rena-espinosa.com/)** for a general overview of the whole project.
 
-A modern web platform for human performance optimization and wellbeing data collection. Built for the NYUAD Capstone project.
+
+## Visual Overview
+
+The screenshots below, together with the a one pager diagram, provide a structured overview of RYTM’s concept, user experience, and core functionality.
+
+### Project One-Pager
+
+Project overview. Architecture, features, and results from research study for NYUAD Capstone.
+
+<p align="center">
+  <img
+    src="./docs/assets/rytm_poster_cap_final_page.jpg"
+    alt="RYTM capstone project overview poster"
+    width="900"
+  />
+</p>
+
+### Dashboard
+
+The main home screen: daily streak, weekly progress, and the RYTM Coach entry point.
+
+<p align="center">
+  <img
+    src="./docs/assets/mainpagerytm.png"
+    alt="RYTM dashboard showing streak tracking, weekly progress, and AI coach input"
+    width="900"
+  />
+</p>
+
+### AI Insights
+
+Personalized morning briefs that synthesize sleep, nutrition, mood, and wearable data into narrative insights and actionable next steps.
+
+<p align="center">
+  <img
+    src="./docs/assets/InsightsExample.jpeg"
+    alt="RYTM morning summary with AI-generated personalized health insights"
+    width="900"
+  />
+</p>
 
 ## Tech Stack
 
@@ -184,9 +224,11 @@ src/
 python/
 └── coach/                   # Python coach pipeline
 
-supabase/
-├── journal_schema.sql       # Journal database schema
-└── ...                      # Other SQL setup files
+supabase/                    # All database schemas and migrations (applied manually)
+├── function_rpcs.sql        # RPC functions for timezone-aware writes
+├── journal_schema.sql       # Journal tables
+├── meal_processing_schema.sql
+└── ...                      # Other schema, RLS, and migration SQL files
 
 public/                      # Static assets
 ```
