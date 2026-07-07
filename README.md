@@ -2,7 +2,7 @@
 
 **Master your flow**
 
-A modern web platform for human performance optimization and wellbeing data collection.
+A modern web platform for human performance optimization and wellbeing data collection. 
 
 ## Visual Overview
 
@@ -12,19 +12,37 @@ The screenshots below, together with the a one pager diagram, provide a structur
 
 The main home screen: daily streak, weekly progress, and the RYTM Coach entry point.
 
-
+<p align="center">
+  <img
+    src="./docs/assets/mainpagerytm.png"
+    alt="RYTM dashboard showing streak tracking, weekly progress, and AI coach input"
+    width="900"
+  />
+</p>
 
 ### AI Insights
 
 Personalized morning briefs that synthesize sleep, nutrition, mood, and wearable data into narrative insights and actionable next steps.
 
+<p align="center">
+  <img
+    src="./docs/assets/InsightsExample.jpeg"
+    alt="RYTM morning summary with AI-generated personalized health insights"
+    width="900"
+  />
+</p>
 
+### Project One-Pager
 
-### Capstone Poster
+Project overview. Architecture, features, and results from research study for NYUAD Capstone.
 
-Project overview — architecture, features, and research context from the NYUAD Capstone presentation.
-
-
+<p align="center">
+  <img
+    src="./docs/assets/rytm_poster_cap_final_page.jpg"
+    alt="RYTM capstone project overview poster"
+    width="900"
+  />
+</p>
 
 ## Tech Stack
 
@@ -37,11 +55,7 @@ Project overview — architecture, features, and research context from the NYUAD
 
 ---
 
-
-
 ## Getting Started
-
-
 
 ### Prerequisites
 
@@ -57,8 +71,6 @@ Before setting up the project, make sure you have:
 
 ---
 
-
-
 ## 1. Clone the Repository
 
 This repository is private, so your GitHub account must have access to the `rytm-nyuad` organization/repository.
@@ -71,7 +83,7 @@ First authenticate:
 
 ```bash
 gh auth login
-```
+````
 
 Follow the prompts, then check that authentication worked:
 
@@ -86,8 +98,6 @@ git clone https://github.com/rytm-nyuad/rytm.git
 cd rytm
 ```
 
-
-
 ### Option B: Clone using SSH
 
 If you have SSH set up with GitHub:
@@ -96,8 +106,6 @@ If you have SSH set up with GitHub:
 git clone git@github.com:rytm-nyuad/rytm.git
 cd rytm
 ```
-
-
 
 ### Option C: Clone using HTTPS with a Personal Access Token
 
@@ -109,8 +117,6 @@ cd rytm
 When prompted for your password, paste a GitHub Personal Access Token instead of your GitHub password.
 
 ---
-
-
 
 ## 2. Install Node Dependencies
 
@@ -127,10 +133,7 @@ To inspect the issues:
 ```bash
 npm audit
 ```
-
 ---
-
-
 
 ## 3. Set Up Environment Variables
 
@@ -152,11 +155,7 @@ SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key>
 OPENROUTER_API_KEY=<your-openrouter-api-key>
 OPENAI_API_KEY=<your-openai-api-key>
 ```
-
 ---
-
-
-
 ## 4. Set Up the Python Coach Pipeline
 
 The project includes a Python-based coach pipeline under `python/coach`.
@@ -184,8 +183,6 @@ If you are on Windows, activate the virtual environment with:
 
 ---
 
-
-
 ## 5. Run the Development Server
 
 From the project root:
@@ -201,8 +198,6 @@ http://localhost:3000
 ```
 
 ---
-
-
 
 ## Project Structure
 
@@ -240,30 +235,24 @@ public/                      # Static assets
 
 ---
 
-
-
 ## Main Features
 
-- Landing page with authentication calls to action
-- Supabase authentication
-- Consent flow with signature requirement
-- Dashboard for wellbeing and performance data collection
-- Daily check-ins and logging flows
-- Meal and water logging
-- Image upload support for meal logs using Supabase Storage
-- AI-guided and free-form journaling
-- Python coach pipeline for personalized recommendations
-- Secure database access patterns using Supabase and RLS
+* Landing page with authentication calls to action
+* Supabase authentication
+* Consent flow with signature requirement
+* Dashboard for wellbeing and performance data collection
+* Daily check-ins and logging flows
+* Meal and water logging
+* Image upload support for meal logs using Supabase Storage
+* AI-guided and free-form journaling
+* Python coach pipeline for personalized recommendations
+* Secure database access patterns using Supabase and RLS
 
 ---
-
-
 
 ## License
 
 Private research project for NYUAD Capstone.
 
 ```
-
 ```
-
