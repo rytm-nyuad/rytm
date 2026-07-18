@@ -117,12 +117,32 @@ type DailyCheckinRelation2Row = {
 };
 
 type JournalSummary2Row = {
+  narrative_summary: string | null;
   themes: string[] | null;
+  topics: string[] | null;
   episodic_events:
     | Array<{
         event_type: string;
         status: "started" | "ongoing" | "resolved";
         time_horizon: "today" | "this_week" | "ongoing";
+        confidence: number;
+        evidence_message_ids?: string[];
+      }>
+    | null;
+  commitments:
+    | Array<{
+        description: string;
+        timeframe: "past" | "today" | "upcoming" | "ongoing";
+        when_text: string | null;
+        status: "mentioned" | "planned" | "done" | "missed" | "cancelled";
+        confidence: number;
+        evidence_message_ids?: string[];
+      }>
+    | null;
+  recurring_topics:
+    | Array<{
+        topic: string;
+        note: string | null;
         confidence: number;
         evidence_message_ids?: string[];
       }>
@@ -150,6 +170,34 @@ type JournalSummary2Row = {
   goals_conflict_today: string | null;
   evidence_quotes: string[] | null;
   extractor_confidence: number;
+};
+
+type UserJournalContext2Row = {
+  narrative_arc: string | null;
+  open_commitments:
+    | Array<{
+        description: string;
+        timeframe: "past" | "today" | "upcoming" | "ongoing";
+        when_text: string | null;
+        status: "mentioned" | "planned" | "done" | "missed" | "cancelled";
+        confidence: number;
+      }>
+    | null;
+  recurring_topics:
+    | Array<{
+        topic: string;
+        note: string | null;
+        confidence: number;
+      }>
+    | null;
+  recent_day_summaries:
+    | Array<{
+        date: string;
+        narrative_summary: string | null;
+        topics: string[];
+      }>
+    | null;
+  as_of_date: string | null;
 };
 
 type StateHistoryCompactRow = {
@@ -353,11 +401,25 @@ export type DailyInputBundleV1 = {
     };
   };
   journal: {
+    narrative_summary: string | null;
     themes: string[];
+    topics: string[];
     episodic_events: Array<{
       event_type: string;
       status: "started" | "ongoing" | "resolved";
       time_horizon: "today" | "this_week" | "ongoing";
+      confidence: number;
+    }>;
+    commitments: Array<{
+      description: string;
+      timeframe: "past" | "today" | "upcoming" | "ongoing";
+      when_text: string | null;
+      status: "mentioned" | "planned" | "done" | "missed" | "cancelled";
+      confidence: number;
+    }>;
+    recurring_topics: Array<{
+      topic: string;
+      note: string | null;
       confidence: number;
     }>;
     stressor_types: Array<{
@@ -376,6 +438,27 @@ export type DailyInputBundleV1 = {
     self_efficacy_language: "low" | "med" | "high" | null;
     goals_conflict_today: string | null;
     evidence_quotes: string[];
+    context: {
+      as_of_date: string | null;
+      narrative_arc: string;
+      open_commitments: Array<{
+        description: string;
+        timeframe: "past" | "today" | "upcoming" | "ongoing";
+        when_text: string | null;
+        status: "mentioned" | "planned" | "done" | "missed" | "cancelled";
+        confidence: number;
+      }>;
+      recurring_topics: Array<{
+        topic: string;
+        note: string | null;
+        confidence: number;
+      }>;
+      recent_day_summaries: Array<{
+        date: string;
+        narrative_summary: string | null;
+        topics: string[];
+      }>;
+    };
   };
 };
 
@@ -683,6 +766,34 @@ async function fetchMaybeSingle<T>(
   return (data as T | null) ?? null;
 }
 
+async function fetchUserJournalContext(
+  client: SupabaseClient,
+  userId: string
+): Promise<UserJournalContext2Row | null> {
+  const { data, error } = await withSupabaseRetry(
+    "read user_journal_context2",
+    () =>
+      client
+        .from("user_journal_context2")
+        .select(
+          "narrative_arc, open_commitments, recurring_topics, recent_day_summaries, as_of_date"
+        )
+        .eq("user_id", userId)
+        .maybeSingle()
+  );
+
+  if (error) {
+    // Table may not exist until enrichment SQL is applied.
+    console.error("Failed to read user_journal_context2 for bundle", {
+      userId,
+      error,
+    });
+    return null;
+  }
+
+  return (data as UserJournalContext2Row | null) ?? null;
+}
+
 function buildSleepBundle(sleep: FitbitSleepDailyRow | null, timezone: string) {
   const minutesAsleep = safeNumber(sleep?.minutes_asleep);
   const timeInBed = safeNumber(sleep?.time_in_bed);
@@ -869,14 +980,31 @@ async function fetchMealContext(
   };
 }
 
-function buildJournalBundle(journal: JournalSummary2Row | null) {
+function buildJournalBundle(
+  journal: JournalSummary2Row | null,
+  context: UserJournalContext2Row | null
+) {
   return {
+    narrative_summary: journal?.narrative_summary ?? null,
     themes: journal?.themes ?? [],
+    topics: journal?.topics ?? [],
     episodic_events: journal?.episodic_events?.map((event) => ({
       event_type: event.event_type,
       status: event.status,
       time_horizon: event.time_horizon,
       confidence: clamp(safeNumber(event.confidence) ?? 0, 0, 1),
+    })) ?? [],
+    commitments: journal?.commitments?.map((commitment) => ({
+      description: commitment.description,
+      timeframe: commitment.timeframe,
+      when_text: commitment.when_text,
+      status: commitment.status,
+      confidence: clamp(safeNumber(commitment.confidence) ?? 0, 0, 1),
+    })) ?? [],
+    recurring_topics: journal?.recurring_topics?.map((topic) => ({
+      topic: topic.topic,
+      note: topic.note,
+      confidence: clamp(safeNumber(topic.confidence) ?? 0, 0, 1),
     })) ?? [],
     stressor_types: journal?.stressor_types?.map((type) => ({
       type: type.type,
@@ -894,6 +1022,23 @@ function buildJournalBundle(journal: JournalSummary2Row | null) {
     self_efficacy_language: journal?.self_efficacy_language ?? null,
     goals_conflict_today: journal?.goals_conflict_today ?? null,
     evidence_quotes: journal?.evidence_quotes ?? [],
+    context: {
+      as_of_date: context?.as_of_date ?? null,
+      narrative_arc: context?.narrative_arc ?? "",
+      open_commitments: context?.open_commitments?.map((commitment) => ({
+        description: commitment.description,
+        timeframe: commitment.timeframe,
+        when_text: commitment.when_text,
+        status: commitment.status,
+        confidence: clamp(safeNumber(commitment.confidence) ?? 0, 0, 1),
+      })) ?? [],
+      recurring_topics: context?.recurring_topics?.map((topic) => ({
+        topic: topic.topic,
+        note: topic.note,
+        confidence: clamp(safeNumber(topic.confidence) ?? 0, 0, 1),
+      })) ?? [],
+      recent_day_summaries: context?.recent_day_summaries ?? [],
+    },
   };
 }
 
@@ -918,6 +1063,7 @@ export async function build_daily_input_bundle_v1(
     checkin,
     checkinRelations,
     journal,
+    journalContext,
     overall,
   ] = await Promise.all([
     fetchMaybeSingle<FitbitSleepDailyRow>(client, "fitbit_sleep_daily", "app_user_id", user_id, "date", submissionDate),
@@ -929,6 +1075,7 @@ export async function build_daily_input_bundle_v1(
     fetchMaybeSingle<DailyCheckinRow>(client, "daily_checkins", "user_id", user_id, "checkin_date", sourceDate),
     fetchMaybeSingle<DailyCheckinRelation2Row>(client, "daily_checkin_relation2", "user_id", user_id, "checkin_date", sourceDate),
     fetchMaybeSingle<JournalSummary2Row>(client, "journal_summary2", "user_id", user_id, "date", sourceDate),
+    fetchUserJournalContext(client, user_id),
     fetchMaybeSingle<DailyOverallRow>(client, "daily_overall", "user_id", user_id, "date", submissionDate, "overall_score"),
   ]);
   const proxyBaselineContext = await fetchProxyBaselineContext(client, user_id, submissionDate);
@@ -937,7 +1084,7 @@ export async function build_daily_input_bundle_v1(
   const sleepBundle = buildSleepBundle(sleep, timezone);
   const activityBundle = buildActivityBundle(activity, sleep);
   const nutritionBundle = buildNutritionBundle(nutrition);
-  const journalBundle = buildJournalBundle(journal);
+  const journalBundle = buildJournalBundle(journal, journalContext);
 
   const overallScore = safeNumber(overall?.overall_score) ?? 0;
   const physioProxyScore = computePhysioProxyScore(
@@ -959,6 +1106,8 @@ export async function build_daily_input_bundle_v1(
     missing_nutrition: nutrition == null || nutritionBundle.meals_missing_day,
     missing_checkin: checkin == null,
     missing_journal: journal == null,
+    // Goals live in user_goals1 and are used by later coach agents, not this bundle.
+    // Always true here so consumers do not expect a goal payload in bundle_json.
     missing_goals: true,
     missing_proxy: physioProxyScore == null,
   };

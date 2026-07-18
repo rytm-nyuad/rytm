@@ -24,8 +24,12 @@ class DataFetcher:
         confidence_json = dict(row.get("confidence_json") or {})
 
         bundle_json["journal"] = {
+            "narrative_summary": None,
             "themes": [],
+            "topics": [],
             "episodic_events": [],
+            "commitments": [],
+            "recurring_topics": [],
             "stressor_types": [],
             "coping_actions": [],
             "barriers": [],
@@ -35,6 +39,13 @@ class DataFetcher:
             "self_efficacy_language": None,
             "goals_conflict_today": None,
             "evidence_quotes": [],
+            "context": {
+                "as_of_date": None,
+                "narrative_arc": "",
+                "open_commitments": [],
+                "recurring_topics": [],
+                "recent_day_summaries": [],
+            },
         }
         missingness_json["missing_journal"] = True
         confidence_json["confidence_journal"] = 0
@@ -49,6 +60,10 @@ class DataFetcher:
         cleaned["episodic_memory"] = {
             "active_events": [],
             "recent_stressor_distribution": [],
+            "open_commitments": [],
+            "recurring_topics": [],
+            "narrative_arc": "",
+            "narrative_summary": None,
         }
         return cleaned
 
@@ -58,6 +73,10 @@ class DataFetcher:
         snapshot["episodic_memory"] = {
             "active_events": [],
             "recent_stressor_distribution": [],
+            "open_commitments": [],
+            "recurring_topics": [],
+            "narrative_arc": "",
+            "narrative_summary": None,
         }
         cleaned["state_snapshot_json"] = snapshot
         return cleaned

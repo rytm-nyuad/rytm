@@ -6,7 +6,7 @@ import os
 import sys
 import re
 from datetime import datetime, date
-from typing import Dict, List, Any, TypedDict, Annotated
+from typing import Dict, List, Any, TypedDict, Annotated, Optional
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -21,6 +21,7 @@ from deterministic_agents import (
 )
 from action_utils import add_action_ids_to_candidates
 from agent_logger import AgentLogger
+from llm_config import LlmClientConfig, resolve_coach_pipeline_llm_config
 
 # Helper for debug logging to stderr
 def debug_log(msg: str):
@@ -69,7 +70,13 @@ class PipelineState(TypedDict):
 class MorningCoachPipeline:
     """LangGraph-based morning coach pipeline"""
     
-    def __init__(self, supabase_client, openrouter_api_key: str):
+    def __init__(
+        self,
+        supabase_client,
+        openrouter_api_key: Optional[str] = None,
+        *,
+        llm_config: Optional[LlmClientConfig] = None,
+    ):
         self.client = supabase_client
         self.data_fetcher = DataFetcher(
             os.getenv('NEXT_PUBLIC_SUPABASE_URL'),
@@ -80,18 +87,39 @@ class MorningCoachPipeline:
         self.regen_controller = RegenerationController()
         self.logger = AgentLogger(supabase_client)
 
-        # LLM client via OpenRouter
-        self.openrouter_api_key = openrouter_api_key
-        self.model_name = "gpt-5.4-mini"
-        self.llm = ChatOpenAI(
-            model=self.model_name,
-            api_key=openrouter_api_key,
-            base_url="https://openrouter.ai/api/v1",
-            temperature=0.7
-        )
+        # LLM client: OpenRouter or OpenAI via COACH_LLM_PROVIDER
+        if llm_config is not None:
+            self.llm_config = llm_config
+        elif openrouter_api_key:
+            # Backward-compatible path used by older callers.
+            self.llm_config = LlmClientConfig(
+                provider="openrouter",
+                api_key=openrouter_api_key,
+                api_base="https://openrouter.ai/api/v1",
+                model=os.getenv("COACH_LLM_MODEL") or "gpt-5.4-mini",
+                env_key_name="OPENROUTER_API_KEY",
+            )
+        else:
+            self.llm_config = resolve_coach_pipeline_llm_config()
+
+        self.model_name = self.llm_config.model
+        self.llm = self._build_chat_model(temperature=0.7)
         
         # Build graph
         self.graph = self._build_graph()
+
+    def _build_chat_model(self, temperature: float) -> ChatOpenAI:
+        """Create a ChatOpenAI client pointed at the configured provider."""
+        kwargs = {
+            "model": self.llm_config.model,
+            "api_key": self.llm_config.api_key,
+            "base_url": self.llm_config.api_base,
+            "temperature": temperature,
+        }
+        headers = self.llm_config.langchain_default_headers()
+        if headers:
+            kwargs["default_headers"] = headers
+        return ChatOpenAI(**kwargs)
     
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph workflow"""
@@ -110,10 +138,11 @@ class MorningCoachPipeline:
         workflow.add_node("persist_plan", self.node_persist_plan)
         
         # Define edges (flow)
+        # Holistic runs before goal fetch: status report is intentionally goal-agnostic.
         workflow.set_entry_point("fetch_data")
-        workflow.add_edge("fetch_data", "fetch_goal")
-        workflow.add_edge("fetch_goal", "generate_holistic_status_report")
-        workflow.add_edge("generate_holistic_status_report", "build_constraints")
+        workflow.add_edge("fetch_data", "generate_holistic_status_report")
+        workflow.add_edge("generate_holistic_status_report", "fetch_goal")
+        workflow.add_edge("fetch_goal", "build_constraints")
         workflow.add_edge("build_constraints", "route_domains")
         workflow.add_edge("route_domains", "generate_actions")
         workflow.add_edge("generate_actions", "review_actions")
@@ -135,6 +164,51 @@ class MorningCoachPipeline:
         return workflow.compile()
     
     # === Python Deterministic Agents ===
+
+    def _strip_goal_fields_from_missingness(self, missingness: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned = dict(missingness or {})
+        cleaned.pop("missing_goals", None)
+        return cleaned
+
+    def _strip_goal_fields_from_confidence(self, confidence: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned = dict(confidence or {})
+        cleaned.pop("confidence_goals", None)
+        return cleaned
+
+    def _build_holistic_agent_inputs(self, state: PipelineState) -> Dict[str, Any]:
+        """Inputs for holistic reporter: full status context, goals explicitly out of scope."""
+        bundle = dict(state.get("input_bundle") or {})
+        if "missingness" in bundle and isinstance(bundle["missingness"], dict):
+            bundle["missingness"] = self._strip_goal_fields_from_missingness(bundle["missingness"])
+        if "confidence" in bundle and isinstance(bundle["confidence"], dict):
+            bundle["confidence"] = self._strip_goal_fields_from_confidence(bundle["confidence"])
+
+        readiness = dict(state.get("coach_readiness") or {})
+        readiness["bundle_missingness"] = self._strip_goal_fields_from_missingness(
+            readiness.get("bundle_missingness") or {}
+        )
+        readiness["bundle_confidence"] = self._strip_goal_fields_from_confidence(
+            readiness.get("bundle_confidence") or {}
+        )
+
+        return {
+            "agent_scope": {
+                "includes_user_goal": False,
+                "goal_expected": False,
+                "reason": (
+                    "Holistic status report is goal-agnostic by design. "
+                    "User goals are loaded later for constraints/actions, not for this report."
+                ),
+            },
+            "overall_score": state["overall_score"],
+            "energy_mode": self._get_energy_mode(state["overall_score"]),
+            "input_bundle": bundle,
+            "current_state": state.get("current_state") or {},
+            "recent_state_history": (state.get("recent_state_history") or [])[:7],
+            "coach_readiness": readiness,
+            "behavior_profile": state.get("behavior_profile") or {},
+            "user_goal": None,
+        }
 
     def _extract_recent_action_memory(self, recent_state_history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Flatten recent generated actions from state history for deduplication/variety."""
@@ -201,29 +275,31 @@ class MorningCoachPipeline:
         from prompts import HOLISTIC_STATUS_REPORTER_SYSTEM_PROMPT
 
         started_at = datetime.utcnow()
+        holistic_inputs = self._build_holistic_agent_inputs(state)
 
-        bundle = state['input_bundle']
-        current_state = state['current_state']
-        recent_history = state['recent_state_history'][:7]
-        user_prompt = f"""Overall score today: {state['overall_score']}
-Energy mode: {self._get_energy_mode(state['overall_score'])}
+        user_prompt = f"""Agent scope:
+{json.dumps(holistic_inputs['agent_scope'], indent=2)}
+
+Overall score today: {holistic_inputs['overall_score']}
+Energy mode: {holistic_inputs['energy_mode']}
 
 Prepared daily input bundle:
-{json.dumps(bundle, indent=2)}
+{json.dumps(holistic_inputs['input_bundle'], indent=2)}
 
 Current auditable state:
-{json.dumps(current_state, indent=2)}
+{json.dumps(holistic_inputs['current_state'], indent=2)}
 
 Recent state history (most recent first):
-{json.dumps(recent_history, indent=2)}
+{json.dumps(holistic_inputs['recent_state_history'], indent=2)}
 
-Coach readiness and data quality:
-{json.dumps(state['coach_readiness'], indent=2)}
+Coach readiness and data quality (goal fields removed — not in scope):
+{json.dumps(holistic_inputs['coach_readiness'], indent=2)}
 
 Behavior profile:
-{json.dumps(state.get('behavior_profile', {}), indent=2)}
+{json.dumps(holistic_inputs['behavior_profile'], indent=2)}
 
-Generate the holistic status report JSON."""
+Generate the holistic status report JSON.
+Do not mention goals or treat goals as missing."""
         
         # Use temperature=0 for maximum determinism
         response = self._call_llm(HOLISTIC_STATUS_REPORTER_SYSTEM_PROMPT, user_prompt, temperature=0)
@@ -241,7 +317,7 @@ Generate the holistic status report JSON."""
         
         debug_log(f"[HOLISTIC_STATUS_REPORTER] Generated report for user {state['user_id']} on {state['for_date']}")
         
-        # Log agent run
+        # Log the exact holistic view (goals intentionally null / out of scope)
         self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -249,11 +325,7 @@ Generate the holistic status report JSON."""
             agent_name='holistic_status_reporter',  # closest valid enum; report stored in output_json
             attempt=state.get('attempt', 0) + 100,
             status='success',
-            input_json={
-                'overall_score': state['overall_score'],
-                'bundle_missingness': state['coach_readiness'].get('bundle_missingness', {}),
-                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {}),
-            },
+            input_json=holistic_inputs,
             output_json=report,
             evidence_refs_json={
                 d: s.get('key_evidence', []) 
@@ -360,7 +432,7 @@ Generate day constraints JSON.
         
         state['day_constraints'] = output
         
-        # Log agent run
+        # Log agent run — persist the full inputs sent to the LLM
         self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -371,9 +443,12 @@ Generate day constraints JSON.
             input_json={
                 'energy_mode': energy_mode,
                 'overall_score': state['overall_score'],
-                'user_goal': state.get('user_goal', {}),
-                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {}),
-                'bundle_missingness': state['coach_readiness'].get('bundle_missingness', {})
+                'user_goal': state.get('user_goal'),
+                'input_bundle': bundle,
+                'current_state': state['current_state'],
+                'recent_state_history': state['recent_state_history'][:5],
+                'coach_readiness': state['coach_readiness'],
+                'behavior_profile': state.get('behavior_profile', {}),
             },
             output_json=output,
             evidence_refs_json=output.get('evidence_used', {}),
@@ -435,7 +510,7 @@ Select 2-3 domains.
         else:
             state['selected_domains'] = selected
         
-        # Log agent run
+        # Log agent run — persist the full inputs sent to the LLM
         self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -446,10 +521,13 @@ Select 2-3 domains.
             input_json={
                 'energy_mode': self._get_energy_mode(state['overall_score']),
                 'day_constraints': state['day_constraints'],
+                'user_goal': state.get('user_goal'),
                 'user_goal_primary_domains': state['user_goal']['goal_spec_json'].get('primary_domains', []) if state['user_goal'] else [],
-                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {}),
+                'coach_readiness': state['coach_readiness'],
                 'holistic_status_report': state['holistic_status_report'],
+                'current_state': state['current_state'],
                 'recent_deviations': recent_deviations,
+                'behavior_profile': state.get('behavior_profile', {}),
             },
             output_json=output,
             rationale_json={d.get('domain'): d.get('rationale') for d in selected if isinstance(d, dict)},
@@ -525,7 +603,7 @@ Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, ge
         state['action_proposals'] = actions
         state['attempt'] = state.get('attempt', 0) + 1
 
-        # Log agent run
+        # Log agent run — persist the full inputs sent to the LLM
         agent_run_id = self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -536,10 +614,16 @@ Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, ge
             input_json={
                 'selected_domains': state['selected_domains'],
                 'goal_domains': goal_domains,
+                'user_goal': state.get('user_goal'),
                 'day_constraints': state['day_constraints'],
-                'meal_context': meal_context,
                 'holistic_status_report': state['holistic_status_report'],
-                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {}),
+                'input_bundle': bundle,
+                'current_state': state['current_state'],
+                'recent_state_history': state['recent_state_history'][:5],
+                'meal_context': meal_context,
+                'behavior_profile': state.get('behavior_profile', {}),
+                'recent_action_history': state.get('recent_action_history', [])[:15],
+                'coach_readiness': state['coach_readiness'],
             },
             output_json={'actions': actions},
             rationale_json={a['action_id']: a.get('rationale', '') for a in actions},
@@ -614,7 +698,7 @@ Review for coherence, feasibility, safety, and domain/goal coverage rules. Accep
                 # Default: accept all action IDs
                 state['review_result']['accepted_action_ids'] = [a['action_id'] for a in state['action_proposals']]
         
-        # Log agent run
+        # Log agent run — persist the full inputs sent to the LLM
         agent_run_id = self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -625,8 +709,9 @@ Review for coherence, feasibility, safety, and domain/goal coverage rules. Accep
             input_json={
                 'selected_domains': state['selected_domains'],
                 'goal_domains': goal_domains,
+                'user_goal': state.get('user_goal'),
                 'action_proposals': state['action_proposals'],
-                'day_constraints': state['day_constraints']
+                'day_constraints': state['day_constraints'],
             },
             output_json=review_result,
             evidence_refs_json=review_result.get('evidence_used', {}),
@@ -689,7 +774,7 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
         
         state['morning_message'] = output['morning_message']
         
-        # Log agent run
+        # Log agent run — persist the full inputs sent to the LLM
         self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -701,9 +786,10 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
                 'energy_mode': self._get_energy_mode(state['overall_score']),
                 'overall_score': state['overall_score'],
                 'selected_domains': state['selected_domains'],
+                'user_name': state.get('user_name'),
+                'coach_readiness': state['coach_readiness'],
                 'holistic_status_report': state.get('holistic_status_report', {}),
                 'display_actions': state['budget_result']['display_actions'],
-                'bundle_confidence': state['coach_readiness'].get('bundle_confidence', {})
             },
             output_json=output,
             started_at=started_at,
@@ -717,12 +803,7 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
     def _call_llm(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
         """Call LLM with system and user prompts"""
         if temperature != self.llm.temperature:
-            llm = ChatOpenAI(
-                model=self.model_name,
-                api_key=self.openrouter_api_key,
-                base_url="https://openrouter.ai/api/v1",
-                temperature=temperature
-            )
+            llm = self._build_chat_model(temperature=temperature)
         else:
             llm = self.llm
         messages = [
@@ -736,7 +817,10 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
         if not content or content.strip() == '':
             raise ValueError("LLM returned empty response")
         
-        debug_log(f"[LLM] Raw response length: {len(content)}")
+        debug_log(
+            f"[LLM] provider={self.llm_config.provider} model={self.llm_config.model} "
+            f"raw response length: {len(content)}"
+        )
         return content
 
     def _parse_llm_json(self, response: str, agent_name: str) -> Dict[str, Any]:
@@ -977,6 +1061,8 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
                 'confidence': final_state['coach_readiness'].get('bundle_confidence', {}),
                 'behavior_profile': final_state.get('behavior_profile', {}),
                 'attempts': final_state['attempt'],
-                'holistic_status_report': final_state['holistic_status_report']
+                'holistic_status_report': final_state['holistic_status_report'],
+                'llm_provider': self.llm_config.provider,
+                'llm_model': self.llm_config.model,
             }
         }

@@ -1,0 +1,83 @@
+﻿# Cursor indexing ignore — keep indexing focused on app/coach source.
+# Syntax is similar to .gitignore.
+
+# --- Dependencies & virtualenvs ---
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+python/coach/.venv/
+python/coach/venv/
+**/.venv/
+**/venv/
+
+# --- Build / Next.js outputs ---
+.next/
+out/
+build/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Python caches / bytecode ---
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Env / secrets / local IDE ---
+.env
+.env.*
+!.env.example
+.vercel/
+.vscode/
+.idea/
+
+# --- Lockfiles (huge, low signal for chat) ---
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# --- Logs / OS junk ---
+*.log
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# --- Coach eval artifacts & exploratory notebooks ---
+# Generated judge outputs (JSONL/CSV), not needed for day-to-day coding.
+python/coach/evals/runs/
+
+# Large Capstone notebooks with embedded images/plots.
+python/coach/Final_Capstone_Data_Exploration.ipynb
+python/coach/Data_Exploration_and_Clustering/
+**/*.ipynb
+
+# Historical prompt snapshots (source of truth is prompts.py).
+python/coach/prompt_versions/
+
+# --- Docs assets / historical change dumps ---
+docs/assets/
+docs/changes2/
+
+# --- Binary / media (rarely useful as indexed text) ---
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.webp
+**/*.ico
+**/*.pdf
+**/*.mp4
+**/*.mov
+**/*.zip
+**/*.gz
+**/*.7z
+**/*.parquet
+**/*.pkl
+**/*.h5
