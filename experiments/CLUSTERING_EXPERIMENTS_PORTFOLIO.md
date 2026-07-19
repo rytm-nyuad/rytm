@@ -7,6 +7,12 @@
 
 This document summarizes **two related experiments** run on the same cohort and the same four clustering scenarios. Participant identifiers are omitted; participants are labeled only by cohort and anonymous codes.
 
+### What “OS” means
+
+**OS = `overall_score`**: the participant’s **morning self-reported wellness score** for that local calendar day (typically 0–100), logged at the **beginning** of the day—not an end-of-day retrospective. In RYTM it is the subjective “how am I starting today?” signal used by the morning coach.
+
+In these experiments, **OS** is abbreviated everywhere for that field. Clusters are labeled by mean OS after fitting (`cluster_0` = lowest-OS tier, `cluster_2` = highest-OS tier), whether or not OS was included as a K-Means input.
+
 ---
 
 ## What we tested
