@@ -19,6 +19,24 @@ def debug_log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
+FEATURE_TIMING_NOTES: Dict[str, str] = {
+    "overall_score": (
+        "Self-reported at the BEGINNING of the local calendar day (morning), before most waking "
+        "behavior that day. Used to order semantic clusters (cluster_0/1/2). Not an end-of-day summary."
+    ),
+    "same_feature_date_alignment": (
+        "Other daily_features1 values share the SAME feature_date as overall_score. "
+        "Example: Monday overall_score = Monday morning; Monday sleep = Sunday night→Monday morning; "
+        "Monday activity/check-in/etc. = Monday's stored day values."
+    ),
+    "interpretation_framing": (
+        "Clusters are morning starting-state day-types with same-date co-occurring features. "
+        "Do not describe features as caused by overall_score, and do not treat sleep as a prior "
+        "calendar day's leftover under a different date label."
+    ),
+}
+
+
 class BehaviorProfileValidationError(ValueError):
     """Raised when the LLM returns a malformed behavior profile payload."""
 
@@ -64,11 +82,13 @@ class BehaviorProfileInterpreter:
         days_used: int,
         data_window_start: str,
         data_window_end: str,
+        feature_timing: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         return {
             "days_used": days_used,
             "data_window_start": data_window_start,
             "data_window_end": data_window_end,
+            "feature_timing": feature_timing or FEATURE_TIMING_NOTES,
             "cluster_stats": cluster_stats,
             "clustering_metadata": clustering_metadata,
             "quality_evaluation": {
@@ -101,6 +121,8 @@ class BehaviorProfileInterpreter:
         days_used: int,
         data_window_start: str,
         data_window_end: str,
+        system_prompt: Optional[str] = None,
+        feature_timing: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         evidence = self.build_evidence_payload(
             cluster_stats=cluster_stats,
@@ -109,13 +131,15 @@ class BehaviorProfileInterpreter:
             days_used=days_used,
             data_window_start=data_window_start,
             data_window_end=data_window_end,
+            feature_timing=feature_timing,
         )
         user_prompt = f"""Evidence package for this user's behavior-profile interpretation:
 {json.dumps(evidence, indent=2)}
 
 Return the behavior profile JSON only."""
 
-        response = self._call_llm(BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT, user_prompt)
+        prompt = system_prompt or BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT
+        response = self._call_llm(prompt, user_prompt)
         parsed = self._parse_json(response)
         return self._validate_and_normalize_profile(parsed)
 

@@ -91,6 +91,22 @@ MIN_DAYS_FOR_CLUSTERING = 7
 KMEANS_RANDOM_STATE = 42
 KMEANS_N_INIT = 10
 
+# Post-PCA: whiten within category, then re-standardize the concatenated matrix so
+# no single category's PC1 dominates Euclidean K-Means distance.
+PCA_WHITEN = True
+RESCALE_CONCATENATED_PCS = True
+# Append one completeness score per category (fraction of fields present that day)
+# instead of a binary miss_* flag per individual feature.
+INCLUDE_CATEGORY_COMPLETENESS = True
+# Backward-compatible alias
+INCLUDE_MISSINGNESS_INDICATORS = INCLUDE_CATEGORY_COMPLETENESS
+
+CATEGORY_FEATURE_MAP: Dict[str, List[str]] = {
+    "A": CATEGORY_A_FEATURES,
+    "B": CATEGORY_B_FEATURES,
+    "D": CATEGORY_D_FEATURES,
+}
+
 # Quality-gate defaults (documented):
 # - MIN_CLUSTER_SIZE=3: each day-type needs enough days to describe a pattern.
 # - MIN_CLUSTER_FRACTION=0.10: reject tiny leftover clusters on longer histories.
@@ -206,14 +222,145 @@ def _pca_category(scaled_df: pd.DataFrame, category_name: str) -> pd.DataFrame:
     if n_components == 0:
         return pd.DataFrame(index=scaled_df.index)
 
-    pca = PCA(n_components=n_components)
+    # whiten=True → unit variance per component within the category, so PC1 does not
+    # dominate PC2 (and later, categories with larger raw PC spread dominate less).
+    pca = PCA(n_components=n_components, whiten=PCA_WHITEN)
     transformed = pca.fit_transform(scaled_df)
     columns = [f"PC_{category_name}_{i + 1}" for i in range(n_components)]
     return pd.DataFrame(transformed, columns=columns, index=scaled_df.index)
 
 
+def build_category_completeness_matrix(
+    feature_matrix: pd.DataFrame,
+    categories: Optional[Dict[str, List[str]]] = None,
+) -> pd.DataFrame:
+    """
+    One completeness score per feature category.
+
+    For each day and category, score = (non-null fields) / (fields in category).
+    Range [0, 1]. Fields absent from the matrix count as missing (never present).
+
+    This replaces per-feature binary miss_* flags so K-Means sees 2–3 completeness
+    columns instead of 10–16 sparse indicators, while still treating gaps as MNAR signal.
+    """
+    cats = categories if categories is not None else CATEGORY_FEATURE_MAP
+    n_rows = feature_matrix.shape[0]
+    index = feature_matrix.index
+    scores: Dict[str, np.ndarray] = {}
+
+    for cat_name, feature_list in cats.items():
+        features = [f for f in feature_list if f]  # drop empties
+        if not features:
+            continue
+        present_counts = np.zeros(n_rows, dtype=float)
+        for feat in features:
+            if feat in feature_matrix.columns:
+                present_counts += (~feature_matrix[feat].isna()).astype(float).to_numpy()
+            # else: feature never observed → contributes 0 present
+        scores[f"completeness_{cat_name}"] = present_counts / float(len(features))
+
+    return pd.DataFrame(scores, index=index)
+
+
+def build_missingness_indicator_matrix(
+    feature_matrix: pd.DataFrame,
+    feature_list: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """
+    Deprecated alias: prefer build_category_completeness_matrix.
+
+    If feature_list is provided, builds one completeness column over that list
+    (named completeness_custom). Otherwise returns standard A/B/D completeness.
+    """
+    if feature_list is None:
+        return build_category_completeness_matrix(feature_matrix)
+    return build_category_completeness_matrix(
+        feature_matrix, categories={"custom": list(feature_list)}
+    )
+
+
+def compute_per_cluster_missingness_rates(
+    feature_matrix: pd.DataFrame,
+    raw_labels: np.ndarray,
+    semantic_by_raw: Dict[int, str],
+    feature_list: Optional[List[str]] = None,
+    categories: Optional[Dict[str, List[str]]] = None,
+) -> Dict[str, Any]:
+    """
+    Mean category completeness (fraction of fields present), overall and per cluster.
+
+    `feature_list` is ignored (kept for call-site compatibility). Pass `categories`
+    to override the default A/B/D map.
+    """
+    del feature_list  # per-feature rates retired in favor of category completeness
+    cats = categories if categories is not None else CATEGORY_FEATURE_MAP
+    comp_df = build_category_completeness_matrix(feature_matrix, cats)
+    cat_keys = [name for name, feats in cats.items() if feats]
+
+    def rates_for_mask(mask: np.ndarray) -> Dict[str, Optional[float]]:
+        mask_arr = np.asarray(mask, dtype=bool)
+        if not np.any(mask_arr):
+            return {name: None for name in cat_keys}
+        subset = comp_df.iloc[np.flatnonzero(mask_arr)]
+        return {
+            name: float(subset[f"completeness_{name}"].mean())
+            for name in cat_keys
+            if f"completeness_{name}" in subset.columns
+        }
+
+    overall_mask = np.ones(len(feature_matrix), dtype=bool)
+    payload: Dict[str, Any] = {
+        "kind": "category_completeness",
+        "overall": rates_for_mask(overall_mask),
+        "per_cluster": {},
+        "note": (
+            "Missingness is treated as informative (not MCAR): devices/check-ins are often "
+            "skipped on chaotic or hard days. Values are mean category completeness "
+            "(fraction of that category's fields present on a day), not per-feature flags."
+        ),
+    }
+
+    for raw_id, semantic in semantic_by_raw.items():
+        mask = raw_labels == int(raw_id)
+        payload["per_cluster"][semantic] = rates_for_mask(mask)
+
+    for semantic in ("cluster_0", "cluster_1", "cluster_2"):
+        payload["per_cluster"].setdefault(semantic, {name: None for name in cat_keys})
+
+    return payload
+
+
+def _append_category_completeness(
+    matrix_df: pd.DataFrame,
+    feature_matrix: pd.DataFrame,
+    categories: Optional[Dict[str, List[str]]] = None,
+) -> pd.DataFrame:
+    """Append standardized category completeness columns with non-zero variance."""
+    if not INCLUDE_CATEGORY_COMPLETENESS:
+        return matrix_df
+
+    comp_df = build_category_completeness_matrix(feature_matrix, categories)
+    nonzero_var_cols = [c for c in comp_df.columns if float(comp_df[c].std(ddof=0)) > 0]
+    if not nonzero_var_cols:
+        return matrix_df
+
+    comp_var = comp_df[nonzero_var_cols]
+    comp_scaler = StandardScaler()
+    comp_scaled = comp_scaler.fit_transform(comp_var.to_numpy(dtype=float))
+    comp_scaled_df = pd.DataFrame(
+        comp_scaled, columns=nonzero_var_cols, index=comp_var.index
+    )
+    return pd.concat([matrix_df, comp_scaled_df], axis=1)
+
+
 def _build_pca_matrix(feature_matrix: pd.DataFrame) -> pd.DataFrame:
-    """Build PCA feature matrix from categories A/B/D only (never includes overall_score)."""
+    """
+    Build the K-Means input matrix:
+    1) per-category scale → PCA (whitened)
+    2) concatenate category PCs
+    3) re-standardize concatenated PCs (equal Euclidean weight across columns)
+    4) append standardized category completeness scores (one column per A/B/D)
+    """
     categories = {
         "A": CATEGORY_A_FEATURES,
         "B": CATEGORY_B_FEATURES,
@@ -234,7 +381,13 @@ def _build_pca_matrix(feature_matrix: pd.DataFrame) -> pd.DataFrame:
     pca_df = pd.concat(pca_frames, axis=1)
     if pca_df.shape[0] < N_CLUSTERS or pca_df.shape[1] == 0:
         raise InsufficientDataError("Not enough PCA features or days for k=3 clustering")
-    return pca_df
+
+    if RESCALE_CONCATENATED_PCS:
+        pc_scaler = StandardScaler()
+        pca_values = pc_scaler.fit_transform(pca_df.to_numpy(dtype=float))
+        pca_df = pd.DataFrame(pca_values, columns=pca_df.columns, index=pca_df.index)
+
+    return _append_category_completeness(pca_df, feature_matrix, CATEGORY_FEATURE_MAP)
 
 
 def _semantic_cluster_labels(cluster_means: pd.DataFrame) -> Dict[int, str]:
@@ -619,6 +772,12 @@ def run_user_clustering(
         semantic_by_raw,
         thresholds=thresholds,
     )
+    missingness_rates = compute_per_cluster_missingness_rates(
+        feature_matrix,
+        raw_labels,
+        semantic_by_raw,
+        ALL_CATEGORY_FEATURES,
+    )
     quality_evaluation = evaluate_candidate_quality(
         days_used=days_used,
         days_per_cluster=days_per_cluster,
@@ -630,30 +789,59 @@ def run_user_clustering(
 
     cluster_stats = {
         "semantic_labels": {
-            "cluster_0": "lowest_mean_overall_score",
-            "cluster_1": "middle_mean_overall_score",
-            "cluster_2": "highest_mean_overall_score",
+            "cluster_0": "lowest_mean_morning_overall_score",
+            "cluster_1": "middle_mean_morning_overall_score",
+            "cluster_2": "highest_mean_morning_overall_score",
         },
+        "feature_timing": {
+            "overall_score": (
+                "Collected at the beginning of the local calendar day (morning self-report), "
+                "not at end of day. Semantic cluster labels reflect morning starting state."
+            ),
+            "same_date_features": (
+                "Other features share the same feature_date. Sleep/overnight for that date is the "
+                "night ending into that morning (e.g. Sunday→Monday sleep with Monday overall_score). "
+                "Activity/check-in/etc. are that same day's values — not a differently labeled prior day."
+            ),
+        },
+        "missingness_assumption": (
+            "Wearable and check-in missingness is NOT assumed MCAR. Gaps often concentrate on "
+            "chaotic/hard/travel days. Mean imputation alone would pull those days toward the "
+            "centroid; clustering therefore also uses one completeness score per feature category "
+            "(A/B/D: fraction of that category's fields present that day), and per-cluster mean "
+            "completeness is reported below for interpretation."
+        ),
         "key_features": available_key_features,
         "means": _frame_to_dict(cluster_means_semantic[available_key_features]),
         "mins": _frame_to_dict(cluster_mins_semantic[available_key_features]),
         "maxs": _frame_to_dict(cluster_maxs_semantic[available_key_features]),
         "stds": _frame_to_dict(cluster_stds_semantic[available_key_features]),
         "days_per_cluster": days_per_cluster,
+        "missingness_rates": missingness_rates,
     }
 
+    pc_columns = [c for c in pca_df.columns if str(c).startswith("PC_")]
+    completeness_columns = [c for c in pca_df.columns if str(c).startswith("completeness_")]
     metadata = {
         "algorithm": "kmeans",
         "k": N_CLUSTERS,
         "random_state": KMEANS_RANDOM_STATE,
         "n_init": KMEANS_N_INIT,
         "n_components_per_category": N_COMPONENTS_PER_CATEGORY,
+        "pca_whiten": PCA_WHITEN,
+        "rescale_concatenated_pcs": RESCALE_CONCATENATED_PCS,
+        "category_completeness_included": INCLUDE_CATEGORY_COMPLETENESS,
+        "category_completeness_column_count": len(completeness_columns),
+        # Backward-compatible aliases
+        "missingness_indicators_included": INCLUDE_CATEGORY_COMPLETENESS,
+        "missingness_indicator_count": len(completeness_columns),
+        "pc_feature_count": len(pc_columns),
         "silhouette_score": silhouette,
         "pca_feature_count": int(pca_df.shape[1]),
         "raw_cluster_to_semantic": {str(k): v for k, v in semantic_by_raw.items()},
         "quality_passed": quality_evaluation.get("passed"),
+        "overall_score_timing": "start_of_day_morning_self_report",
     }
-
     return ClusteringResult(
         days_used=days_used,
         data_window_start=feature_matrix.index.min().date().isoformat(),
