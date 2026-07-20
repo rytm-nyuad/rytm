@@ -5,23 +5,40 @@ Combines Python deterministic agents + LLM reasoning agents
 import os
 import sys
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, TypedDict, Annotated, Optional
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 import json
 
-from data_fetcher import DataFetcher
-from behavior_profile_store import get_latest_active_profile, profile_payload_from_row
-from deterministic_agents import (
+from data.data_fetcher import DataFetcher
+from data_prep.day_validity import apply_day_validity
+from data_prep.feature_series import fetch_recent_feature_matrix
+from data_prep.rolling_windows import (
+    KEY_FEATURES,
+    compute_rolling_aggregates,
+)
+from profiling.behavior_profile_store import get_latest_active_profile, profile_payload_from_row
+from profiling.patterns import (
+    DEFAULT_PATTERN_CONFIG,
+    detect_active_patterns,
+    domains_for_high_patterns,
+    high_severity_patterns,
+    recovery_energy_cap_required,
+)
+from correlations.correlation_archetype_store import (
+    get_latest_active_archetype,
+    archetype_payload_from_row,
+)
+from pipeline.deterministic_agents import (
     BudgetEnforcerAgent,
     PersistenceAgent,
     RegenerationController
 )
-from action_utils import add_action_ids_to_candidates
-from agent_logger import AgentLogger
-from llm_config import LlmClientConfig, resolve_coach_pipeline_llm_config
+from pipeline.action_utils import add_action_ids_to_candidates
+from pipeline.agent_logger import AgentLogger
+from llm.llm_config import LlmClientConfig, resolve_coach_pipeline_llm_config
 
 # Helper for debug logging to stderr
 def debug_log(msg: str):
@@ -42,10 +59,13 @@ class PipelineState(TypedDict):
     recent_state_history: List[Dict[str, Any]]
     coach_readiness: Dict[str, Any]
     behavior_profile: Dict[str, Any]
+    correlation_archetype: Dict[str, Any]
 
     # User context
     user_name: str
     recent_action_history: List[Dict]
+    previous_morning_brief: Dict[str, Any]
+    active_patterns: List[Dict[str, Any]]
 
     # User goal
     user_goal: Dict[str, Any]
@@ -147,13 +167,13 @@ class MorningCoachPipeline:
         workflow.add_edge("route_domains", "generate_actions")
         workflow.add_edge("generate_actions", "review_actions")
         
-        # Conditional: regen or continue
+        # Conditional: regen or continue to budget/compose
         workflow.add_conditional_edges(
             "review_actions",
             self._should_regenerate,
             {
                 "regenerate": "generate_actions",
-                "continue": "enforce_budget"
+                "continue": "enforce_budget",
             }
         )
         
@@ -165,6 +185,17 @@ class MorningCoachPipeline:
     
     # === Python Deterministic Agents ===
 
+    RECOVERY_DOMAINS = frozenset({"sleep", "recovery", "stress"})
+    ENERGY_MODE_RANK = {"low": 0, "moderate": 1, "normal": 2, "high": 3}
+    FAST_READY_MIN_N_VALID = 7
+    BANNED_HIGH_ENERGY_PHRASES = (
+        "harness your energy",
+        "harness that energy",
+        "channel your high energy",
+        "ride this high energy",
+        "capitalize on your energy",
+    )
+
     def _strip_goal_fields_from_missingness(self, missingness: Dict[str, Any]) -> Dict[str, Any]:
         cleaned = dict(missingness or {})
         cleaned.pop("missing_goals", None)
@@ -174,6 +205,137 @@ class MorningCoachPipeline:
         cleaned = dict(confidence or {})
         cleaned.pop("confidence_goals", None)
         return cleaned
+
+    def _is_fast_ready(self, state: PipelineState) -> bool:
+        """True only when baseline stability flag is set and core features have enough history."""
+        readiness = state.get("coach_readiness") or {}
+        if not bool(readiness.get("fast_ready")):
+            return False
+        baselines = (state.get("current_state") or {}).get("baselines") or {}
+        if not isinstance(baselines, dict) or not baselines:
+            return False
+        n_vals: List[int] = []
+        for payload in baselines.values():
+            if not isinstance(payload, dict):
+                continue
+            fast = payload.get("fast") if isinstance(payload.get("fast"), dict) else {}
+            n = fast.get("n_valid")
+            if isinstance(n, (int, float)) and n > 0:
+                n_vals.append(int(n))
+        if not n_vals:
+            return False
+        # Require typical tracked features to have enough history.
+        ready_count = sum(1 for n in n_vals if n >= self.FAST_READY_MIN_N_VALID)
+        return ready_count >= max(3, len(n_vals) // 3)
+
+    def _sleep_duration_hours(self, state: PipelineState) -> Optional[float]:
+        bundle = state.get("input_bundle") or {}
+        watch = bundle.get("watch") if isinstance(bundle.get("watch"), dict) else {}
+        sleep = watch.get("sleep") if isinstance(watch.get("sleep"), dict) else {}
+        value = sleep.get("sleep_duration_hours")
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _cap_energy_mode(self, mode: str, cap: str) -> str:
+        """Upper-bound energy_mode by rank (low < moderate < normal < high)."""
+        mode_n = str(mode or "normal").lower()
+        cap_n = str(cap or "normal").lower()
+        if self.ENERGY_MODE_RANK.get(mode_n, 2) > self.ENERGY_MODE_RANK.get(cap_n, 2):
+            return cap_n
+        return mode_n
+
+    def _safety_override_triggers(
+        self,
+        state: PipelineState,
+        *,
+        constraints: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        """Deterministic recovery-safety triggers (code, not prompt)."""
+        triggers: List[str] = []
+        sleep_h = self._sleep_duration_hours(state)
+        if sleep_h is not None and sleep_h < 5.0:
+            triggers.append("sleep_under_5h")
+
+        constraints = constraints if constraints is not None else (state.get("day_constraints") or {})
+        risk_flags = constraints.get("risk_flags") or []
+        if isinstance(risk_flags, list):
+            lowered = {str(f).lower() for f in risk_flags}
+            if "low_recovery" in lowered:
+                triggers.append("low_recovery")
+            if "burnout_risk" in lowered:
+                triggers.append("burnout_risk")
+
+        if recovery_energy_cap_required(state.get("active_patterns") or []):
+            triggers.append("high_severity_recovery_pattern")
+        return triggers
+
+    def _effective_energy_mode(
+        self,
+        state: PipelineState,
+        *,
+        constraints: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Score-based energy mode, capped under recovery-safety / multi-day patterns."""
+        base = self._get_energy_mode(state["overall_score"])
+        mode = base
+        # High-severity sleep/recovery patterns: hard cap at moderate (code, not prompt).
+        if recovery_energy_cap_required(state.get("active_patterns") or []):
+            mode = self._cap_energy_mode(mode, "moderate")
+        # Legacy single-night / risk-flag safety: never allow high.
+        elif self._safety_override_triggers(state, constraints=constraints):
+            mode = self._cap_energy_mode(mode, "normal")
+        return mode
+
+    def _safety_override_payload(
+        self,
+        state: PipelineState,
+        *,
+        constraints: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        triggers = self._safety_override_triggers(state, constraints=constraints)
+        if not triggers:
+            return {}
+        capped_to = "moderate" if "high_severity_recovery_pattern" in triggers else "normal"
+        return {
+            "active": True,
+            "triggers": triggers,
+            "energy_mode_capped_to": capped_to,
+            "require_recovery_action": True,
+            "banned_framing": list(self.BANNED_HIGH_ENERGY_PHRASES),
+        }
+
+    def _compute_multiday_context(self, user_id: str, for_date: str) -> Dict[str, Any]:
+        """Layer A + B: validity → rolling aggregates → active_patterns.
+
+        Rolling windows are consumed by pattern detectors (and attached onto
+        pattern objects). They are not stored separately or dumped into prompts.
+        """
+        try:
+            anchor = date.fromisoformat(for_date)
+        except ValueError:
+            return {"active_patterns": []}
+
+        try:
+            raw = fetch_recent_feature_matrix(
+                self.client,
+                user_id,
+                as_of_date=anchor,
+                lookback_days=max(DEFAULT_PATTERN_CONFIG.baseline_days, 30),
+                features=KEY_FEATURES,
+            )
+        except Exception as exc:
+            debug_log(f"[multiday] feature matrix unavailable: {exc}")
+            return {"active_patterns": []}
+
+        if raw is None or raw.empty:
+            return {"active_patterns": []}
+
+        valid = apply_day_validity(raw, require_overall_score=False)
+        rolling = compute_rolling_aggregates(valid, features=KEY_FEATURES)
+        patterns = detect_active_patterns(valid, config=DEFAULT_PATTERN_CONFIG, rolling=rolling)
+        return {"active_patterns": patterns}
 
     @staticmethod
     def _pick(d: Optional[Dict[str, Any]], keys: List[str]) -> Dict[str, Any]:
@@ -421,11 +583,29 @@ class MorningCoachPipeline:
             "recent_stressor_distribution": episodic.get("recent_stressor_distribution"),
         })
 
-    def _slim_current_state(self, current_state: Dict[str, Any]) -> Dict[str, Any]:
+    def _slim_current_state(
+        self,
+        current_state: Dict[str, Any],
+        *,
+        fast_ready: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """Slim auditable state. Baseline/z/volatility omitted until fast_ready."""
+        if fast_ready is False:
+            return self._omit_empty({
+                "as_of_date": current_state.get("as_of_date"),
+                "baseline_ready": False,
+                "learning_mode": True,
+                "learning_mode_note": (
+                    "Baselines not ready (need ~7 valid days). "
+                    "Do NOT use z-scores, baseline comparisons, or volatility language."
+                ),
+                "episodic_memory": self._slim_episodic_memory(current_state.get("episodic_memory")),
+            })
         volatility = current_state.get("volatility") if isinstance(current_state.get("volatility"), dict) else {}
         global_vol = volatility.get("global") if isinstance(volatility.get("global"), dict) else {}
         return self._omit_empty({
             "as_of_date": current_state.get("as_of_date"),
+            "baseline_ready": True if fast_ready else None,
             "baselines": self._slim_baselines(current_state.get("baselines")),
             "slopes": self._slim_slopes(current_state.get("slopes")),
             "volatility": {"global": global_vol} if global_vol else None,
@@ -434,20 +614,26 @@ class MorningCoachPipeline:
             "residual_signature": self._slim_residual(current_state.get("residual_signature")),
         })
 
-    def _slim_recent_history(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _slim_recent_history(
+        self,
+        history: List[Dict[str, Any]],
+        *,
+        fast_ready: bool = True,
+    ) -> List[Dict[str, Any]]:
         slim_rows: List[Dict[str, Any]] = []
         for row in history[:7]:
             if not isinstance(row, dict):
                 continue
-            deviations = row.get("deviations_json") if isinstance(row.get("deviations_json"), dict) else {}
-            top_trends = deviations.get("top_trends") or []
-            top_anomalies = deviations.get("top_anomalies") or []
             slim_dev = None
-            if top_trends or top_anomalies:
-                slim_dev = self._omit_empty({
-                    "top_trends": top_trends or None,
-                    "top_anomalies": top_anomalies or None,
-                })
+            if fast_ready:
+                deviations = row.get("deviations_json") if isinstance(row.get("deviations_json"), dict) else {}
+                top_trends = deviations.get("top_trends") or []
+                top_anomalies = deviations.get("top_anomalies") or []
+                if top_trends or top_anomalies:
+                    slim_dev = self._omit_empty({
+                        "top_trends": top_trends or None,
+                        "top_anomalies": top_anomalies or None,
+                    })
             slim_rows.append(self._omit_empty({
                 "date": row.get("date"),
                 "overall_true_today": row.get("overall_true_today"),
@@ -463,14 +649,221 @@ class MorningCoachPipeline:
         *,
         include_clusters: bool = True,
     ) -> Dict[str, Any]:
+        """
+        Slim behavior profile for LLM prompts AND agent_runs1.input_json.
+
+        Always returns an auditable object (never silently omit the key upstream):
+        - present=false when no injectable v2 profile
+        - profile_id / window / os_tiers_meaningful when available
+        - content fields when present
+        """
         profile = profile or {}
-        slim = {
-            "summary": profile.get("summary") or None,
-            "primary_coaching_rule": profile.get("primary_coaching_rule") or None,
+        version = str(profile.get("profile_version") or "").strip() or None
+
+        # Never inject legacy v1 profiles into coach prompts; still record exclusion.
+        if version and version not in {"cluster_profile_v2", "none"}:
+            return {
+                "present": False,
+                "source": "user_behavior_profiles1",
+                "excluded": True,
+                "exclude_reason": "legacy_profile_version",
+                "profile_version": version,
+                "profile_id": profile.get("profile_id") or None,
+            }
+
+        rule = profile.get("primary_coaching_rule")
+        if isinstance(rule, str):
+            rule = rule.strip() or None
+        elif rule is not None:
+            rule = None
+
+        summary = profile.get("summary")
+        if isinstance(summary, str):
+            summary = summary.strip() or None
+        else:
+            summary = None
+
+        cluster_interpretations: Optional[Dict[str, Any]] = None
+        if include_clusters:
+            raw = profile.get("cluster_interpretations") or {}
+            if isinstance(raw, dict) and raw:
+                flattened: Dict[str, Any] = {}
+                for key in ("cluster_0", "cluster_1", "cluster_2"):
+                    entry = raw.get(key)
+                    if isinstance(entry, dict):
+                        flattened[key] = {
+                            "status": entry.get("status"),
+                            "n_days": entry.get("n_days"),
+                            "text": entry.get("text"),
+                        }
+                    elif isinstance(entry, str) and entry.strip():
+                        flattened[key] = entry.strip()
+                cluster_interpretations = flattened or None
+
+        present = bool(
+            version == "cluster_profile_v2"
+            and (
+                summary
+                or rule
+                or cluster_interpretations
+                or profile.get("profile_id")
+            )
+        )
+
+        slim: Dict[str, Any] = {
+            "present": present,
+            "source": "user_behavior_profiles1",
+            "profile_id": profile.get("profile_id") or None,
+            "profile_version": version,
+            "data_window_start": profile.get("data_window_start") or None,
+            "data_window_end": profile.get("data_window_end") or None,
+            "days_used": profile.get("days_used"),
+            "os_tiers_meaningful": profile.get("os_tiers_meaningful"),
+            "validator_source": profile.get("validator_source") or None,
+            "summary": summary,
+            "primary_coaching_rule": rule,
         }
         if include_clusters:
-            slim["cluster_interpretations"] = profile.get("cluster_interpretations") or None
-        return self._omit_empty(slim)
+            slim["cluster_interpretations"] = cluster_interpretations
+
+        content = self._omit_empty(
+            {k: v for k, v in slim.items() if k not in {"present", "source"}}
+        )
+        return {
+            "present": present,
+            "source": "user_behavior_profiles1",
+            **content,
+        }
+
+    def _behavior_profile_evidence_refs(
+        self, state: PipelineState
+    ) -> Dict[str, Any]:
+        """Compact provenance for agent_runs1.evidence_refs_json."""
+        profile = state.get("behavior_profile") or {}
+        version = str(profile.get("profile_version") or "").strip()
+        profile_id = profile.get("profile_id")
+        has_content = bool(
+            profile_id
+            or profile.get("summary")
+            or profile.get("primary_coaching_rule")
+            or profile.get("cluster_interpretations")
+        )
+        if version and version not in {"cluster_profile_v2", "none"}:
+            return {
+                "behavior_profile": {
+                    "present": False,
+                    "source": "user_behavior_profiles1",
+                    "excluded": True,
+                    "exclude_reason": "legacy_profile_version",
+                    "profile_version": version,
+                    "profile_id": profile_id,
+                }
+            }
+        if not has_content or version != "cluster_profile_v2":
+            return {
+                "behavior_profile": {
+                    "present": False,
+                    "source": "user_behavior_profiles1",
+                }
+            }
+        return {
+            "behavior_profile": {
+                "present": True,
+                "source": "user_behavior_profiles1",
+                "profile_id": profile_id,
+                "profile_version": version,
+                "data_window_start": profile.get("data_window_start") or None,
+                "data_window_end": profile.get("data_window_end") or None,
+                "days_used": profile.get("days_used"),
+                "os_tiers_meaningful": profile.get("os_tiers_meaningful"),
+                "validator_source": profile.get("validator_source") or None,
+            }
+        }
+
+    def _slim_correlation_archetype(
+        self,
+        archetype: Optional[Dict[str, Any]],
+        *,
+        include_correlations: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Slim correlation archetype for LLM prompts AND agent_runs1.input_json.
+
+        Always returns an auditable object (never silently omit the key upstream):
+        - present=false when no active archetype
+        - archetype_id / window metadata when available
+        - content fields when present
+        """
+        archetype = archetype or {}
+        title = (archetype.get("archetype_title") or "").strip() or None
+        summary = (archetype.get("summary") or "").strip() or None
+        rule = (archetype.get("primary_coaching_rule") or "").strip() or None
+        keys = archetype.get("key_correlations") or []
+        if not isinstance(keys, list):
+            keys = []
+
+        present = bool(
+            title
+            or summary
+            or rule
+            or keys
+            or archetype.get("archetype_id")
+        )
+
+        slim: Dict[str, Any] = {
+            "present": present,
+            "source": "user_correlation_archetypes1",
+            "archetype_id": archetype.get("archetype_id") or None,
+            "profile_version": archetype.get("profile_version") or None,
+            "data_window_start": archetype.get("data_window_start") or None,
+            "data_window_end": archetype.get("data_window_end") or None,
+            "days_used": archetype.get("days_used"),
+            "archetype_title": title,
+            "summary": summary,
+            "primary_coaching_rule": rule,
+        }
+        if include_correlations:
+            slim["core_insight"] = (archetype.get("core_insight") or "").strip() or None
+            slim["strength"] = (archetype.get("strength") or "").strip() or None
+            if keys:
+                slim["key_correlations"] = keys[:6]
+
+        # Drop null/empty content fields but keep audit anchors.
+        content = self._omit_empty(
+            {k: v for k, v in slim.items() if k not in {"present", "source"}}
+        )
+        return {
+            "present": present,
+            "source": "user_correlation_archetypes1",
+            **content,
+        }
+
+    def _correlation_archetype_evidence_refs(
+        self, state: PipelineState
+    ) -> Dict[str, Any]:
+        """Compact provenance for agent_runs1.evidence_refs_json."""
+        archetype = state.get("correlation_archetype") or {}
+        archetype_id = archetype.get("archetype_id")
+        if not archetype_id and not (
+            archetype.get("archetype_title") or archetype.get("summary")
+        ):
+            return {
+                "correlation_archetype": {
+                    "present": False,
+                    "source": "user_correlation_archetypes1",
+                }
+            }
+        return {
+            "correlation_archetype": {
+                "present": True,
+                "source": "user_correlation_archetypes1",
+                "archetype_id": archetype_id,
+                "archetype_title": archetype.get("archetype_title") or None,
+                "data_window_start": archetype.get("data_window_start") or None,
+                "data_window_end": archetype.get("data_window_end") or None,
+                "days_used": archetype.get("days_used"),
+            }
+        }
 
     def _slim_user_goal(
         self,
@@ -575,7 +968,10 @@ class MorningCoachPipeline:
         return {k: v for k, v in slim.items() if k in keep}
 
     def _build_constraint_signal_pack(self, bundle: Dict[str, Any]) -> Dict[str, Any]:
-        """Compact signals for constraints builder (no full bundle)."""
+        """Compact signals for constraints builder (no full bundle).
+
+        Explicit as_of labels prevent treating yesterday check-in as today's feeling.
+        """
         watch = bundle.get("watch") if isinstance(bundle.get("watch"), dict) else {}
         sleep = watch.get("sleep") if isinstance(watch.get("sleep"), dict) else {}
         hrv = watch.get("hrv") if isinstance(watch.get("hrv"), dict) else {}
@@ -597,20 +993,26 @@ class MorningCoachPipeline:
                 bundle.get("meta") if isinstance(bundle.get("meta"), dict) else {},
                 ["date", "source_local_date", "timezone"],
             ),
-            "sleep": self._pick(
+            "timing_note": (
+                "overall_score/energy_mode = THIS MORNING only. "
+                "sleep_last_night = LAST NIGHT. "
+                "All other pack fields = YESTERDAY (source_local_date). "
+                "Never call yesterday check-in energy/focus/stress 'today'."
+            ),
+            "sleep_last_night": self._pick(
                 sleep,
                 ["sleep_duration_hours", "sleep_efficiency", "wake_ratio_pct"],
             ),
-            "recovery": self._omit_empty({
+            "recovery_last_night": self._omit_empty({
                 **self._pick(hrv, ["hrv_daily_rmssd", "hrv_deep_rmssd"]),
                 **self._pick(activity, ["resting_heart_rate"]),
                 **self._pick(overnight, ["spo2_avg", "skin_temp_relative"]),
             }),
-            "activity": self._pick(
+            "activity_yesterday": self._pick(
                 activity,
                 ["steps", "mvpa_minutes", "sedentary_minutes", "total_active_minutes"],
             ),
-            "checkin": self._pick(
+            "checkin_yesterday": self._pick(
                 raw,
                 [
                     "emotions",
@@ -624,7 +1026,7 @@ class MorningCoachPipeline:
                     "sleep_quality",
                 ],
             ),
-            "nutrition": self._omit_empty({
+            "nutrition_yesterday": self._omit_empty({
                 **self._pick(
                     daily,
                     [
@@ -640,7 +1042,7 @@ class MorningCoachPipeline:
                 "caffeine_after_2pm": meal_context.get("caffeine_after_2pm"),
                 "estimated_caffeine_mg_day": meal_context.get("estimated_caffeine_mg_day"),
             }),
-            "journal": self._omit_empty({
+            "journal_yesterday": self._omit_empty({
                 "narrative_summary": slim_journal.get("narrative_summary"),
                 "open_commitments": slim_journal.get("open_commitments"),
                 "commitments": slim_journal.get("commitments"),
@@ -658,12 +1060,31 @@ class MorningCoachPipeline:
             ),
         })
 
-    def _build_constraints_state_digest(self, current_state: Dict[str, Any]) -> Dict[str, Any]:
-        """State digest for constraints: top deviations + key slopes + volatility/residual/episodic."""
+    def _build_constraints_state_digest(
+        self,
+        current_state: Dict[str, Any],
+        *,
+        fast_ready: bool,
+    ) -> Dict[str, Any]:
+        """State digest for constraints. Baseline/z/volatility only when fast_ready."""
+        if not fast_ready:
+            return self._omit_empty({
+                "as_of_date": current_state.get("as_of_date"),
+                "baseline_ready": False,
+                "learning_mode": True,
+                "learning_mode_note": (
+                    "Baselines not ready (need ~7 valid days). "
+                    "Do NOT use z-scores, baseline comparisons, or volatility language. "
+                    "Do not emit risk_flags that depend on baseline deviation (e.g. volatility)."
+                ),
+                "episodic_memory": self._slim_episodic_memory(current_state.get("episodic_memory")),
+            })
+
         volatility = current_state.get("volatility") if isinstance(current_state.get("volatility"), dict) else {}
         global_vol = volatility.get("global") if isinstance(volatility.get("global"), dict) else {}
         return self._omit_empty({
             "as_of_date": current_state.get("as_of_date"),
+            "baseline_ready": True,
             "top_deviations": self._top_baseline_deviations(current_state.get("baselines")),
             "slopes": self._constraint_slopes(current_state.get("slopes")),
             "volatility": {"global": global_vol} if global_vol else None,
@@ -675,37 +1096,58 @@ class MorningCoachPipeline:
     def _build_holistic_agent_inputs(self, state: PipelineState) -> Dict[str, Any]:
         """Slim status-only inputs for holistic reporter (goals intentionally excluded)."""
         readiness_src = state.get("coach_readiness") or {}
+        fast_ready = self._is_fast_ready(state)
         return {
             "overall_score": state["overall_score"],
             "input_bundle": self._slim_input_bundle(state.get("input_bundle") or {}),
-            "current_state": self._slim_current_state(state.get("current_state") or {}),
+            "current_state": self._slim_current_state(
+                state.get("current_state") or {},
+                fast_ready=fast_ready,
+            ),
             "recent_state_history": self._slim_recent_history(
-                state.get("recent_state_history") or []
+                state.get("recent_state_history") or [],
+                fast_ready=fast_ready,
             ),
             "coach_readiness": {
-                "fast_ready": bool(readiness_src.get("fast_ready")),
+                "fast_ready": fast_ready,
                 "slow_ready": bool(readiness_src.get("slow_ready")),
+                "learning_mode": not fast_ready,
             },
             "behavior_profile": self._slim_behavior_profile(
                 state.get("behavior_profile") or {}
             ),
+            "correlation_archetype": self._slim_correlation_archetype(
+                state.get("correlation_archetype") or {}
+            ),
+            "previous_morning_brief": state.get("previous_morning_brief") or {"present": False},
         }
 
     def _build_constraints_agent_inputs(self, state: PipelineState) -> Dict[str, Any]:
         """Compact inputs for constraints builder."""
         bundle = state.get("input_bundle") or {}
+        fast_ready = self._is_fast_ready(state)
+        energy_mode = self._effective_energy_mode(state)
         return {
             "overall_score": state["overall_score"],
-            "energy_mode": self._get_energy_mode(state["overall_score"]),
+            "energy_mode": energy_mode,
+            "learning_mode": not fast_ready,
+            "safety_override": self._safety_override_payload(state) or None,
             "user_goal": self._slim_user_goal(state.get("user_goal"), mode="constraints"),
             "signal_pack": self._build_constraint_signal_pack(bundle),
             "state_digest": self._build_constraints_state_digest(
-                state.get("current_state") or {}
+                state.get("current_state") or {},
+                fast_ready=fast_ready,
             ),
             "behavior_profile": self._slim_behavior_profile(
                 state.get("behavior_profile") or {},
                 include_clusters=False,
             ),
+            "correlation_archetype": self._slim_correlation_archetype(
+                state.get("correlation_archetype") or {},
+                include_correlations=False,
+            ),
+            "previous_morning_brief": state.get("previous_morning_brief") or {"present": False},
+            "active_patterns": list(state.get("active_patterns") or []),
         }
 
     def _slim_holistic_for_router(self, report: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -730,12 +1172,19 @@ class MorningCoachPipeline:
             slim["domain_summaries"] = trimmed
         return self._omit_empty(slim)
 
-    def _slim_coach_readiness_with_coverage(self, readiness: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _slim_coach_readiness_with_coverage(
+        self,
+        readiness: Optional[Dict[str, Any]],
+        *,
+        fast_ready: Optional[bool] = None,
+    ) -> Dict[str, Any]:
         """Baseline flags + signal coverage (for agents that do not receive the bundle)."""
         readiness = readiness or {}
+        ready = bool(readiness.get("fast_ready")) if fast_ready is None else bool(fast_ready)
         return self._omit_empty({
-            "fast_ready": bool(readiness.get("fast_ready")),
+            "fast_ready": ready,
             "slow_ready": bool(readiness.get("slow_ready")),
+            "learning_mode": not ready,
             "bundle_confidence": self._strip_goal_fields_from_confidence(
                 readiness.get("bundle_confidence")
                 if isinstance(readiness.get("bundle_confidence"), dict)
@@ -758,7 +1207,14 @@ class MorningCoachPipeline:
             slim["evidence_used"] = cleaned
         return self._omit_empty(slim)
 
-    def _slim_recent_deviations(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _slim_recent_deviations(
+        self,
+        history: List[Dict[str, Any]],
+        *,
+        fast_ready: bool = True,
+    ) -> List[Dict[str, Any]]:
+        if not fast_ready:
+            return []
         slim_rows: List[Dict[str, Any]] = []
         for row in (history or [])[:5]:
             if not isinstance(row, dict):
@@ -798,9 +1254,15 @@ class MorningCoachPipeline:
         """Compact inputs for domain router: holistic + constraints + goal domains + profile."""
         user_goal = self._slim_user_goal(state.get("user_goal"), mode="router")
         goal_spec = user_goal.get("goal_spec") if isinstance(user_goal.get("goal_spec"), dict) else {}
-        recent_deviations = self._slim_recent_deviations(state.get("recent_state_history") or [])
+        fast_ready = self._is_fast_ready(state)
+        recent_deviations = self._slim_recent_deviations(
+            state.get("recent_state_history") or [],
+            fast_ready=fast_ready,
+        )
         payload = {
-            "energy_mode": self._get_energy_mode(state["overall_score"]),
+            "energy_mode": self._effective_energy_mode(state),
+            "learning_mode": not fast_ready,
+            "safety_override": self._safety_override_payload(state) or None,
             "user_goal": user_goal,
             "primary_domains": goal_spec.get("primary_domains") or [],
             "secondary_domains": goal_spec.get("secondary_domains") or [],
@@ -809,11 +1271,15 @@ class MorningCoachPipeline:
                 state.get("holistic_status_report")
             ),
             "coach_readiness": self._slim_coach_readiness_with_coverage(
-                state.get("coach_readiness")
+                state.get("coach_readiness"),
+                fast_ready=fast_ready,
             ),
             "behavior_profile": self._slim_behavior_profile(
                 state.get("behavior_profile") or {},
                 include_clusters=True,
+            ),
+            "correlation_archetype": self._slim_correlation_archetype(
+                state.get("correlation_archetype") or {}
             ),
         }
         if recent_deviations:
@@ -825,22 +1291,48 @@ class MorningCoachPipeline:
         history: Optional[List[Dict[str, Any]]],
         *,
         limit: int = 15,
+        feedback_only: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Keep enough to avoid repeats without full action payloads."""
+        """Keep enough to avoid repeats without full action payloads (≤7 days upstream).
+
+        When feedback_only=True, keep only rows that have a user rating, comment, or completion.
+        """
         slim_rows: List[Dict[str, Any]] = []
-        for row in (history or [])[:limit]:
+        for row in (history or []):
             if not isinstance(row, dict):
                 continue
+            has_feedback = bool(
+                row.get("user_rating_num") is not None
+                or row.get("user_comment")
+                or row.get("user_completed")
+            )
+            if feedback_only and not has_feedback:
+                continue
             reason = row.get("reason") or row.get("rationale") or ""
-            if isinstance(reason, str) and len(reason) > 80:
-                reason = reason[:80]
+            if isinstance(reason, str) and len(reason) > 100:
+                reason = reason[:100]
+            desc = row.get("description") or ""
+            if isinstance(desc, str) and len(desc) > 100:
+                desc = desc[:100]
+            comment = row.get("user_comment") or ""
+            if isinstance(comment, str) and len(comment) > 160:
+                comment = comment[:160] + "…"
             slim_rows.append(self._omit_empty({
                 "for_date": row.get("for_date"),
+                "action_id": row.get("action_id"),
                 "domain": row.get("domain"),
                 "title": row.get("title"),
+                "description": desc or None,
                 "priority": row.get("priority"),
                 "reason": reason or None,
+                "user_completed": True if row.get("user_completed") else None,
+                "user_rating_num": row.get("user_rating_num"),
+                "user_rating_text": row.get("user_rating_text"),
+                "user_comment": comment or None,
+                "rating_scale": row.get("rating_scale"),
             }))
+            if len(slim_rows) >= limit:
+                break
         return slim_rows
 
     def _build_action_generator_agent_inputs(self, state: PipelineState) -> Dict[str, Any]:
@@ -851,9 +1343,12 @@ class MorningCoachPipeline:
         nutrition = slim_bundle.get("nutrition") if isinstance(slim_bundle.get("nutrition"), dict) else {}
         meal_context = nutrition.get("meal_context") if isinstance(nutrition.get("meal_context"), dict) else {}
         readiness_src = state.get("coach_readiness") or {}
+        fast_ready = self._is_fast_ready(state)
         return {
             "overall_score": state["overall_score"],
-            "energy_mode": self._get_energy_mode(state["overall_score"]),
+            "energy_mode": self._effective_energy_mode(state),
+            "learning_mode": not fast_ready,
+            "safety_override": self._safety_override_payload(state) or None,
             "selected_domains": state.get("selected_domains") or [],
             "goal_domains": goal_spec.get("primary_domains") or [],
             "user_goal": user_goal,
@@ -863,19 +1358,34 @@ class MorningCoachPipeline:
             ),
             "input_bundle": slim_bundle,
             "meal_context": meal_context,
-            "current_state": self._slim_current_state(state.get("current_state") or {}),
+            "current_state": self._slim_current_state(
+                state.get("current_state") or {},
+                fast_ready=fast_ready,
+            ),
             "recent_state_history": self._slim_recent_history(
-                state.get("recent_state_history") or []
+                state.get("recent_state_history") or [],
+                fast_ready=fast_ready,
             )[:5],
             "recent_action_history": self._slim_recent_action_history(
                 state.get("recent_action_history")
             ),
             "coach_readiness": {
-                "fast_ready": bool(readiness_src.get("fast_ready")),
+                "fast_ready": fast_ready,
                 "slow_ready": bool(readiness_src.get("slow_ready")),
+                "learning_mode": not fast_ready,
             },
             "behavior_profile": self._slim_behavior_profile(
                 state.get("behavior_profile") or {}
+            ),
+            "correlation_archetype": self._slim_correlation_archetype(
+                state.get("correlation_archetype") or {}
+            ),
+            "previous_morning_brief": state.get("previous_morning_brief") or {"present": False},
+            "active_patterns": list(state.get("active_patterns") or []),
+            "regen_feedback": (
+                (state.get("review_result") or {}).get("regen_feedback")
+                if int(state.get("attempt") or 0) > 0
+                else None
             ),
         }
 
@@ -945,6 +1455,11 @@ class MorningCoachPipeline:
                 "hard_cap": 4,
                 "min_valid": 3,
             },
+            "recent_action_history": self._slim_recent_action_history(
+                state.get("recent_action_history")
+            ),
+            "overall_score": state.get("overall_score"),
+            "active_patterns": list(state.get("active_patterns") or []),
         }
 
     def _slim_display_action_for_brief(self, action: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -964,13 +1479,18 @@ class MorningCoachPipeline:
         """Slim inputs for morning brief composer."""
         budget = state.get("budget_result") or {}
         display_actions = budget.get("display_actions") or []
+        fast_ready = self._is_fast_ready(state)
+        safety = self._safety_override_payload(state)
         return {
             "user_name": state.get("user_name") or None,
-            "energy_mode": self._get_energy_mode(state["overall_score"]),
+            "energy_mode": self._effective_energy_mode(state),
             "overall_score": state["overall_score"],
             "selected_domains": state.get("selected_domains") or [],
+            "learning_mode": not fast_ready,
+            "safety_override": safety or None,
             "coach_readiness": self._slim_coach_readiness_with_coverage(
-                state.get("coach_readiness")
+                state.get("coach_readiness"),
+                fast_ready=fast_ready,
             ),
             "holistic_status_report": self._slim_holistic_status_report(
                 state.get("holistic_status_report")
@@ -980,12 +1500,45 @@ class MorningCoachPipeline:
                 for a in display_actions
                 if isinstance(a, dict)
             ],
+            "recent_action_history": self._slim_recent_action_history(
+                state.get("recent_action_history"),
+                limit=10,
+                feedback_only=True,
+            ),
+            "previous_morning_brief": state.get("previous_morning_brief") or {"present": False},
+            "active_patterns": list(state.get("active_patterns") or []),
         }
 
-    def _extract_recent_action_memory(self, recent_state_history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Flatten recent generated actions from state history for deduplication/variety."""
+    def _extract_recent_action_memory(
+        self,
+        recent_state_history: List[Dict[str, Any]],
+        *,
+        for_date: str,
+        lookback_days: int = 7,
+        ratings_by_key: Optional[Dict[tuple, Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Flatten generated actions from the last `lookback_days` for deduplication/variety.
+
+        Merges user ratings/comments from action_user_ratings1 when provided.
+        """
+        try:
+            anchor = date.fromisoformat(for_date)
+        except ValueError:
+            anchor = date.today()
+        cutoff = anchor - timedelta(days=lookback_days)
+        ratings_by_key = ratings_by_key or {}
+
         flattened: List[Dict[str, Any]] = []
+        seen_keys = set()
         for row in recent_state_history:
+            row_date_raw = row.get('date')
+            try:
+                row_date = date.fromisoformat(str(row_date_raw)[:10]) if row_date_raw else None
+            except ValueError:
+                row_date = None
+            if row_date is None or row_date < cutoff or row_date >= anchor:
+                continue
+
             actions_payload = row.get('actions_generated_json') or {}
             actions = actions_payload.get('actions', []) if isinstance(actions_payload, dict) else []
             if not isinstance(actions, list):
@@ -994,16 +1547,157 @@ class MorningCoachPipeline:
             for action in actions:
                 if not isinstance(action, dict):
                     continue
-                flattened.append({
-                    'for_date': row.get('date'),
-                    'action_id': action.get('action_id'),
+                action_id = action.get('action_id')
+                for_date_str = str(row.get('date') or row_date.isoformat())[:10]
+                key = (for_date_str, str(action_id or ''))
+                rating = ratings_by_key.get(key) or {}
+                completed_raw = action.get('user_completed_at')
+                user_completed = bool(
+                    isinstance(completed_raw, str) and completed_raw.strip()
+                )
+                entry = {
+                    'for_date': for_date_str,
+                    'action_id': action_id,
                     'title': action.get('title'),
                     'description': action.get('description'),
                     'domain': action.get('domain'),
                     'priority': action.get('priority'),
                     'reason': action.get('rationale') or action.get('reason') or '',
-                })
-        return flattened[:15]
+                    'user_completed': user_completed,
+                }
+                if rating:
+                    if rating.get('rating_value_num') is not None:
+                        entry['user_rating_num'] = rating.get('rating_value_num')
+                    if rating.get('rating_value_text'):
+                        entry['user_rating_text'] = rating.get('rating_value_text')
+                    if rating.get('comment'):
+                        entry['user_comment'] = rating.get('comment')
+                    if rating.get('rating_scale'):
+                        entry['rating_scale'] = rating.get('rating_scale')
+                flattened.append(entry)
+                if action_id:
+                    seen_keys.add(key)
+
+        # Include ratings that exist without a matching generated-action row
+        # (e.g. safety fallback actions persisted only to plan_actions1).
+        for key, rating in ratings_by_key.items():
+            if key in seen_keys:
+                continue
+            for_date_str, action_id = key
+            try:
+                rating_date = date.fromisoformat(for_date_str)
+            except ValueError:
+                continue
+            if rating_date < cutoff or rating_date >= anchor:
+                continue
+            flattened.append({
+                'for_date': for_date_str,
+                'action_id': action_id or None,
+                'title': rating.get('action_title') or action_id,
+                'description': None,
+                'domain': rating.get('domain'),
+                'priority': None,
+                'reason': '',
+                'user_completed': False,
+                'user_rating_num': rating.get('rating_value_num'),
+                'user_rating_text': rating.get('rating_value_text'),
+                'user_comment': rating.get('comment'),
+                'rating_scale': rating.get('rating_scale'),
+            })
+        return flattened
+
+    def _fetch_recent_action_ratings(
+        self,
+        user_id: str,
+        for_date: str,
+        *,
+        lookback_days: int = 7,
+    ) -> Dict[tuple, Dict[str, Any]]:
+        """Load user ratings/comments from action_user_ratings1 for the lookback window."""
+        try:
+            anchor = date.fromisoformat(for_date)
+        except ValueError:
+            return {}
+        cutoff = (anchor - timedelta(days=lookback_days)).isoformat()
+        try:
+            response = (
+                self.client.table("action_user_ratings1")
+                .select(
+                    "for_date, action_id, plan_action_id, rating_scale, "
+                    "rating_value_num, rating_value_text, comment, provided_at"
+                )
+                .eq("user_id", user_id)
+                .gte("for_date", cutoff)
+                .lt("for_date", for_date)
+                .order("provided_at", desc=True)
+                .execute()
+            )
+        except Exception as exc:
+            debug_log(f"[fetch_data] action_user_ratings1 unavailable: {exc}")
+            return {}
+
+        by_key: Dict[tuple, Dict[str, Any]] = {}
+        for row in response.data or []:
+            if not isinstance(row, dict):
+                continue
+            for_date_str = str(row.get("for_date") or "")[:10]
+            action_id = str(row.get("action_id") or "").strip()
+            if not for_date_str or not action_id:
+                continue
+            key = (for_date_str, action_id)
+            # Keep newest rating per (date, action_id)
+            if key in by_key:
+                continue
+            comment = row.get("comment")
+            if isinstance(comment, str):
+                comment = comment.strip()[:2000] or None
+            rating_num = row.get("rating_value_num")
+            try:
+                rating_num = float(rating_num) if rating_num is not None else None
+            except (TypeError, ValueError):
+                rating_num = None
+            by_key[key] = {
+                "rating_scale": row.get("rating_scale"),
+                "rating_value_num": rating_num,
+                "rating_value_text": row.get("rating_value_text"),
+                "comment": comment,
+                "provided_at": row.get("provided_at"),
+                "plan_action_id": row.get("plan_action_id"),
+            }
+        return by_key
+
+    def _fetch_previous_morning_brief(self, user_id: str, for_date: str) -> Dict[str, Any]:
+        """Load yesterday's morning_message for anti-repetition (best-effort)."""
+        try:
+            prev_date = (date.fromisoformat(for_date) - timedelta(days=1)).isoformat()
+            response = (
+                self.client.table("daily_plans1")
+                .select("for_date, morning_message, selected_domains_json")
+                .eq("user_id", user_id)
+                .eq("for_date", prev_date)
+                .limit(1)
+                .execute()
+            )
+            rows = response.data or []
+            if not rows:
+                return {"present": False, "source": "daily_plans1"}
+            row = rows[0]
+            message = str(row.get("morning_message") or "").strip()
+            if not message:
+                return {"present": False, "source": "daily_plans1", "for_date": prev_date}
+            max_chars = 1200
+            truncated = len(message) > max_chars
+            return {
+                "present": True,
+                "source": "daily_plans1",
+                "for_date": row.get("for_date") or prev_date,
+                "morning_message": message[:max_chars] + ("…" if truncated else ""),
+                "truncated": truncated,
+                "selected_domains": row.get("selected_domains_json") or [],
+            }
+        except Exception as exc:
+            debug_log(f"[fetch_data] previous morning brief unavailable: {exc}")
+            return {"present": False, "source": "daily_plans1"}
     
     def node_fetch_data(self, state: PipelineState) -> PipelineState:
         """Prepared context fetch."""
@@ -1030,41 +1724,112 @@ class MorningCoachPipeline:
         state['input_bundle'] = input_bundle.get('bundle_json') or {}
         state['current_state'] = state_json
         state['recent_state_history'] = recent_state_history
-        state['recent_action_history'] = self._extract_recent_action_memory(recent_state_history)
+        ratings_by_key = self._fetch_recent_action_ratings(
+            state['user_id'],
+            state['for_date'],
+            lookback_days=7,
+        )
+        state['recent_action_history'] = self._extract_recent_action_memory(
+            recent_state_history,
+            for_date=state['for_date'],
+            lookback_days=7,
+            ratings_by_key=ratings_by_key,
+        )
         state['coach_readiness'] = {
             'fast_ready': bool(baseline_flags.get('fast_ready')),
             'slow_ready': bool(baseline_flags.get('slow_ready')),
             'bundle_missingness': input_bundle.get('missingness_json') or {},
             'bundle_confidence': input_bundle.get('confidence_json') or {},
         }
-        state['behavior_profile'] = profile_payload_from_row(
-            get_latest_active_profile(self.client, state['user_id'])
+        state['behavior_profile'] = {}
+        try:
+            profile_row = get_latest_active_profile(self.client, state['user_id'])
+            payload = profile_payload_from_row(profile_row)
+            if profile_row:
+                # Provenance for agent_runs1.input_json / evidence_refs_json
+                payload["profile_id"] = profile_row.get("profile_id")
+                payload["data_window_start"] = profile_row.get("data_window_start")
+                payload["data_window_end"] = profile_row.get("data_window_end")
+                payload["days_used"] = profile_row.get("days_used")
+                meta = profile_row.get("clustering_metadata_json") or {}
+                if isinstance(meta, dict):
+                    if "os_tiers_meaningful" in meta:
+                        payload["os_tiers_meaningful"] = meta.get("os_tiers_meaningful")
+                    validator = meta.get("validator") or {}
+                    if isinstance(validator, dict) and validator.get("source"):
+                        payload["validator_source"] = validator.get("source")
+                payload["profile_version"] = (
+                    payload.get("profile_version")
+                    or profile_row.get("profile_version")
+                )
+            state['behavior_profile'] = payload
+        except Exception as exc:
+            debug_log(f"[fetch_data] behavior profile unavailable: {exc}")
+            state['behavior_profile'] = {}
+        try:
+            archetype_row = get_latest_active_archetype(self.client, state['user_id'])
+            payload = archetype_payload_from_row(archetype_row)
+            if archetype_row:
+                # Provenance for agent_runs1.input_json / evidence_refs_json
+                payload["archetype_id"] = archetype_row.get("archetype_id")
+                payload["data_window_start"] = archetype_row.get("data_window_start")
+                payload["data_window_end"] = archetype_row.get("data_window_end")
+                payload["days_used"] = archetype_row.get("days_used")
+                payload["profile_version"] = (
+                    payload.get("profile_version")
+                    or archetype_row.get("profile_version")
+                )
+            state['correlation_archetype'] = payload
+        except Exception as exc:
+            debug_log(f"[fetch_data] correlation archetype unavailable: {exc}")
+            state['correlation_archetype'] = {}
+        state['previous_morning_brief'] = self._fetch_previous_morning_brief(
+            state['user_id'],
+            state['for_date'],
         )
+        multiday = self._compute_multiday_context(state['user_id'], state['for_date'])
+        state['active_patterns'] = multiday.get('active_patterns') or []
+        if state['active_patterns']:
+            debug_log(
+                f"[multiday] active_patterns={json.dumps(state['active_patterns'])}"
+            )
         return state
     
     def node_holistic_status_report(self, state: PipelineState) -> PipelineState:
         """Holistic Status Reporter using prepared bundle + auditable state."""
-        from prompts import HOLISTIC_STATUS_REPORTER_SYSTEM_PROMPT
+        from llm.prompts import HOLISTIC_STATUS_REPORTER_SYSTEM_PROMPT
 
         started_at = datetime.utcnow()
         holistic_inputs = self._build_holistic_agent_inputs(state)
+        learning = (holistic_inputs.get("coach_readiness") or {}).get("learning_mode")
+        state_label = (
+            "Current auditable state (LEARNING MODE — no baselines/z/volatility):"
+            if learning
+            else "Current auditable state (baselines as last/baseline/z_fast; slopes/volatility slimmed):"
+        )
 
         user_prompt = f"""Overall score today: {holistic_inputs['overall_score']}
 
-Prepared daily input bundle (slimmed status signals):
+Prepared daily input bundle (slimmed status signals; yesterday / last night):
 {json.dumps(holistic_inputs['input_bundle'], indent=2)}
 
-Current auditable state (baselines as last/baseline/z_fast; slopes/volatility slimmed):
+{state_label}
 {json.dumps(holistic_inputs['current_state'], indent=2)}
 
-Recent state history (most recent first; scores/deviations only):
+Recent state history (most recent first; scores/deviations only when baselines ready):
 {json.dumps(holistic_inputs['recent_state_history'], indent=2)}
 
-Coach readiness (baseline stability only; missingness/confidence are in the bundle):
+Coach readiness (baseline stability; learning_mode gates baseline language):
 {json.dumps(holistic_inputs['coach_readiness'], indent=2)}
 
 Behavior profile:
 {json.dumps(holistic_inputs['behavior_profile'], indent=2)}
+
+Correlation archetype:
+{json.dumps(holistic_inputs['correlation_archetype'], indent=2)}
+
+Previous morning brief (yesterday — avoid repeating the same cross-domain narrative verbatim):
+{json.dumps(holistic_inputs.get('previous_morning_brief') or {}, indent=2)}
 
 Generate the holistic status report JSON.
 Do not mention goals or treat goals as missing."""
@@ -1086,6 +1851,12 @@ Do not mention goals or treat goals as missing."""
         debug_log(f"[HOLISTIC_STATUS_REPORTER] Generated report for user {state['user_id']} on {state['for_date']}")
         
         # Log the exact holistic view (goals intentionally null / out of scope)
+        evidence_refs = {
+            d: s.get('key_evidence', [])
+            for d, s in {s['domain']: s for s in report.get('domain_summaries', [])}.items()
+        }
+        evidence_refs.update(self._behavior_profile_evidence_refs(state))
+        evidence_refs.update(self._correlation_archetype_evidence_refs(state))
         self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -1095,10 +1866,7 @@ Do not mention goals or treat goals as missing."""
             status='success',
             input_json=holistic_inputs,
             output_json=report,
-            evidence_refs_json={
-                d: s.get('key_evidence', []) 
-                for d, s in {s['domain']: s for s in report.get('domain_summaries', [])}.items()
-            },
+            evidence_refs_json=evidence_refs,
             started_at=started_at,
             ended_at=datetime.utcnow()
         )
@@ -1121,24 +1889,94 @@ Do not mention goals or treat goals as missing."""
     
     def node_enforce_budget(self, state: PipelineState) -> PipelineState:
         """Budget Enforcer Agent"""
-        energy_mode = self._get_energy_mode(state['overall_score'])
+        energy_mode = self._effective_energy_mode(state)
+        review = state.get("review_result") or {}
+        accepted_ids = review.get("accepted_action_ids") or []
         accepted_actions = [
-            a for a in state['action_proposals']
-            if a['action_id'] in state['review_result']['accepted_action_ids']
+            a for a in (state.get("action_proposals") or [])
+            if a.get("action_id") in accepted_ids
         ]
-        
+
         budget_result = self.budget_enforcer.run(
             accepted_actions,
             energy_mode,
-            state['day_constraints']
+            state.get("day_constraints") or {},
         )
-        state['budget_result'] = budget_result
-        
-        # Log final display actions after budget enforcement
-        # Note: Skip logging for deterministic budget enforcer to avoid UUID issues
-        # Or log it to a separate table if needed
-        
+        budget_result = self._ensure_recovery_action_in_budget(state, budget_result, accepted_actions)
+        state["budget_result"] = budget_result
         return state
+
+    def _ensure_recovery_action_in_budget(
+        self,
+        state: PipelineState,
+        budget_result: Dict[str, Any],
+        accepted_actions: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """When safety override is active, guarantee ≥1 sleep/recovery/stress action displayed."""
+        if not self._safety_override_triggers(state):
+            return budget_result
+
+        display = list(budget_result.get("display_actions") or [])
+        if any(
+            str(a.get("domain") or "").lower() in self.RECOVERY_DOMAINS
+            for a in display
+            if isinstance(a, dict)
+        ):
+            budget_result.setdefault("budget_applied", {})["safety_recovery_enforced"] = True
+            return budget_result
+
+        pool = list(accepted_actions) + list(state.get("action_proposals") or [])
+        recovery_candidate = None
+        seen_ids = set()
+        for action in pool:
+            if not isinstance(action, dict):
+                continue
+            aid = action.get("action_id")
+            if aid in seen_ids:
+                continue
+            seen_ids.add(aid)
+            if str(action.get("domain") or "").lower() in self.RECOVERY_DOMAINS:
+                recovery_candidate = action
+                break
+
+        if recovery_candidate is None:
+            # Deterministic fallback recovery action so the gate is never skipped.
+            recovery_candidate = {
+                "action_id": "safety_recovery_protect",
+                "action_source": "generated",
+                "tags": ["safety_override"],
+                "title": "Protect recovery today",
+                "description": (
+                    "Keep today's load light: one short rest break and an earlier wind-down. "
+                    "Prioritize sleep/recovery over pushing hard."
+                ),
+                "domain": "recovery",
+                "when": "today",
+                "priority": 1,
+                "effort_level": "low",
+                "rationale": "Safety override: short sleep and/or low recovery / burnout risk.",
+                "evaluation_mode": "user_rating",
+            }
+
+        # Insert at front; drop last if at hard cap.
+        hard_cap = getattr(self.budget_enforcer, "hard_cap", 4)
+        display = [recovery_candidate] + [
+            a for a in display
+            if isinstance(a, dict) and a.get("action_id") != recovery_candidate.get("action_id")
+        ]
+        display = display[:hard_cap]
+        budget_result["display_actions"] = display
+        all_valid = list(budget_result.get("all_valid_actions") or [])
+        if recovery_candidate.get("action_id") not in {
+            a.get("action_id") for a in all_valid if isinstance(a, dict)
+        }:
+            all_valid = [recovery_candidate] + all_valid
+        budget_result["all_valid_actions"] = all_valid
+        applied = dict(budget_result.get("budget_applied") or {})
+        applied["safety_recovery_enforced"] = True
+        applied["energy_mode"] = self._effective_energy_mode(state)
+        budget_result["budget_applied"] = applied
+        return budget_result
     
     def node_persist_plan(self, state: PipelineState) -> PipelineState:
         """Persistence Agent"""
@@ -1160,24 +1998,44 @@ Do not mention goals or treat goals as missing."""
     
     def node_build_constraints(self, state: PipelineState) -> PipelineState:
         """Constraints Builder LLM Agent"""
-        from prompts import CONSTRAINTS_BUILDER_SYSTEM_PROMPT
+        from llm.prompts import CONSTRAINTS_BUILDER_SYSTEM_PROMPT
         
         started_at = datetime.utcnow()
         constraints_inputs = self._build_constraints_agent_inputs(state)
-        user_prompt = f"""Energy mode: {constraints_inputs['energy_mode']}
-Overall score: {constraints_inputs['overall_score']}
+        learning_line = (
+            "LEARNING MODE: baselines not ready — do not cite z-scores, baselines, or volatility."
+            if constraints_inputs.get("learning_mode")
+            else "Baselines ready: state_digest may include deviations/slopes/volatility."
+        )
+        safety = constraints_inputs.get("safety_override") or {}
+        safety_line = (
+            f"SAFETY OVERRIDE ACTIVE (code-enforced): {json.dumps(safety)}. "
+            "Keep energy_mode at normal or below; include recovery caution in hard/soft constraints."
+            if safety
+            else ""
+        )
+        user_prompt = f"""Energy mode (THIS MORNING from overall_score, may be safety-capped): {constraints_inputs['energy_mode']}
+Overall score (THIS MORNING): {constraints_inputs['overall_score']}
+{learning_line}
+{safety_line}
 
 User goal (statement/domains/constraint defaults only):
 {json.dumps(constraints_inputs['user_goal'], indent=2)}
 
-Constraint signal pack (core recovery/load/journal signals only):
+Constraint signal pack (explicitly labeled yesterday / last night — never call checkin_yesterday "today"):
 {json.dumps(constraints_inputs['signal_pack'], indent=2)}
 
-State digest (top |z| deviations, key slopes, volatility/residual/episodic):
+State digest:
 {json.dumps(constraints_inputs['state_digest'], indent=2)}
 
 Behavior profile (summary + coaching rule):
 {json.dumps(constraints_inputs['behavior_profile'], indent=2)}
+
+Correlation archetype (title + coaching rule):
+{json.dumps(constraints_inputs['correlation_archetype'], indent=2)}
+
+Active patterns (code-detected multi-day facts — use for risk_flags / energy caution; never invent streaks):
+{json.dumps(constraints_inputs.get('active_patterns') or [], indent=2)}
 
 Generate day constraints JSON.
 """
@@ -1192,10 +2050,13 @@ Generate day constraints JSON.
             'constraints_builder',
             retry_temperature=0,
         )
-        
-        state['day_constraints'] = output
+
+        state['day_constraints'] = self._apply_deterministic_constraint_overrides(state, output)
         
         # Log agent run — persist the exact slimmed inputs sent to the LLM
+        evidence_refs = dict((state['day_constraints'] or {}).get('evidence_used', {}) or {})
+        evidence_refs.update(self._behavior_profile_evidence_refs(state))
+        evidence_refs.update(self._correlation_archetype_evidence_refs(state))
         self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -1204,8 +2065,8 @@ Generate day constraints JSON.
             attempt=state.get('attempt', 0),
             status='success',
             input_json=constraints_inputs,
-            output_json=output,
-            evidence_refs_json=output.get('evidence_used', {}),
+            output_json=state['day_constraints'],
+            evidence_refs_json=evidence_refs,
             started_at=started_at,
             ended_at=datetime.utcnow()
         )
@@ -1214,7 +2075,7 @@ Generate day constraints JSON.
     
     def node_route_domains(self, state: PipelineState) -> PipelineState:
         """Domain Router LLM Agent"""
-        from prompts import DOMAIN_ROUTER_SYSTEM_PROMPT
+        from llm.prompts import DOMAIN_ROUTER_SYSTEM_PROMPT
         
         started_at = datetime.utcnow()
         router_inputs = self._build_domain_router_agent_inputs(state)
@@ -1244,6 +2105,9 @@ Holistic status report (trimmed evidence):
 
 Behavior profile (incl. cluster interpretations for routing):
 {json.dumps(router_inputs['behavior_profile'], indent=2)}
+
+Correlation archetype:
+{json.dumps(router_inputs['correlation_archetype'], indent=2)}
 {recent_dev_block}
 Select 2-3 domains.
 """
@@ -1265,8 +2129,24 @@ Select 2-3 domains.
             state['selected_domains'] = [d['domain'] for d in selected]
         else:
             state['selected_domains'] = selected
+
+        # Deterministic: high-severity patterns inject their mapped domain into the candidate set.
+        injected = []
+        existing = [str(d).lower() for d in (state.get("selected_domains") or [])]
+        for domain in domains_for_high_patterns(state.get("active_patterns") or []):
+            if domain not in existing:
+                state.setdefault("selected_domains", []).append(domain)
+                existing.append(domain)
+                injected.append(domain)
+        if injected:
+            debug_log(f"[DOMAIN_ROUTER] injected high-pattern domains={injected}")
         
         # Log agent run — persist the exact slimmed inputs sent to the LLM
+        evidence_refs = {
+            d.get('domain'): d.get('evidence') for d in selected if isinstance(d, dict)
+        }
+        evidence_refs.update(self._behavior_profile_evidence_refs(state))
+        evidence_refs.update(self._correlation_archetype_evidence_refs(state))
         self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -1277,7 +2157,7 @@ Select 2-3 domains.
             input_json=router_inputs,
             output_json=output,
             rationale_json={d.get('domain'): d.get('rationale') for d in selected if isinstance(d, dict)},
-            evidence_refs_json={d.get('domain'): d.get('evidence') for d in selected if isinstance(d, dict)},
+            evidence_refs_json=evidence_refs,
             started_at=started_at,
             ended_at=datetime.utcnow()
         )
@@ -1286,15 +2166,22 @@ Select 2-3 domains.
 
     def node_generate_actions(self, state: PipelineState) -> PipelineState:
         """Action Generator LLM Agent"""
-        from prompts import ACTION_GENERATOR_SYSTEM_PROMPT
+        from llm.prompts import ACTION_GENERATOR_SYSTEM_PROMPT
 
         started_at = datetime.utcnow()
         action_inputs = self._build_action_generator_agent_inputs(state)
         action_history_context = ""
         if action_inputs.get("recent_action_history"):
             action_history_context = (
-                "\nRecent actions (last 7 days — avoid repeating the same suggestions):\n"
+                "\nRecent actions (last 7 days — do NOT repeat titles/anchors; vary levers):\n"
                 f"{json.dumps(action_inputs['recent_action_history'], indent=2)}\n"
+            )
+        prev_brief_block = ""
+        prev = action_inputs.get("previous_morning_brief") or {}
+        if prev.get("present"):
+            prev_brief_block = (
+                "\nPrevious morning brief (yesterday — do not duplicate the same action themes):\n"
+                f"{json.dumps(prev, indent=2)}\n"
             )
 
         user_prompt = f"""Overall score today: {action_inputs['overall_score']}
@@ -1325,9 +2212,24 @@ Meal context (from slimmed bundle):
 
 Behavior profile:
 {json.dumps(action_inputs['behavior_profile'], indent=2)}
-{action_history_context}
-Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, generate 3-4 actions for those domains.
+
+Correlation archetype:
+{json.dumps(action_inputs['correlation_archetype'], indent=2)}
+
+Active patterns (code-detected multi-day facts — refer by day counts/values; never invent a streak):
+{json.dumps(action_inputs.get('active_patterns') or [], indent=2)}
+{prev_brief_block}{action_history_context}
+"""
+        regen_feedback = action_inputs.get("regen_feedback")
+        if regen_feedback:
+            user_prompt += (
+                f"\nREGEN FEEDBACK (address these gaps this attempt):\n{regen_feedback}\n"
+            )
+        user_prompt += """Generate 4-5 **varied, realistic** actions (real focus/work blocks need enough time — no token 10–15 min work sessions unless energy is low).
+Follow the rules: If selected and goal domains overlap, generate 3-4 actions for those domains.
  If different, generate at least 3 for selected domains and at least 1 (ideally 1-2) for the goal domain(s).
+ State meal logging assumptions in `assumptions` when nutrition data is ambiguous.
+ When high-severity active_patterns are present, include at least one action in the mapped pattern domain.
  **DO NOT include action_id - it will be generated automatically.**
 """
 
@@ -1348,6 +2250,9 @@ Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, ge
         state['attempt'] = state.get('attempt', 0) + 1
 
         # Log agent run — persist the exact slimmed inputs sent to the LLM
+        evidence_refs = {}
+        evidence_refs.update(self._behavior_profile_evidence_refs(state))
+        evidence_refs.update(self._correlation_archetype_evidence_refs(state))
         agent_run_id = self.logger.log_agent_run(
             ingestion_run_id=state['ingestion_run_id'],
             user_id=state['user_id'],
@@ -1358,6 +2263,7 @@ Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, ge
             input_json=action_inputs,
             output_json={'actions': actions},
             rationale_json={a['action_id']: a.get('rationale', '') for a in actions},
+            evidence_refs_json=evidence_refs,
             started_at=started_at,
             ended_at=datetime.utcnow()
         )
@@ -1377,7 +2283,7 @@ Generate 4-5 actions. Follow the rules: If selected and goal domains overlap, ge
     
     def node_review_actions(self, state: PipelineState) -> PipelineState:
         """Fusion Critic LLM Agent"""
-        from prompts import FUSION_CRITIC_SYSTEM_PROMPT
+        from llm.prompts import FUSION_CRITIC_SYSTEM_PROMPT
 
         started_at = datetime.utcnow()
         critic_inputs = self._build_fusion_critic_agent_inputs(state)
@@ -1399,6 +2305,14 @@ Proposed actions (slimmed):
 Budget policy:
 {json.dumps(critic_inputs['budget_policy'], indent=2)}
 
+Overall score this morning: {critic_inputs.get('overall_score')}
+
+Recent action history (last 7 days — reject near-duplicates; reject token focus/work blocks under ~30 min when score >= 40):
+{json.dumps(critic_inputs.get('recent_action_history') or [], indent=2)}
+
+Active patterns (code-detected; high severity must be covered by ≥1 accepted action in the mapped domain):
+{json.dumps(critic_inputs.get('active_patterns') or [], indent=2)}
+
 Coach readiness / signal coverage (goal fields removed):
 {json.dumps(critic_inputs['coach_readiness'], indent=2)}
 
@@ -1415,24 +2329,14 @@ Review for coherence, feasibility, safety, and domain/goal coverage rules. Accep
             'fusion_critic',
             retry_temperature=0,
         )
-        
-        state['review_result'] = review_result
-        
-        # Ensure accepted_action_ids exists (handle both formats)
-        if 'accepted_action_ids' not in state['review_result']:
-            if 'accepted_actions' in state['review_result']:
-                # Convert accepted_actions (indices) to action_ids
-                accepted_indices = state['review_result']['accepted_actions']
-                state['review_result']['accepted_action_ids'] = [
-                    state['action_proposals'][i]['action_id'] 
-                    for i in accepted_indices 
-                    if i < len(state['action_proposals'])
-                ]
-                debug_log(f"[FUSION_CRITIC] Converted accepted_actions to accepted_action_ids: {state['review_result']['accepted_action_ids']}")
-            else:
-                debug_log(f"[WARNING] No accepted_action_ids in review_result. Keys: {state['review_result'].keys()}")
-                # Default: accept all action IDs
-                state['review_result']['accepted_action_ids'] = [a['action_id'] for a in state['action_proposals']]
+
+        state['review_result'] = self._validate_and_normalize_review_result(
+            review_result,
+            state.get("action_proposals") or [],
+            critic_inputs.get("selected_domains") or [],
+            critic_inputs.get("goal_domains") or [],
+            active_patterns=state.get("active_patterns") or [],
+        )
         
         # Log agent run — persist the exact slimmed inputs sent to the LLM
         agent_run_id = self.logger.log_agent_run(
@@ -1443,8 +2347,8 @@ Review for coherence, feasibility, safety, and domain/goal coverage rules. Accep
             attempt=state.get('attempt', 0),
             status='success',
             input_json=critic_inputs,
-            output_json=review_result,
-            evidence_refs_json=review_result.get('evidence_used', {}),
+            output_json=state['review_result'],
+            evidence_refs_json=state['review_result'].get('evidence_used', {}),
             started_at=started_at,
             ended_at=datetime.utcnow()
         )
@@ -1469,13 +2373,27 @@ Review for coherence, feasibility, safety, and domain/goal coverage rules. Accep
     
     def node_compose_brief(self, state: PipelineState) -> PipelineState:
         """Morning Brief Composer LLM Agent"""
-        from prompts import MORNING_BRIEF_COMPOSER_SYSTEM_PROMPT
+        from llm.prompts import MORNING_BRIEF_COMPOSER_SYSTEM_PROMPT
 
         started_at = datetime.utcnow()
         brief_inputs = self._build_morning_brief_agent_inputs(state)
+
         user_name = brief_inputs.get("user_name")
         user_name_line = (
             f"- User name: {user_name}" if user_name else "- User name: not available"
+        )
+        learning_line = (
+            "- LEARNING MODE: do not mention baselines, z-scores, averages, or volatility; "
+            "speak from today's score + yesterday/last-night observations only."
+            if brief_inputs.get("learning_mode")
+            else ""
+        )
+        safety = brief_inputs.get("safety_override") or {}
+        safety_line = (
+            f"- SAFETY OVERRIDE ACTIVE: {json.dumps(safety)}. "
+            "Do NOT use harness-your-energy framing. Emphasize recovery/protection."
+            if safety
+            else ""
         )
 
         user_prompt = f"""Today's situation:
@@ -1484,6 +2402,8 @@ Review for coherence, feasibility, safety, and domain/goal coverage rules. Accep
 - Selected domains: {', '.join(brief_inputs['selected_domains'])}
 - Coach readiness / signal coverage (goal fields removed): {json.dumps(brief_inputs['coach_readiness'], indent=2)}
 {user_name_line}
+{learning_line}
+{safety_line}
 
 Holistic status report:
 {json.dumps(brief_inputs['holistic_status_report'], indent=2)}
@@ -1491,7 +2411,16 @@ Holistic status report:
 Display actions (title/description/rationale/when only — UI renders details):
 {json.dumps(brief_inputs['display_actions'], indent=2)}
 
-Write a personal morning note (200-250 words). Spend most of the words on the narrative — dig into the data, tell the story of yesterday and what it means for today. Keep actions concise. Use markdown for formatting.
+Previous morning brief (yesterday — if today's story is largely the same, write a SHORTER brief; do not repeat the same connecting-the-dots analysis):
+{json.dumps(brief_inputs.get('previous_morning_brief') or {}, indent=2)}
+
+Recent user action feedback (ratings/comments/completions from the last 7 days — use lightly for continuity; do not invent feedback; do not list today's actions):
+{json.dumps(brief_inputs.get('recent_action_history') or [], indent=2)}
+
+Active patterns (code-detected multi-day facts — name real streaks by day count when present; never invent):
+{json.dumps(brief_inputs.get('active_patterns') or [], indent=2)}
+
+Write a personal morning note in Markdown. Length: 80–130 words if yesterday's brief covers the same core pattern; 180–240 words if the story changed. State your meal logging vs skipped assumption when nutrition was incomplete. Do not list today's actions (UI shows them separately).
 """
         
         response = self._call_llm(MORNING_BRIEF_COMPOSER_SYSTEM_PROMPT, user_prompt)
@@ -1505,7 +2434,10 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
             retry_temperature=0,
         )
         
-        state['morning_message'] = output['morning_message']
+        message = output.get("morning_message") if isinstance(output, dict) else ""
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("morning_brief_composer returned empty morning_message")
+        state["morning_message"] = self._sanitize_morning_message(message, state)
         
         # Log agent run — persist the exact slimmed inputs sent to the LLM
         self.logger.log_agent_run(
@@ -1516,7 +2448,7 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
             attempt=state.get('attempt', 0),
             status='success',
             input_json=brief_inputs,
-            output_json=output,
+            output_json={"morning_message": state["morning_message"]},
             started_at=started_at,
             ended_at=datetime.utcnow()
         )
@@ -1735,16 +2667,398 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
         elif overall_score <= 69:
             return 'normal'
         return 'high'
-    
-    def _should_regenerate(self, state: PipelineState) -> str:
-        """Decide if regeneration is needed"""
-        accepted_count = len(state['review_result']['accepted_action_ids'])
-        should_regen = self.regen_controller.should_regenerate(
-            state['attempt'],
-            accepted_count,
-            state['review_result']['regen_required']
+
+    def _apply_deterministic_constraint_overrides(
+        self,
+        state: PipelineState,
+        constraints: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Force energy_mode + recovery risk flags from code, not the LLM."""
+        out = dict(constraints or {})
+        # Evaluate triggers against the LLM draft so low_recovery/burnout_risk apply immediately.
+        energy_mode = self._effective_energy_mode(state, constraints=out)
+        out["energy_mode"] = energy_mode
+
+        # Multi-day patterns → risk_flags (facts from code detectors).
+        risk_flags = out.get("risk_flags") if isinstance(out.get("risk_flags"), list) else []
+        risk_flags = [str(f) for f in risk_flags]
+        for pattern in state.get("active_patterns") or []:
+            if not isinstance(pattern, dict):
+                continue
+            ptype = str(pattern.get("type") or "")
+            feature = str(pattern.get("feature") or pattern.get("block") or "")
+            flag = f"pattern:{ptype}:{feature}" if feature else f"pattern:{ptype}"
+            if flag and flag not in risk_flags:
+                risk_flags.append(flag)
+            if str(pattern.get("severity") or "").lower() == "high" and "low_recovery" not in {
+                str(f).lower() for f in risk_flags
+            }:
+                if ptype in ("low_streak", "cumulative_deficit", "no_recovery") and (
+                    feature.startswith("sleep") or feature == "hrv_rmssd"
+                ):
+                    risk_flags.append("low_recovery")
+        out["risk_flags"] = risk_flags
+
+        triggers = self._safety_override_triggers(state, constraints=out)
+        if triggers:
+            risk_flags = out.get("risk_flags") if isinstance(out.get("risk_flags"), list) else []
+            risk_flags = [str(f) for f in risk_flags]
+            for flag in triggers:
+                if flag not in risk_flags:
+                    risk_flags.append(flag)
+            out["risk_flags"] = risk_flags
+
+            hard = out.get("hard_constraints") if isinstance(out.get("hard_constraints"), list) else []
+            hard = [str(h) for h in hard]
+            recovery_hard = "Prioritize recovery today; do not push high-intensity load"
+            if recovery_hard not in hard:
+                hard.append(recovery_hard)
+            out["hard_constraints"] = hard
+
+            soft = out.get("soft_constraints") if isinstance(out.get("soft_constraints"), list) else []
+            soft = [str(s) for s in soft]
+            banned = "Do not use high-energy / harness-your-energy framing"
+            if banned not in soft:
+                soft.append(banned)
+            out["soft_constraints"] = soft
+
+            evidence = out.get("evidence_used") if isinstance(out.get("evidence_used"), dict) else {}
+            evidence = dict(evidence)
+            evidence["safety_override"] = {
+                "active": True,
+                "triggers": triggers,
+                "energy_mode_capped_to": energy_mode,
+            }
+            evidence["active_patterns"] = list(state.get("active_patterns") or [])
+            out["evidence_used"] = evidence
+
+        if not self._is_fast_ready(state):
+            # Strip baseline-dependent volatility risk unless grounded elsewhere.
+            risk_flags = out.get("risk_flags") if isinstance(out.get("risk_flags"), list) else []
+            out["risk_flags"] = [
+                f for f in risk_flags
+                if str(f).lower() not in {"volatility", "mismatch_pattern"}
+            ]
+            assumptions = out.get("assumptions") if isinstance(out.get("assumptions"), list) else []
+            assumptions = [str(a) for a in assumptions]
+            note = "Learning mode: baselines not ready; avoid z-score/volatility claims"
+            if note not in assumptions:
+                assumptions.append(note)
+            out["assumptions"] = assumptions
+
+        return out
+
+    def _validate_and_normalize_review_result(
+        self,
+        review_result: Dict[str, Any],
+        proposals: List[Dict[str, Any]],
+        selected_domains: List[str],
+        goal_domains: List[str],
+        *,
+        active_patterns: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Schema-validate critic output; enforce disjoint accept/reject + coverage consistency."""
+        out = dict(review_result or {})
+        n = len(proposals)
+        validation_issues: List[str] = []
+        active_patterns = active_patterns or []
+
+        def _to_index(value: Any) -> Optional[int]:
+            if isinstance(value, int):
+                return value if 0 <= value < n else None
+            if isinstance(value, str):
+                # Match by action_id or title
+                for i, action in enumerate(proposals):
+                    if not isinstance(action, dict):
+                        continue
+                    if value == action.get("action_id") or value == action.get("title"):
+                        return i
+                # Numeric string
+                if value.isdigit():
+                    idx = int(value)
+                    return idx if 0 <= idx < n else None
+            return None
+
+        accepted_raw = out.get("accepted_actions")
+        if accepted_raw is None and out.get("accepted_action_ids"):
+            accepted_raw = out.get("accepted_action_ids")
+        if not isinstance(accepted_raw, list):
+            accepted_raw = []
+            validation_issues.append("accepted_actions missing or not a list")
+
+        accepted_indices: List[int] = []
+        for item in accepted_raw:
+            idx = _to_index(item)
+            if idx is None:
+                validation_issues.append(f"invalid accepted entry: {item!r}")
+                continue
+            if idx not in accepted_indices:
+                accepted_indices.append(idx)
+
+        rejected_raw = out.get("rejected_actions")
+        if not isinstance(rejected_raw, list):
+            rejected_raw = []
+            validation_issues.append("rejected_actions missing or not a list")
+
+        rejected_indices: List[int] = []
+        normalized_rejected: List[Dict[str, Any]] = []
+        for item in rejected_raw:
+            if isinstance(item, dict):
+                idx = _to_index(item.get("action_index"))
+                if idx is None:
+                    idx = _to_index(item.get("action_id") or item.get("title"))
+                reason = item.get("reason") or "rejected"
+            else:
+                idx = _to_index(item)
+                reason = "rejected"
+            if idx is None:
+                validation_issues.append(f"invalid rejected entry: {item!r}")
+                continue
+            if idx not in rejected_indices:
+                rejected_indices.append(idx)
+                normalized_rejected.append({"action_index": idx, "reason": str(reason)})
+
+        overlap = set(accepted_indices) & set(rejected_indices)
+        if overlap:
+            validation_issues.append(
+                f"accepted/rejected not disjoint (overlap indices={sorted(overlap)})"
+            )
+            # Reject wins for safety.
+            accepted_indices = [i for i in accepted_indices if i not in overlap]
+
+        accepted_ids = [
+            proposals[i]["action_id"]
+            for i in accepted_indices
+            if isinstance(proposals[i], dict) and proposals[i].get("action_id")
+        ]
+
+        # Coverage consistency vs prompt rules (accepted set).
+        selected = {str(d).lower() for d in (selected_domains or []) if d}
+        goals = {str(d).lower() for d in (goal_domains or []) if d}
+        accepted_domains = [
+            str(proposals[i].get("domain") or "").lower()
+            for i in accepted_indices
+            if isinstance(proposals[i], dict)
+        ]
+
+        coverage_ok = True
+        coverage_note = ""
+        if selected or goals:
+            overlap_domains = selected & goals if (selected and goals) else set()
+            if overlap_domains:
+                in_overlap = sum(1 for d in accepted_domains if d in (selected | goals))
+                if in_overlap < 3:
+                    coverage_ok = False
+                    coverage_note = (
+                        f"coverage unmet: need ≥3 accepted in selected/goal domains; got {in_overlap}"
+                    )
+            elif selected and goals and selected != goals:
+                in_selected = sum(1 for d in accepted_domains if d in selected)
+                in_goal = sum(1 for d in accepted_domains if d in goals)
+                if in_selected < 3 or in_goal < 1:
+                    coverage_ok = False
+                    coverage_note = (
+                        f"coverage unmet: need ≥3 selected-domain and ≥1 goal-domain actions; "
+                        f"got selected={in_selected}, goal={in_goal}"
+                    )
+            elif selected:
+                in_selected = sum(1 for d in accepted_domains if d in selected)
+                if in_selected < 3 and len(accepted_ids) >= 3:
+                    # Soft: only flag when enough accepts but wrong domains
+                    coverage_ok = False
+                    coverage_note = (
+                        f"coverage unmet: need ≥3 selected-domain actions; got {in_selected}"
+                    )
+
+        regen_required = bool(out.get("regen_required"))
+        if validation_issues:
+            regen_required = True
+        if not coverage_ok:
+            regen_required = True
+        if len(accepted_ids) < self.regen_controller.min_valid_actions:
+            regen_required = True
+            validation_issues.append(
+                f"fewer than {self.regen_controller.min_valid_actions} accepted actions"
+            )
+
+        # High-severity multi-day patterns must be addressed by ≥1 accepted action domain.
+        pattern_coverage_unmet = False
+        pattern_coverage_note = ""
+        required_domains = domains_for_high_patterns(active_patterns)
+        if required_domains:
+            accepted_domain_set = {d for d in accepted_domains if d}
+            missing_domains = [d for d in required_domains if d not in accepted_domain_set]
+            # recovery ↔ sleep are interchangeable for coverage
+            if "recovery" in missing_domains and "sleep" in accepted_domain_set:
+                missing_domains = [d for d in missing_domains if d != "recovery"]
+            if "sleep" in missing_domains and "recovery" in accepted_domain_set:
+                missing_domains = [d for d in missing_domains if d != "sleep"]
+            if missing_domains:
+                pattern_coverage_unmet = True
+                regen_required = True
+                unmet_patterns = [
+                    p for p in high_severity_patterns(active_patterns)
+                    if str(p.get("domain") or "").lower() in missing_domains
+                    or (
+                        str(p.get("domain") or "").lower() == "recovery"
+                        and "recovery" in missing_domains
+                    )
+                ]
+                names = []
+                for p in unmet_patterns or high_severity_patterns(active_patterns):
+                    names.append(
+                        f"{p.get('type')}:{p.get('feature')}({p.get('days') or p.get('window_days') or '?'}d)"
+                    )
+                pattern_coverage_note = (
+                    "high-severity pattern coverage unmet: need ≥1 accepted action in "
+                    f"domains {missing_domains}; unaddressed={names}"
+                )
+
+        feedback_parts = []
+        if out.get("regen_feedback"):
+            feedback_parts.append(str(out.get("regen_feedback")))
+        if validation_issues:
+            feedback_parts.append("schema_validation: " + "; ".join(validation_issues))
+        if coverage_note:
+            feedback_parts.append(coverage_note)
+        if pattern_coverage_note:
+            feedback_parts.append(pattern_coverage_note)
+
+        out["accepted_actions"] = accepted_indices
+        out["rejected_actions"] = normalized_rejected
+        out["accepted_action_ids"] = accepted_ids
+        out["regen_required"] = regen_required
+        out["pattern_coverage_unmet"] = pattern_coverage_unmet
+        if regen_required:
+            out["regen_feedback"] = " | ".join(p for p in feedback_parts if p) or "regen required"
+        out["validation"] = {
+            "ok": not validation_issues and coverage_ok and not pattern_coverage_unmet,
+            "issues": validation_issues,
+            "coverage_ok": coverage_ok,
+            "coverage_note": coverage_note or None,
+            "pattern_coverage_ok": not pattern_coverage_unmet,
+            "pattern_coverage_note": pattern_coverage_note or None,
+            "accepted_rejected_disjoint": not bool(overlap),
+        }
+        debug_log(
+            f"[FUSION_CRITIC] validated accepted={accepted_ids} "
+            f"regen_required={regen_required} issues={validation_issues}"
         )
-        return "regenerate" if should_regen else "continue"
+        return out
+
+    def _sanitize_morning_message(self, message: str, state: PipelineState) -> str:
+        """Strip banned high-energy framing when safety override is active."""
+        text = message or ""
+        if not self._safety_override_triggers(state):
+            return text
+        lowered = text.lower()
+        for phrase in self.BANNED_HIGH_ENERGY_PHRASES:
+            idx = lowered.find(phrase)
+            while idx != -1:
+                end = idx + len(phrase)
+                text = text[:idx] + "protect your energy" + text[end:]
+                lowered = text.lower()
+                idx = lowered.find(phrase)
+        return text
+
+    def _deterministic_pattern_coverage_repair(self, state: PipelineState) -> bool:
+        """
+        After max LLM regen, promote/accept a proposal in each unmet high-pattern domain.
+        Returns True if coverage is satisfied after repair (safe to continue to budget).
+        """
+        review = dict(state.get("review_result") or {})
+        if not review.get("pattern_coverage_unmet"):
+            return not bool(review.get("regen_required"))
+
+        proposals = state.get("action_proposals") or []
+        accepted_ids = list(review.get("accepted_action_ids") or [])
+        accepted_domains = {
+            str(a.get("domain") or "").lower()
+            for a in proposals
+            if isinstance(a, dict) and a.get("action_id") in accepted_ids
+        }
+        required = domains_for_high_patterns(state.get("active_patterns") or [])
+        changed = False
+        for domain in required:
+            if domain in accepted_domains:
+                continue
+            if domain == "recovery" and "sleep" in accepted_domains:
+                continue
+            if domain == "sleep" and "recovery" in accepted_domains:
+                continue
+            candidate = None
+            for action in proposals:
+                if not isinstance(action, dict):
+                    continue
+                ad = str(action.get("domain") or "").lower()
+                if ad == domain or (domain == "recovery" and ad == "sleep"):
+                    candidate = action
+                    break
+            if candidate and candidate.get("action_id") not in accepted_ids:
+                accepted_ids.append(candidate["action_id"])
+                accepted_domains.add(str(candidate.get("domain") or "").lower())
+                changed = True
+
+        if not changed and required:
+            # Still unmet and no candidate — cannot repair.
+            return False
+
+        # Re-check coverage
+        missing = []
+        for domain in required:
+            if domain in accepted_domains:
+                continue
+            if domain == "recovery" and "sleep" in accepted_domains:
+                continue
+            if domain == "sleep" and "recovery" in accepted_domains:
+                continue
+            missing.append(domain)
+        if missing:
+            return False
+
+        review["accepted_action_ids"] = accepted_ids
+        # Rebuild accepted indices best-effort
+        id_to_idx = {
+            a.get("action_id"): i
+            for i, a in enumerate(proposals)
+            if isinstance(a, dict) and a.get("action_id")
+        }
+        review["accepted_actions"] = [
+            id_to_idx[aid] for aid in accepted_ids if aid in id_to_idx
+        ]
+        review["pattern_coverage_unmet"] = False
+        # Clear regen only if pattern was the blocking reason or min_valid now met.
+        if len(accepted_ids) >= self.regen_controller.min_valid_actions:
+            review["regen_required"] = False
+            review["regen_feedback"] = ""
+        else:
+            review["regen_required"] = True
+        validation = dict(review.get("validation") or {})
+        validation["pattern_coverage_ok"] = True
+        validation["pattern_coverage_note"] = "repaired_deterministically"
+        review["validation"] = validation
+        state["review_result"] = review
+        debug_log(f"[FUSION_CRITIC] pattern coverage repaired accepted={accepted_ids}")
+        return not bool(review.get("regen_required"))
+
+    def _should_regenerate(self, state: PipelineState) -> str:
+        """Decide regenerate vs continue to budget/compose. Always continue after max regen."""
+        review = state.get("review_result") or {}
+        accepted_ids = review.get("accepted_action_ids") or []
+        regen_required = bool(review.get("regen_required"))
+        attempt = int(state.get("attempt") or 0)
+
+        if regen_required and attempt < self.regen_controller.max_regen:
+            return "regenerate"
+
+        if regen_required:
+            # Exhausted LLM retries — best-effort domain repair, then always compose a brief.
+            self._deterministic_pattern_coverage_repair(state)
+            return "continue"
+
+        if self.regen_controller.should_regenerate(attempt, len(accepted_ids), regen_required):
+            return "regenerate"
+        return "continue"
     
     def run(self, user_id: str, for_date: str, overall_score: int, ingestion_run_id: str) -> Dict:
         """Execute the pipeline"""
@@ -1759,8 +3073,11 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
             'recent_state_history': [],
             'coach_readiness': {},
             'behavior_profile': {},
+            'correlation_archetype': {},
             'user_name': '',
             'recent_action_history': [],
+            'previous_morning_brief': {'present': False},
+            'active_patterns': [],
             'user_goal': None,
             'holistic_status_report': {},
             'day_constraints': {},
@@ -1780,7 +3097,9 @@ Write a personal morning note (200-250 words). Spend most of the words on the na
             'morning_message': final_state['morning_message'],
             'actions': final_state['budget_result']['display_actions'],
             'debug': {
-                'energy_mode': self._get_energy_mode(overall_score),
+                'energy_mode': self._effective_energy_mode(final_state),
+                'learning_mode': not self._is_fast_ready(final_state),
+                'safety_override': self._safety_override_payload(final_state) or None,
                 'selected_domains': final_state['selected_domains'],
                 'day_constraints': final_state['day_constraints'],
                 'confidence': final_state['coach_readiness'].get('bundle_confidence', {}),

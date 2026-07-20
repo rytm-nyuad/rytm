@@ -46,7 +46,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 from supabase import create_client
 
-from behavior_clustering import (  # noqa: E402
+from profiling.behavior_clustering import (  # noqa: E402
     CATEGORY_A_FEATURES,
     CATEGORY_B_FEATURES,
     CATEGORY_D_FEATURES,
@@ -60,8 +60,8 @@ from behavior_clustering import (  # noqa: E402
     evaluate_cluster_stability,
     fetch_feature_matrix,
 )
-from behavior_profile_agent import BehaviorProfileInterpreter  # noqa: E402
-from llm_config import resolve_behavior_profile_llm_config  # noqa: E402
+from profiling.behavior_profile_agent import BehaviorProfileInterpreter  # noqa: E402
+from llm.llm_config import resolve_behavior_profile_llm_config  # noqa: E402
 
 # Sleep / overnight-oriented subset of category A (excludes caffeine).
 SLEEP_FEATURES = [

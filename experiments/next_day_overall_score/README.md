@@ -16,7 +16,7 @@ Interpretation framing: *“On days with this feature profile, the **next** morn
 ## Prompts
 
 Primary LLM system prompt: `BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT_NEXT_DAY_OS` in
-`python/coach/prompts.py` (predictive / lead-lag framing).
+`python/coach/llm/prompts.py` (predictive / lead-lag framing).
 
 Each run also stores a production-prompt A/B (`llm_interpretation_production`) using
 `BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT` with the same next-day `feature_timing`.

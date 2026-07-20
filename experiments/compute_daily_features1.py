@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 COACH_DIR = ROOT / "python" / "coach"
 sys.path.insert(0, str(COACH_DIR))
 
-from feature_computer import FeatureComputer  # noqa: E402
+from data.feature_computer import FeatureComputer  # noqa: E402
 
 # Keys observed in production daily_features1 (enum-safe allowlist).
 KNOWN_FEATURE_KEYS: Set[str] = {

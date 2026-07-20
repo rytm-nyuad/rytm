@@ -11,8 +11,8 @@ import sys
 import json
 import os
 from supabase import create_client
-from langgraph_pipeline import MorningCoachPipeline
-from llm_config import resolve_coach_pipeline_llm_config
+from pipeline.langgraph_pipeline import MorningCoachPipeline
+from llm.llm_config import resolve_coach_pipeline_llm_config
 
 try:
     from dotenv import load_dotenv

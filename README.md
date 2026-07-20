@@ -162,13 +162,14 @@ You can choose OpenAI or OpenRouter independently for:
 
 1. **Morning coach plan generation** (`run_pipeline.py` / `langgraph_pipeline.py`)
 2. **Behavior-profile clustering interpreter** (`run_behavior_profile_update.py`)
+3. **Correlation-archetype interpreter** (`run_correlation_archetype_update.py` — uses the same `BEHAVIOR_PROFILE_LLM_*` settings)
 
 ```env
 # Morning coach pipeline (default: openrouter)
 COACH_LLM_PROVIDER=openai
 # COACH_LLM_MODEL=gpt-4o-mini
 
-# Behavior-profile interpreter (default: openai)
+# Behavior-profile + correlation-archetype interpreters (default: openai)
 BEHAVIOR_PROFILE_LLM_PROVIDER=openai
 # BEHAVIOR_PROFILE_LLM_MODEL=gpt-4o-mini
 ```
@@ -196,6 +197,21 @@ Apply `supabase/journal_summary2_context_enrichment.sql` in the Supabase SQL edi
 * Creates `user_journal_context2` (rolling narrative arc, open commitments, recurring topics, recent day summaries)
 
 Morning prep then keeps that rolling context updated for a future conversational coach.
+
+### Correlation archetype schemas (apply once)
+
+Apply these in the Supabase SQL editor (or via `python/coach/apply_correlation_archetype_schema.py`):
+
+* `supabase/user_correlation_archetypes.sql` — per-user Spearman heatmap archetypes + claim/promote RPCs
+* `supabase/correlation_cohort_baselines.sql` — cached cohort-average heatmap for distinctiveness
+
+Then build the cohort baseline (service role; refresh when the user set grows):
+
+```bash
+# From repo root, coach venv
+python/coach/.venv/Scripts/python.exe experiments/build_correlation_cohort_baseline.py
+```
+
 ---
 
 ## 4. Set Up the Python Coach Pipeline
@@ -253,28 +269,35 @@ These features run when you generate a morning plan from the Coach UI.
 * **Refresh due only after 21 days AND enough new feature days** since prior `data_window_end`
 * **LLM cluster interpretation** that writes a coaching profile (summary, `cluster_0`/`1`/`2`, primary rule)
 * **Morning pipeline reads the latest active profile** from the DB (hardcoded profiles removed)
-* **Provider switch** for morning coach and behavior-profile LLMs (`openai` or `openrouter`)
+* **Correlation archetypes** (`user_correlation_archetypes1`) — Spearman heatmaps over ~14 features, trust mask (`n≥15`, `|ρ|≥0.4`), free-form LLM archetype with safety guardrails
+* **Cached cohort baseline** (`correlation_cohort_baselines1`) — ops script averages user heatmaps; per-user jobs subtract to find distinctive edges
+* **Analytics page** (`/analytics`) — shows active archetype (summary, core insight, strength) and a clean key-connections table
+* **Provider switch** for morning coach and behavior-profile / correlation-archetype LLMs (`openai` or `openrouter`)
 
 ### App flow (recommended)
 
 1. Ensure `.env.local` has Supabase keys + the LLM key for the providers you selected.
 2. Ensure the Python venv exists under `python/coach/.venv` (the API spawns those scripts).
-3. Start the app:
+3. Apply correlation schemas + build cohort baseline (see above) if you want distinctiveness.
+4. Start the app:
 
 ```bash
 npm run dev
 ```
 
-4. Sign in at `http://localhost:3000`.
-5. Create / keep an **active goal** (Coach page requires one).
-6. Submit today’s **overall score / morning check-in** on the dashboard.
-7. Open **Coach** (`http://localhost:3000/coach`) and generate / refresh the morning plan.
+5. Sign in at `http://localhost:3000`.
+6. Create / keep an **active goal** (Coach page requires one).
+7. Submit today’s **overall score / morning check-in** on the dashboard.
+8. Open **Coach** (`http://localhost:3000/coach`) and generate / refresh the morning plan.
+9. Open **Analytics** (`http://localhost:3000/analytics`) once an active correlation archetype exists.
 
 On that morning run:
 
 * `POST /api/coach/morning-run` runs `python/coach/run_pipeline.py`
 * If a behavior-profile refresh is due, it also spawns `run_behavior_profile_update.py` in the background
-* Today’s plan uses the **current** active profile (or empty if none yet); a newly generated profile applies on the **next** morning run
+* If a correlation-archetype refresh is due (same 7-day / 21-day gates), it also spawns `run_correlation_archetype_update.py`
+* Today’s plan uses the **current** active profile/archetype (or empty if none yet); newly generated rows apply on the **next** morning run
+* Holistic / router / action agents receive a slim correlation archetype as a personalization prior (not an override of today’s evidence)
 
 ### Verify in Supabase
 
@@ -282,7 +305,9 @@ After a successful run, check:
 
 * `daily_plans1` / `plan_actions1` — morning plan + actions
 * `user_behavior_profiles1` — `status = active` row with `summary`, `cluster_interpretations_json`, `primary_coaching_rule`, `quality_evaluation_json`
-* Rejected candidates keep stats/quality evidence with `status = rejected` (active profile unchanged)
+* `user_correlation_archetypes1` — `status = active` row with `archetype_title`, narrative fields, `heatmap_json`, `trusted_edges_json`, `distinctive_edges_json`
+* `correlation_cohort_baselines1` — latest cached cohort mean ρ map (service-role only)
+* Rejected candidates keep stats/quality evidence with `status = rejected` (active row unchanged)
 
 ---
 
@@ -303,6 +328,24 @@ cd python/coach
 ```
 
 `manual` skips if a refresh is not due; `manual_force` overrides a stuck `running` job.
+
+### Force a correlation-archetype refresh
+
+```bash
+cd python/coach
+
+# Windows
+.venv\Scripts\python.exe run_correlation_archetype_update.py <user_id> force
+
+# macOS / Linux
+.venv/bin/python run_correlation_archetype_update.py <user_id> force
+```
+
+Build / refresh the cohort baseline first (from repo root) so distinctive edges are available:
+
+```bash
+python/coach/.venv/Scripts/python.exe experiments/build_correlation_cohort_baseline.py
+```
 
 ### Run the morning coach pipeline directly
 
@@ -326,7 +369,8 @@ The JSON result includes `debug.behavior_profile`, `debug.llm_provider`, and `de
 src/
 ├── app/
 │   ├── (auth)/              # Authentication routes
-│   ├── api/                 # API routes (includes /api/coach/morning-run)
+│   ├── api/                 # API routes (includes /api/coach/morning-run, /api/analytics/archetype)
+│   ├── analytics/           # Archetype + key-connections UI
 │   ├── coach/               # Morning coach UI
 │   ├── consent/             # Consent flow and signature page
 │   ├── dashboard/           # Main dashboard UI
@@ -337,7 +381,7 @@ src/
 │   ├── dashboard/           # Dashboard widgets and modals
 │   └── ui/                  # Reusable UI components
 ├── lib/
-│   ├── coach/               # Coach readiness + behavior-profile due checks
+│   ├── coach/               # Coach readiness + behavior-profile / correlation-archetype due checks
 │   ├── db/                  # Database logic
 │   ├── llms/                # LLM configuration and prompts
 │   ├── supabase/            # Supabase client utilities
@@ -345,18 +389,29 @@ src/
 ├── types/                   # TypeScript types
 
 python/
-└── coach/                   # Morning coach + behavior-profile pipeline
+└── coach/                   # Morning coach + behavior-profile + correlation-archetype pipeline
     ├── langgraph_pipeline.py
     ├── run_pipeline.py
     ├── run_behavior_profile_update.py
+    ├── run_correlation_archetype_update.py
     ├── behavior_clustering.py
+    ├── behavior_correlation.py
     ├── behavior_profile_agent.py
+    ├── correlation_archetype_agent.py
     ├── behavior_profile_store.py
+    ├── correlation_archetype_store.py
     └── llm_config.py
+
+experiments/                 # Exploration scripts (not production)
+├── build_correlation_cohort_baseline.py
+├── explore_correlation_archetypes.py
+└── ...
 
 supabase/                    # All database schemas and migrations (applied manually)
 ├── user_behavior_profiles.sql
 ├── user_behavior_profiles_quality_gates.sql
+├── user_correlation_archetypes.sql
+├── correlation_cohort_baselines.sql
 ├── journal_summary2_context_enrichment.sql
 ├── function_rpcs.sql
 ├── journal_schema.sql
@@ -381,6 +436,8 @@ public/                      # Static assets
 * Enriched journal summaries (commitments, recurring topics, narrative context) for coaching continuity
 * Python coach pipeline for personalized morning plans
 * Per-user behavior profiles from clustering + LLM interpretation
+* Correlation archetypes (Spearman heatmaps + cohort distinctiveness) for deeper personalization
+* Analytics page for archetype narrative and key connections
 * Configurable OpenAI / OpenRouter providers for coach and profile jobs
 * Secure database access patterns using Supabase and RLS
 

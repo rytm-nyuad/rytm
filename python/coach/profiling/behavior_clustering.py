@@ -1,16 +1,19 @@
 """
 Per-user K-Means clustering over daily_features1.
 
-Mirrors Final_Capstone_Data_Exploration.ipynb (categories A/B/D, PCA, k=3)
-without visualization dependencies.
+Production path (mode="os_only"):
+  day-validity filters → K-Means(k=3) on standardized overall_score only →
+  semantic remap by mean OS. Multi-feature PCA is NOT used for membership.
+  Downstream findings/gates live in profiling/.
 
-Adds deterministic candidate quality gates (size, silhouette, stability)
-without changing the core clustering methodology.
+Experiment path (mode="multifeature" / experiment_mode=True):
+  mirrors Final_Capstone_Data_Exploration.ipynb (categories A/B/D, PCA, k=3)
+  with completeness indicators and deterministic silhouette/stability gates.
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -88,8 +91,11 @@ KEY_FEATURES_FOR_INTERPRETATION = [
 N_CLUSTERS = 3
 N_COMPONENTS_PER_CATEGORY = 2
 MIN_DAYS_FOR_CLUSTERING = 7
+MIN_DAYS_FOR_CLUSTERING_OS_ONLY = 14
 KMEANS_RANDOM_STATE = 42
 KMEANS_N_INIT = 10
+
+ClusteringMode = Literal["os_only", "multifeature"]
 
 # Post-PCA: whiten within category, then re-standardize the concatenated matrix so
 # no single category's PC1 dominates Euclidean K-Means distance.
@@ -153,6 +159,10 @@ class ClusteringResult:
     clustering_metadata: Dict[str, Any]
     semantic_cluster_ranking: Dict[str, int]
     quality_evaluation: Dict[str, Any] = field(default_factory=dict)
+    # Populated for production OS-only path (findings pipeline).
+    feature_matrix: Optional[pd.DataFrame] = None
+    semantic_labels: Optional[np.ndarray] = None
+    mode: str = "multifeature"
 
 
 class InsufficientDataError(Exception):
@@ -704,8 +714,194 @@ def run_user_clustering(
     user_id: str,
     *,
     thresholds: QualityThresholds = DEFAULT_QUALITY_THRESHOLDS,
+    mode: ClusteringMode = "os_only",
+    experiment_mode: bool = False,
 ) -> ClusteringResult:
+    """
+    Run within-user clustering.
+
+    Production default is mode="os_only". Pass mode="multifeature" or
+    experiment_mode=True for the legacy PCA A+B+D path.
+    """
+    if experiment_mode:
+        mode = "multifeature"
+
     feature_matrix = fetch_feature_matrix(client, user_id)
+    if mode == "os_only":
+        return _run_os_only_clustering(feature_matrix, thresholds=thresholds)
+    return _run_multifeature_clustering(
+        feature_matrix, thresholds=thresholds
+    )
+
+
+def _run_os_only_clustering(
+    feature_matrix: pd.DataFrame,
+    *,
+    thresholds: QualityThresholds = DEFAULT_QUALITY_THRESHOLDS,
+) -> ClusteringResult:
+    from profiling.day_validity import apply_day_validity
+
+    valid = apply_day_validity(feature_matrix)
+    days_used = int(valid.shape[0])
+    if days_used < MIN_DAYS_FOR_CLUSTERING_OS_ONLY:
+        raise InsufficientDataError(
+            f"Need at least {MIN_DAYS_FOR_CLUSTERING_OS_ONLY} valid days with "
+            f"overall_score for OS-only clustering, found {days_used}"
+        )
+    if "overall_score" not in valid.columns:
+        raise InsufficientDataError("overall_score required for OS-only clustering")
+
+    os_series = valid["overall_score"].astype(float)
+    if os_series.nunique(dropna=True) < N_CLUSTERS:
+        raise InsufficientDataError(
+            "Need at least 3 distinct overall_score values for k=3 OS-only clustering"
+        )
+
+    scaler = StandardScaler()
+    os_matrix = scaler.fit_transform(os_series.to_numpy(dtype=float).reshape(-1, 1))
+    raw_labels = _fit_kmeans(os_matrix, random_state=KMEANS_RANDOM_STATE)
+
+    merged = valid.copy()
+    merged["cluster"] = raw_labels
+    cluster_means = merged.groupby("cluster").mean(numeric_only=True)
+    cluster_mins = merged.groupby("cluster").min(numeric_only=True)
+    cluster_maxs = merged.groupby("cluster").max(numeric_only=True)
+    cluster_stds = merged.groupby("cluster").std(numeric_only=True)
+
+    semantic_by_raw = _semantic_cluster_labels(cluster_means)
+    semantic_ranking = {label: int(label.split("_")[1]) for label in semantic_by_raw.values()}
+    semantic_labels = np.array(
+        [semantic_by_raw[int(x)] for x in raw_labels], dtype=object
+    )
+
+    def remap_index(df: pd.DataFrame) -> pd.DataFrame:
+        remapped = df.copy()
+        remapped.index = [semantic_by_raw[int(idx)] for idx in remapped.index]
+        if "overall_score" in remapped.columns:
+            remapped = remapped.sort_values(by="overall_score", ascending=True)
+        return remapped
+
+    cluster_means_semantic = remap_index(cluster_means)
+    cluster_mins_semantic = remap_index(cluster_mins)
+    cluster_maxs_semantic = remap_index(cluster_maxs)
+    cluster_stds_semantic = remap_index(cluster_stds)
+
+    available_key_features = [
+        feature
+        for feature in KEY_FEATURES_FOR_INTERPRETATION
+        if feature in cluster_means_semantic.columns
+    ]
+
+    silhouette: Optional[float] = None
+    if os_matrix.shape[0] > N_CLUSTERS:
+        try:
+            silhouette = float(silhouette_score(os_matrix, raw_labels))
+        except ValueError:
+            silhouette = None
+
+    days_per_cluster = {
+        semantic_by_raw[int(raw_cluster)]: int((raw_labels == raw_cluster).sum())
+        for raw_cluster in sorted(set(raw_labels.tolist()))
+    }
+    for semantic in ("cluster_0", "cluster_1", "cluster_2"):
+        days_per_cluster.setdefault(semantic, 0)
+
+    stability = evaluate_cluster_stability(
+        os_matrix,
+        raw_labels,
+        thresholds=thresholds,
+        random_state=KMEANS_RANDOM_STATE,
+    )
+    overall_score_separation = evaluate_overall_score_separation(
+        valid,
+        raw_labels,
+        semantic_by_raw,
+        thresholds=thresholds,
+    )
+    missingness_rates = compute_per_cluster_missingness_rates(
+        valid,
+        raw_labels,
+        semantic_by_raw,
+        ALL_CATEGORY_FEATURES,
+    )
+    # OS-only production: do not hard-reject on silhouette/stability here.
+    # Findings/gates own interpretation readiness; keep metrics for monitoring.
+    quality_evaluation = evaluate_candidate_quality(
+        days_used=days_used,
+        days_per_cluster=days_per_cluster,
+        silhouette=silhouette,
+        stability=stability,
+        overall_score_separation=overall_score_separation,
+        thresholds=thresholds,
+    )
+    quality_evaluation = dict(quality_evaluation)
+    quality_evaluation["passed"] = True
+    quality_evaluation["os_only_bypass_legacy_hard_gates"] = True
+    quality_evaluation["legacy_would_pass"] = (
+        len(quality_evaluation.get("rejection_reasons") or []) == 0
+    )
+    quality_evaluation["rejection_reasons"] = []
+
+    cluster_stats = {
+        "semantic_labels": {
+            "cluster_0": "lowest_mean_morning_overall_score",
+            "cluster_1": "middle_mean_morning_overall_score",
+            "cluster_2": "highest_mean_morning_overall_score",
+        },
+        "feature_timing": {
+            "overall_score": (
+                "Collected at the beginning of the local calendar day (morning self-report). "
+                "OS-only clustering fits on this column alone."
+            ),
+            "same_date_features": (
+                "Other features share the same feature_date after day-validity filters; "
+                "they are used for post-hoc findings only, not cluster membership."
+            ),
+        },
+        "key_features": available_key_features,
+        "means": _frame_to_dict(cluster_means_semantic[available_key_features]),
+        "mins": _frame_to_dict(cluster_mins_semantic[available_key_features]),
+        "maxs": _frame_to_dict(cluster_maxs_semantic[available_key_features]),
+        "stds": _frame_to_dict(cluster_stds_semantic[available_key_features]),
+        "days_per_cluster": days_per_cluster,
+        "missingness_rates": missingness_rates,
+    }
+
+    metadata = {
+        "algorithm": "kmeans",
+        "mode": "os_only",
+        "k": N_CLUSTERS,
+        "random_state": KMEANS_RANDOM_STATE,
+        "n_init": KMEANS_N_INIT,
+        "fit_features": ["overall_score"],
+        "pca_used": False,
+        "day_validity_applied": True,
+        "min_days_required": MIN_DAYS_FOR_CLUSTERING_OS_ONLY,
+        "silhouette_score": silhouette,
+        "raw_cluster_to_semantic": {str(k): v for k, v in semantic_by_raw.items()},
+        "quality_passed": True,
+        "overall_score_timing": "start_of_day_morning_self_report",
+        "stability_score": stability.get("score"),
+    }
+    return ClusteringResult(
+        days_used=days_used,
+        data_window_start=valid.index.min().date().isoformat(),
+        data_window_end=valid.index.max().date().isoformat(),
+        cluster_stats=cluster_stats,
+        clustering_metadata=metadata,
+        semantic_cluster_ranking=semantic_ranking,
+        quality_evaluation=quality_evaluation,
+        feature_matrix=valid,
+        semantic_labels=semantic_labels,
+        mode="os_only",
+    )
+
+
+def _run_multifeature_clustering(
+    feature_matrix: pd.DataFrame,
+    *,
+    thresholds: QualityThresholds = DEFAULT_QUALITY_THRESHOLDS,
+) -> ClusteringResult:
     days_used = int(feature_matrix.shape[0])
     if days_used < MIN_DAYS_FOR_CLUSTERING:
         raise InsufficientDataError(
@@ -824,6 +1020,7 @@ def run_user_clustering(
     completeness_columns = [c for c in pca_df.columns if str(c).startswith("completeness_")]
     metadata = {
         "algorithm": "kmeans",
+        "mode": "multifeature",
         "k": N_CLUSTERS,
         "random_state": KMEANS_RANDOM_STATE,
         "n_init": KMEANS_N_INIT,
@@ -832,7 +1029,6 @@ def run_user_clustering(
         "rescale_concatenated_pcs": RESCALE_CONCATENATED_PCS,
         "category_completeness_included": INCLUDE_CATEGORY_COMPLETENESS,
         "category_completeness_column_count": len(completeness_columns),
-        # Backward-compatible aliases
         "missingness_indicators_included": INCLUDE_CATEGORY_COMPLETENESS,
         "missingness_indicator_count": len(completeness_columns),
         "pc_feature_count": len(pc_columns),
@@ -850,4 +1046,9 @@ def run_user_clustering(
         clustering_metadata=metadata,
         semantic_cluster_ranking=semantic_ranking,
         quality_evaluation=quality_evaluation,
+        feature_matrix=feature_matrix,
+        semantic_labels=np.array(
+            [semantic_by_raw[int(x)] for x in raw_labels], dtype=object
+        ),
+        mode="multifeature",
     )

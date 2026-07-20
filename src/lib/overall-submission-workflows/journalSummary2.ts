@@ -6,7 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatLocalDate, getCanonicalTimeZone, type LocalDateString } from "@/lib/time";
 import { withSupabaseRetry } from "./supabaseRetry";
 
-const JOURNAL_PROMPT_PATH = path.join(process.cwd(), "python/coach", "prompts.py");
+const JOURNAL_PROMPT_PATH = path.join(process.cwd(), "python/coach/llm", "prompts.py");
 const PROMPT_REGEX =
   /JOURNAL_SUMMARY2_SYSTEM_PROMPT\s*=\s*"""([\s\S]*?)"""/;
 

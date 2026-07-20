@@ -8,18 +8,19 @@ from typing import Any, Dict, Optional
 
 from supabase import Client
 
-from behavior_clustering import (
+from profiling.behavior_clustering import (
     CLUSTERING_FEATURE_KEYS,
-    MIN_DAYS_FOR_CLUSTERING,
+    MIN_DAYS_FOR_CLUSTERING_OS_ONLY,
     MIN_NEW_FEATURE_DAYS_FOR_REFRESH,
 )
 
 PROFILE_REFRESH_DAYS = 21
+PROFILE_VERSION_V2 = "cluster_profile_v2"
 EMPTY_PROFILE: Dict[str, Any] = {
     "profile_version": "none",
     "summary": "",
     "cluster_interpretations": {},
-    "primary_coaching_rule": "",
+    "primary_coaching_rule": None,
 }
 
 
@@ -101,17 +102,26 @@ def count_feature_days_after(
 
 
 def get_latest_active_profile(client: Client, user_id: str) -> Optional[Dict[str, Any]]:
+    """Return latest active v2 profile only (v1 actives are ignored for injection)."""
     response = (
         client.table("user_behavior_profiles1")
         .select("*")
         .eq("user_id", user_id)
         .eq("status", "active")
         .order("created_at", desc=True)
-        .limit(1)
+        .limit(10)
         .execute()
     )
     rows = response.data or []
-    return rows[0] if rows else None
+    for row in rows:
+        version = (
+            (row.get("profile_json") or {}).get("profile_version")
+            or row.get("profile_version")
+            or ""
+        )
+        if str(version).strip() == PROFILE_VERSION_V2:
+            return row
+    return None
 
 
 def profile_payload_from_row(row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -120,13 +130,20 @@ def profile_payload_from_row(row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     profile_json = row.get("profile_json") or {}
     if profile_json:
+        version = str(profile_json.get("profile_version") or "").strip()
+        if version != PROFILE_VERSION_V2:
+            return dict(EMPTY_PROFILE)
         return profile_json
 
+    version = str(row.get("profile_version") or "").strip()
+    if version != PROFILE_VERSION_V2:
+        return dict(EMPTY_PROFILE)
+
     return {
-        "profile_version": row.get("profile_version", "cluster_profile_v1"),
+        "profile_version": version,
         "summary": row.get("summary", ""),
         "cluster_interpretations": row.get("cluster_interpretations_json") or {},
-        "primary_coaching_rule": row.get("primary_coaching_rule", ""),
+        "primary_coaching_rule": row.get("primary_coaching_rule"),
     }
 
 
@@ -150,13 +167,13 @@ def is_profile_update_due(
 
     base = {
         "feature_days": feature_days,
-        "min_feature_days": MIN_DAYS_FOR_CLUSTERING,
+        "min_feature_days": MIN_DAYS_FOR_CLUSTERING_OS_ONLY,
         "min_new_feature_days": MIN_NEW_FEATURE_DAYS_FOR_REFRESH,
         "refresh_interval_days": PROFILE_REFRESH_DAYS,
         "force": force,
     }
 
-    if feature_days < MIN_DAYS_FOR_CLUSTERING and not force:
+    if feature_days < MIN_DAYS_FOR_CLUSTERING_OS_ONLY and not force:
         return {
             **base,
             "due": False,
@@ -170,7 +187,11 @@ def is_profile_update_due(
         return {
             **base,
             "due": True,
-            "reason": "no_active_profile" if feature_days >= MIN_DAYS_FOR_CLUSTERING else "force_no_active_profile",
+            "reason": (
+                "no_active_profile"
+                if feature_days >= MIN_DAYS_FOR_CLUSTERING_OS_ONLY
+                else "force_no_active_profile"
+            ),
             "new_feature_days": feature_days,
             "latest_data_window_end": None,
             "next_due_date": None,
@@ -299,7 +320,7 @@ def _build_finalize_payload(
         "profile_version": profile_payload.get("profile_version", "cluster_profile_v1"),
         "summary": profile_payload.get("summary", ""),
         "cluster_interpretations_json": profile_payload.get("cluster_interpretations", {}),
-        "primary_coaching_rule": profile_payload.get("primary_coaching_rule", ""),
+        "primary_coaching_rule": profile_payload.get("primary_coaching_rule"),
         "profile_json": profile_payload,
         "cluster_stats_json": cluster_stats,
         "clustering_metadata_json": clustering_metadata,

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const BEHAVIOR_PROFILE_REFRESH_DAYS = 21;
-export const BEHAVIOR_PROFILE_MIN_FEATURE_DAYS = 7;
+export const BEHAVIOR_PROFILE_MIN_FEATURE_DAYS = 14;
 export const BEHAVIOR_PROFILE_MIN_NEW_FEATURE_DAYS = 7;
 
 /** Feature keys used by Python clustering (categories A/B/D + overall_score for ordering). */

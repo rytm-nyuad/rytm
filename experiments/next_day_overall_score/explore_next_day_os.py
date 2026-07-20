@@ -43,7 +43,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 from supabase import create_client
 
-from behavior_clustering import (  # noqa: E402
+from profiling.behavior_clustering import (  # noqa: E402
     CATEGORY_A_FEATURES,
     CATEGORY_B_FEATURES,
     CATEGORY_D_FEATURES,
@@ -57,10 +57,10 @@ from behavior_clustering import (  # noqa: E402
     evaluate_cluster_stability,
     fetch_feature_matrix,
 )
-from behavior_profile_agent import BehaviorProfileInterpreter  # noqa: E402
-from llm_config import resolve_behavior_profile_llm_config  # noqa: E402
-from prompts import (  # noqa: E402
-    BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT,
+from profiling.behavior_profile_agent import BehaviorProfileInterpreter  # noqa: E402
+from llm.llm_config import resolve_behavior_profile_llm_config  # noqa: E402
+from llm.prompts import (  # noqa: E402
+    BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT_V1,
     BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT_NEXT_DAY_OS,
 )
 
@@ -522,7 +522,7 @@ def interpret_scenario(
     try:
         prod = interpreter.interpret(
             **common,
-            system_prompt=BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT,
+            system_prompt=BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT_V1,
         )
         prod = dict(prod)
         prod["prompt_variant"] = "production_same_day_wording"
@@ -820,7 +820,7 @@ def main() -> None:
         "prompt_variants": {
             "primary": "BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT_NEXT_DAY_OS",
             "production_ab": (
-                "BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT "
+                "BEHAVIOR_PROFILE_INTERPRETER_SYSTEM_PROMPT_V1 "
                 "(same-day wording + next-day feature_timing)"
             ),
         },
