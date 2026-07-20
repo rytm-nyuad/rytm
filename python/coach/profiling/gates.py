@@ -19,21 +19,25 @@ def assign_cluster_status(
     reportable_findings: List[Dict[str, Any]],
 ) -> str:
     """
-    insufficient_data iff n_days < 5 OR fewer than 2 reportable findings
-    OR zero independent_signal findings. Otherwise interpreted.
+    insufficient_data iff n_days < 5 (the statistical floor is unchanged here).
+    Above that floor: "interpreted" requires >=2 reportable findings AND at least
+    one independent_signal finding (unchanged bar). Anything with n_days >= 5 and
+    at least one reportable finding that does not clear that bar is "observational" —
+    a lower-confidence, explicitly-hedged status (see OBSERVATIONAL_PREFIX in
+    validate_profile.py) rather than being silently dropped to insufficient_data.
     """
     if n_days < MIN_CLUSTER_DAYS:
-        return "insufficient_data"
-    if len(reportable_findings) < MIN_REPORTABLE_FINDINGS:
         return "insufficient_data"
     independent = [
         f
         for f in reportable_findings
         if f.get("signal_class") == "independent_signal"
     ]
-    if not independent:
-        return "insufficient_data"
-    return "interpreted"
+    if len(reportable_findings) >= MIN_REPORTABLE_FINDINGS and independent:
+        return "interpreted"
+    if reportable_findings:
+        return "observational"
+    return "insufficient_data"
 
 
 def os_spread(means: List[float]) -> float:

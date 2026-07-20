@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from profiling.findings import feature_surface_form
 from profiling.validate_profile import (
     INSUFFICIENT_DATA_SENTENCE,
+    OBSERVATIONAL_PREFIX,
     OS_TIERS_DISCLOSURE,
     PROFILE_VERSION_V2,
 )
@@ -64,6 +65,19 @@ def render_template_profile(package: Dict[str, Any]) -> Dict[str, Any]:
         n_days = int(c.get("n_days") or 0)
         if status == "insufficient_data":
             text: Optional[str] = INSUFFICIENT_DATA_SENTENCE
+        elif status == "observational":
+            sentences = [
+                _format_finding(finding) for finding in c.get("reportable_findings") or []
+            ]
+            note = c.get("tracking_note")
+            if note:
+                sentences.append(str(note))
+            if not sentences:
+                text = INSUFFICIENT_DATA_SENTENCE
+                status = "insufficient_data"
+            else:
+                # Lower-confidence status: keep it short, no summary contribution.
+                text = OBSERVATIONAL_PREFIX + " ".join(sentences[:2])
         else:
             sentences: List[str] = []
             for finding in c.get("reportable_findings") or []:

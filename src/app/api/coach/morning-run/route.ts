@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { runMorningPreparationForSubmissionDate } from '@/lib/overall-submission-workflows';
+import { runMorningPreparationForSubmissionDate, syncCoachJournalContextForSubmissionDate } from '@/lib/overall-submission-workflows';
 import { getCoachReadiness } from '@/lib/coach/readiness';
 import { refreshFitbitProfileTimezoneForUser } from '@/lib/fitbit';
 import { formatLocalDate, getCanonicalTimeZone, shiftLocalDate } from '@/lib/time';
@@ -317,6 +317,14 @@ export async function POST(request: NextRequest) {
 
     await maybeSpawnBehaviorProfileRefresh(supabaseAdmin, userId);
     await maybeSpawnCorrelationArchetypeRefresh(supabaseAdmin, userId);
+
+    const processedLocalDate = shiftLocalDate(submissionDate, -1);
+    await syncCoachJournalContextForSubmissionDate(
+      supabaseAdmin,
+      userId,
+      submissionDate,
+      processedLocalDate
+    );
 
     // Run Python pipeline
     const result = await runPythonPipeline(userId, submissionDate, overallScore, ingestionRun.ingestion_run_id);

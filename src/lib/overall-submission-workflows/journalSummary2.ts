@@ -176,6 +176,12 @@ type UserJournalContextRow = {
   updated_at: string;
 };
 
+/** Rolling journal context reconstructed only from summaries on or before asOfDate. */
+export type JournalContextSnapshot = Pick<
+  UserJournalContextRow,
+  "as_of_date" | "narrative_arc" | "open_commitments" | "recurring_topics" | "recent_day_summaries"
+>;
+
 function buildThreeDayUtcWindow(localDate: LocalDateString) {
   const baseUtc = new Date(`${localDate}T00:00:00.000Z`);
   const start = new Date(baseUtc);
@@ -797,6 +803,71 @@ async function getUserJournalContext(
       normalizeScalarText(data.context_version) ?? JOURNAL_CONTEXT_VERSION,
     updated_at:
       normalizeScalarText(data.updated_at) ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * Rebuild rolling journal context as it would have existed on `asOfDate`, using only
+ * journal_summary2 rows with date <= asOfDate. Avoids leaking future narrative arc,
+ * open commitments, or recurring topics when coaching/regenerating for a past day.
+ */
+export async function buildJournalContextAsOf(
+  supabaseAdmin: SupabaseClient,
+  userId: string,
+  asOfDate: LocalDateString
+): Promise<JournalContextSnapshot> {
+  const { data, error } = await withSupabaseRetry(
+    "read journal_summary2 for context replay",
+    () =>
+      supabaseAdmin
+        .from("journal_summary2")
+        .select("*")
+        .eq("user_id", userId)
+        .lte("date", asOfDate)
+        .order("date", { ascending: true })
+  );
+
+  if (error) {
+    throw new Error(
+      `Failed to read journal_summary2 for context replay: ${error.message}`
+    );
+  }
+
+  let openCommitments: JournalCommitment[] = [];
+  let recurringTopics: JournalRecurringTopic[] = [];
+  const recentByDate = new Map<
+    string,
+    JournalContextSnapshot["recent_day_summaries"][number]
+  >();
+
+  for (const rawRow of data ?? []) {
+    const row = coerceJournalSummary2Row(rawRow);
+    if (!row || !row.date) {
+      continue;
+    }
+
+    recentByDate.set(row.date, {
+      date: row.date,
+      narrative_summary: row.narrative_summary,
+      topics: row.topics ?? [],
+    });
+    openCommitments = mergeOpenCommitments(openCommitments, row.commitments ?? []);
+    recurringTopics = mergeRecurringTopics(
+      recurringTopics,
+      row.recurring_topics ?? []
+    );
+  }
+
+  const recentDaySummaries = Array.from(recentByDate.values())
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-14);
+
+  return {
+    as_of_date: asOfDate,
+    narrative_arc: buildNarrativeArc(recentDaySummaries),
+    open_commitments: openCommitments,
+    recurring_topics: recurringTopics,
+    recent_day_summaries: recentDaySummaries,
   };
 }
 

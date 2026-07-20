@@ -17,6 +17,10 @@ import {
   AlertTriangle,
   Star,
   X,
+  Gauge,
+  BatteryLow,
+  BatteryMedium,
+  BatteryFull,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -94,6 +98,150 @@ function formatCompletedAt(value?: string | null) {
 
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+// Status color reserved for state (score band / energy level) — never reused as a
+// categorical hue elsewhere. Fill and unfilled track share the same ramp so the
+// meter reads as one state end-to-end (light-on-light) rather than a generic bar.
+type Tone = {
+  text: string;
+  chip: string;
+  fill: string;
+  track: string;
+};
+
+const NEUTRAL_TONE: Tone = {
+  text: "dark:text-white text-zinc-900",
+  chip: "text-zinc-600 bg-zinc-500/10 dark:text-zinc-300",
+  fill: "bg-zinc-400 dark:bg-zinc-600",
+  track: "bg-zinc-100 dark:bg-zinc-800",
+};
+
+function scoreTone(score: number | null): Tone {
+  if (score == null) return NEUTRAL_TONE;
+  if (score >= 70) {
+    return {
+      text: "text-emerald-700 dark:text-emerald-400",
+      chip: "text-emerald-700 bg-emerald-500/10 dark:text-emerald-300",
+      fill: "bg-emerald-500",
+      track: "bg-emerald-100 dark:bg-emerald-950/40",
+    };
+  }
+  if (score >= 40) {
+    return {
+      text: "text-violet-700 dark:text-violet-300",
+      chip: "text-violet-700 bg-violet-500/10 dark:text-violet-300",
+      fill: "bg-violet-500",
+      track: "bg-violet-100 dark:bg-violet-950/40",
+    };
+  }
+  return {
+    text: "text-amber-700 dark:text-amber-400",
+    chip: "text-amber-700 bg-amber-500/10 dark:text-amber-300",
+    fill: "bg-amber-500",
+    track: "bg-amber-100 dark:bg-amber-950/40",
+  };
+}
+
+const ENERGY_LEVELS: Record<string, { level: number; icon: any; tone: Tone }> = {
+  low: {
+    level: 1,
+    icon: BatteryLow,
+    tone: {
+      text: "text-amber-700 dark:text-amber-400",
+      chip: "text-amber-700 bg-amber-500/10 dark:text-amber-300",
+      fill: "bg-amber-500",
+      track: "bg-amber-100 dark:bg-amber-950/40",
+    },
+  },
+  moderate: {
+    level: 2,
+    icon: BatteryMedium,
+    tone: {
+      text: "text-violet-700 dark:text-violet-300",
+      chip: "text-violet-700 bg-violet-500/10 dark:text-violet-300",
+      fill: "bg-violet-400",
+      track: "bg-violet-100 dark:bg-violet-950/40",
+    },
+  },
+  normal: {
+    level: 3,
+    icon: BatteryMedium,
+    tone: {
+      text: "text-violet-700 dark:text-violet-300",
+      chip: "text-violet-700 bg-violet-500/10 dark:text-violet-300",
+      fill: "bg-violet-500",
+      track: "bg-violet-100 dark:bg-violet-950/40",
+    },
+  },
+  high: {
+    level: 4,
+    icon: BatteryFull,
+    tone: {
+      text: "text-emerald-700 dark:text-emerald-400",
+      chip: "text-emerald-700 bg-emerald-500/10 dark:text-emerald-300",
+      fill: "bg-emerald-500",
+      track: "bg-emerald-100 dark:bg-emerald-950/40",
+    },
+  },
+};
+
+function ScoreTile({ score }: { score: number | null }) {
+  const tone = scoreTone(score);
+  const pct = score == null ? 0 : Math.min(100, Math.max(0, score));
+  return (
+    <div className="rounded-xl dark:bg-zinc-900 bg-white border dark:border-zinc-800 border-zinc-200 px-4 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium dark:text-zinc-400 text-zinc-500">Morning score</p>
+        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full flex-shrink-0 ${tone.chip}`}>
+          <Gauge className="w-3.5 h-3.5" />
+        </span>
+      </div>
+      <p className={`mt-1 text-3xl font-semibold ${tone.text}`}>
+        {score ?? "—"}
+        {score != null && (
+          <span className="ml-0.5 text-sm font-medium dark:text-zinc-500 text-zinc-400">/100</span>
+        )}
+      </p>
+      <div className={`mt-2.5 h-1.5 rounded-full overflow-hidden ${tone.track}`}>
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${tone.fill}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EnergyTile({ energyMode }: { energyMode?: string }) {
+  const key = energyMode?.toLowerCase();
+  const config = key ? ENERGY_LEVELS[key] : undefined;
+  const tone = config?.tone ?? NEUTRAL_TONE;
+  const Icon = config?.icon ?? Zap;
+  const level = config?.level ?? 0;
+  return (
+    <div className="rounded-xl dark:bg-zinc-900 bg-white border dark:border-zinc-800 border-zinc-200 px-4 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium dark:text-zinc-400 text-zinc-500">Energy mode</p>
+        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full flex-shrink-0 ${tone.chip}`}>
+          <Icon className="w-3.5 h-3.5" />
+        </span>
+      </div>
+      <p className={`mt-1 text-3xl font-semibold ${tone.text}`}>
+        {energyMode ? capitalize(energyMode) : "—"}
+      </p>
+      <div className="mt-2.5 flex gap-1">
+        {[1, 2, 3, 4].map((segment) => (
+          <div
+            key={segment}
+            className={`h-1.5 flex-1 rounded-full overflow-hidden ${
+              segment <= level ? tone.fill : tone.track
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function MorningSummaryCard({
@@ -251,18 +399,8 @@ export function MorningSummaryCard({
 
           {/* Score / status cards */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl dark:bg-zinc-900 bg-white border dark:border-zinc-800 border-zinc-200 px-4 py-3">
-              <p className="text-sm font-medium dark:text-zinc-400 text-zinc-500">Morning score</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums dark:text-white text-zinc-900">
-                {typeof plan.overall_score === "number" ? plan.overall_score : "—"}
-              </p>
-            </div>
-            <div className="rounded-xl dark:bg-zinc-900 bg-white border dark:border-zinc-800 border-zinc-200 px-4 py-3">
-              <p className="text-sm font-medium dark:text-zinc-400 text-zinc-500">Energy mode</p>
-              <p className="mt-1 text-2xl font-semibold dark:text-white text-zinc-900">
-                {resolvedEnergy ? capitalize(resolvedEnergy) : "—"}
-              </p>
-            </div>
+            <ScoreTile score={typeof plan.overall_score === "number" ? plan.overall_score : null} />
+            <EnergyTile energyMode={resolvedEnergy} />
           </div>
 
           {dataQualityNotes.length > 0 && (

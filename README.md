@@ -165,21 +165,24 @@ You can choose OpenAI or OpenRouter independently for:
 3. **Correlation-archetype interpreter** (`run_correlation_archetype_update.py` — uses the same `BEHAVIOR_PROFILE_LLM_*` settings)
 
 ```env
-# Morning coach pipeline (default: openrouter)
+# Morning coach pipeline — stay on OpenAI with a stronger model
 COACH_LLM_PROVIDER=openai
-# COACH_LLM_MODEL=gpt-4o-mini
+COACH_LLM_MODEL=gpt-4.1
 
-# Behavior-profile + correlation-archetype interpreters (default: openai)
+# Behavior-profile + correlation-archetype interpreters (same settings)
 BEHAVIOR_PROFILE_LLM_PROVIDER=openai
-# BEHAVIOR_PROFILE_LLM_MODEL=gpt-4o-mini
+BEHAVIOR_PROFILE_LLM_MODEL=gpt-4.1
 ```
 
-| Variable | Values | Default | Uses key |
-|----------|--------|---------|----------|
+| Variable | Values | Default (OpenAI) | Uses key |
+|----------|--------|------------------|----------|
 | `COACH_LLM_PROVIDER` | `openai` \| `openrouter` | `openrouter` | matching provider key |
+| `COACH_LLM_MODEL` | e.g. `gpt-4.1`, `gpt-4o` | `gpt-4.1` | — |
 | `BEHAVIOR_PROFILE_LLM_PROVIDER` | `openai` \| `openrouter` | `openai` | matching provider key |
+| `BEHAVIOR_PROFILE_LLM_MODEL` | e.g. `gpt-4.1`, `gpt-4o` | `gpt-4.1` | — |
 
-Optional model overrides: `COACH_LLM_MODEL`, `BEHAVIOR_PROFILE_LLM_MODEL`.
+Note: `gpt-5.4-mini` is an OpenRouter model id, not a native OpenAI API model.
+If you stay on `COACH_LLM_PROVIDER=openai`, use `gpt-4.1` or `gpt-4o` instead.
 
 Journal summary extraction (runs during morning prep) also supports both providers:
 

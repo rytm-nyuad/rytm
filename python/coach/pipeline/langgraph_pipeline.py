@@ -38,7 +38,11 @@ from pipeline.deterministic_agents import (
 )
 from pipeline.action_utils import add_action_ids_to_candidates
 from pipeline.agent_logger import AgentLogger
-from llm.llm_config import LlmClientConfig, resolve_coach_pipeline_llm_config
+from llm.llm_config import (
+    DEFAULT_COACH_OPENROUTER_MODEL,
+    LlmClientConfig,
+    resolve_coach_pipeline_llm_config,
+)
 
 # Helper for debug logging to stderr
 def debug_log(msg: str):
@@ -116,7 +120,7 @@ class MorningCoachPipeline:
                 provider="openrouter",
                 api_key=openrouter_api_key,
                 api_base="https://openrouter.ai/api/v1",
-                model=os.getenv("COACH_LLM_MODEL") or "gpt-5.4-mini",
+                model=os.getenv("COACH_LLM_MODEL") or DEFAULT_COACH_OPENROUTER_MODEL,
                 env_key_name="OPENROUTER_API_KEY",
             )
         else:
@@ -188,6 +192,19 @@ class MorningCoachPipeline:
     RECOVERY_DOMAINS = frozenset({"sleep", "recovery", "stress"})
     ENERGY_MODE_RANK = {"low": 0, "moderate": 1, "normal": 2, "high": 3}
     FAST_READY_MIN_N_VALID = 7
+    # Lower-confidence tier: enough same-feature history for a hedged early comparison
+    # ("early trend, still calibrating"), well before the full fast_ready bar (7 days).
+    # Never unlocks z-scores/volatility/slopes — only a hedged last-vs-recent-average
+    # mention for a small fixed feature set. Hard floor: never below this many valid days.
+    TREND_READY_MIN_N_VALID = 4
+    EARLY_TREND_FEATURES = frozenset({
+        "sleep_duration_hours",
+        "sleep_efficiency",
+        "energy_score",
+        "stress_score",
+        "focus_score",
+        "hrv_daily_rmssd",
+    })
     BANNED_HIGH_ENERGY_PHRASES = (
         "harness your energy",
         "harness that energy",
@@ -227,6 +244,49 @@ class MorningCoachPipeline:
         # Require typical tracked features to have enough history.
         ready_count = sum(1 for n in n_vals if n >= self.FAST_READY_MIN_N_VALID)
         return ready_count >= max(3, len(n_vals) // 3)
+
+    def _is_trend_ready(self, state: PipelineState) -> bool:
+        """Lower-confidence tier than _is_fast_ready: True once enough of the
+        EARLY_TREND_FEATURES have >= TREND_READY_MIN_N_VALID days, independent of the
+        upstream fast_ready flag. Only unlocks a hedged early_trend digest — never
+        z-scores/volatility/slopes. Callers should only consult this when fast_ready
+        is already False."""
+        baselines = (state.get("current_state") or {}).get("baselines") or {}
+        if not isinstance(baselines, dict) or not baselines:
+            return False
+        n_vals: List[int] = []
+        for key, payload in baselines.items():
+            if key not in self.EARLY_TREND_FEATURES or not isinstance(payload, dict):
+                continue
+            fast = payload.get("fast") if isinstance(payload.get("fast"), dict) else {}
+            n = fast.get("n_valid")
+            if isinstance(n, (int, float)) and n > 0:
+                n_vals.append(int(n))
+        if not n_vals:
+            return False
+        ready_count = sum(1 for n in n_vals if n >= self.TREND_READY_MIN_N_VALID)
+        return ready_count >= max(2, len(n_vals) // 4)
+
+    def _build_early_trend_digest(self, current_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Hedged last-vs-recent-average for a small fixed feature set once
+        TREND_READY_MIN_N_VALID days exist. No z-score, no volatility — just two
+        directly-observed numbers so the model can make an honestly-hedged comparison
+        well before the full fast_ready bar (7 days)."""
+        baselines = current_state.get("baselines") if isinstance(current_state.get("baselines"), dict) else {}
+        out: Dict[str, Any] = {}
+        for key, payload in baselines.items():
+            if key not in self.EARLY_TREND_FEATURES or not isinstance(payload, dict):
+                continue
+            fast = payload.get("fast") if isinstance(payload.get("fast"), dict) else {}
+            n_valid = fast.get("n_valid")
+            if not isinstance(n_valid, (int, float)) or n_valid < self.TREND_READY_MIN_N_VALID:
+                continue
+            last_value = fast.get("last_value")
+            recent_avg = fast.get("center_ewma")
+            if last_value is None or recent_avg is None:
+                continue
+            out[key] = {"last": last_value, "recent_avg": recent_avg, "n_valid": int(n_valid)}
+        return out
 
     def _sleep_duration_hours(self, state: PipelineState) -> Optional[float]:
         bundle = state.get("input_bundle") or {}
@@ -583,22 +643,75 @@ class MorningCoachPipeline:
             "recent_stressor_distribution": episodic.get("recent_stressor_distribution"),
         })
 
+    CONFIDENCE_NOTE = (
+        "Each baseline entry includes n_valid (days of history behind it). Scale claim strength to "
+        "n_valid yourself, per feature, instead of treating every entry as equally reliable: "
+        "n_valid < 4 -> describe `last` only as an absolute observation, no comparison. "
+        "n_valid 4-6 -> comparison allowed but MUST be hedged ('early trend, still calibrating', "
+        "'not enough days yet to call this a pattern'). n_valid >= 7 -> full baseline/z-score/"
+        "volatility language, no hedge required. STALENESS: `last` is the most recent VALID reading, "
+        "not necessarily from this window — before calling it 'last night'/'yesterday', confirm the "
+        "matching raw bundle field is non-null this window (check the matching missingness.missing_* "
+        "flag is false); if the raw field is null while `last` still has a value, that reading is "
+        "stale from an earlier day — call it 'your last available reading', not 'last night'/'yesterday'."
+    )
+
     def _slim_current_state(
         self,
         current_state: Dict[str, Any],
         *,
         fast_ready: Optional[bool] = None,
+        trend_ready: bool = False,
+        always_visible: bool = False,
     ) -> Dict[str, Any]:
-        """Slim auditable state. Baseline/z/volatility omitted until fast_ready."""
+        """Slim auditable state.
+
+        Default (always_visible=False): binary gate — baseline/z/volatility omitted until
+        fast_ready, with a hedged early_trend digest once trend_ready. Used by agents that only
+        emit structured fields (e.g. the action generator), where a hard floor is the simpler
+        contract.
+
+        always_visible=True: baselines/slopes/volatility are always included; each baseline entry
+        carries n_valid and a confidence_note instructs the caller to scale claim strength to
+        n_valid itself instead of code deciding visibility. Used by the holistic reporter, which
+        is trusted to reason about data confidence directly (see CONFIDENCE SCALING in its prompt).
+        """
+        if always_visible:
+            volatility = current_state.get("volatility") if isinstance(current_state.get("volatility"), dict) else {}
+            global_vol = volatility.get("global") if isinstance(volatility.get("global"), dict) else {}
+            return self._omit_empty({
+                "as_of_date": current_state.get("as_of_date"),
+                "baselines": self._slim_baselines(current_state.get("baselines")),
+                "slopes": self._slim_slopes(current_state.get("slopes")),
+                "volatility": {"global": global_vol} if global_vol else None,
+                "uncertainty": current_state.get("uncertainty"),
+                "episodic_memory": self._slim_episodic_memory(current_state.get("episodic_memory")),
+                "residual_signature": self._slim_residual(current_state.get("residual_signature")),
+                "confidence_note": self.CONFIDENCE_NOTE,
+            })
         if fast_ready is False:
+            if trend_ready:
+                early_trend = self._build_early_trend_digest(current_state)
+                note = (
+                    "Baselines not ready (need ~7 valid days). Do NOT use z-scores, full baseline "
+                    "comparisons, or volatility language. `early_trend` below has only "
+                    f">= {self.TREND_READY_MIN_N_VALID} valid days per feature — mention it ONLY "
+                    "with explicit hedge language ('early trend, still calibrating', 'not enough "
+                    "days yet to call this a pattern'), never as a settled baseline comparison."
+                )
+            else:
+                early_trend = {}
+                note = (
+                    "Baselines not ready (need ~7 valid days). "
+                    "Do NOT use z-scores, baseline comparisons, or volatility language."
+                )
             return self._omit_empty({
                 "as_of_date": current_state.get("as_of_date"),
                 "baseline_ready": False,
                 "learning_mode": True,
-                "learning_mode_note": (
-                    "Baselines not ready (need ~7 valid days). "
-                    "Do NOT use z-scores, baseline comparisons, or volatility language."
-                ),
+                "trend_ready": trend_ready,
+                "learning_mode_note": note,
+                "early_trend": early_trend or None,
                 "episodic_memory": self._slim_episodic_memory(current_state.get("episodic_memory")),
             })
         volatility = current_state.get("volatility") if isinstance(current_state.get("volatility"), dict) else {}
@@ -1065,18 +1178,33 @@ class MorningCoachPipeline:
         current_state: Dict[str, Any],
         *,
         fast_ready: bool,
+        trend_ready: bool = False,
     ) -> Dict[str, Any]:
         """State digest for constraints. Baseline/z/volatility only when fast_ready."""
         if not fast_ready:
+            if trend_ready:
+                early_trend = self._build_early_trend_digest(current_state)
+                note = (
+                    "Baselines not ready (need ~7 valid days). "
+                    "Do NOT use z-scores, baseline comparisons, or volatility language. "
+                    "Do not emit risk_flags that depend on baseline deviation (e.g. volatility). "
+                    f"`early_trend` below has only >= {self.TREND_READY_MIN_N_VALID} valid days per "
+                    "feature — treat as a hedged early signal only, never a settled baseline."
+                )
+            else:
+                early_trend = {}
+                note = (
+                    "Baselines not ready (need ~7 valid days). "
+                    "Do NOT use z-scores, baseline comparisons, or volatility language. "
+                    "Do not emit risk_flags that depend on baseline deviation (e.g. volatility)."
+                )
             return self._omit_empty({
                 "as_of_date": current_state.get("as_of_date"),
                 "baseline_ready": False,
                 "learning_mode": True,
-                "learning_mode_note": (
-                    "Baselines not ready (need ~7 valid days). "
-                    "Do NOT use z-scores, baseline comparisons, or volatility language. "
-                    "Do not emit risk_flags that depend on baseline deviation (e.g. volatility)."
-                ),
+                "trend_ready": trend_ready,
+                "learning_mode_note": note,
+                "early_trend": early_trend or None,
                 "episodic_memory": self._slim_episodic_memory(current_state.get("episodic_memory")),
             })
 
@@ -1094,7 +1222,15 @@ class MorningCoachPipeline:
         })
 
     def _build_holistic_agent_inputs(self, state: PipelineState) -> Dict[str, Any]:
-        """Slim status-only inputs for holistic reporter (goals intentionally excluded)."""
+        """Slim status-only inputs for holistic reporter (goals intentionally excluded).
+
+        current_state uses always_visible=True: baselines are never hidden by a fast_ready
+        cliff here — the reporter is trusted to scale claim strength to each feature's
+        n_valid itself (see CONFIDENCE SCALING in HOLISTIC_STATUS_REPORTER_SYSTEM_PROMPT).
+        fast_ready is still used for recent_state_history's deviation rows (a narrower,
+        upstream-computed signal, not part of this scoped change) and for behavior-profile /
+        correlation-archetype clustering readiness (slow_ready), which are unrelated gates.
+        """
         readiness_src = state.get("coach_readiness") or {}
         fast_ready = self._is_fast_ready(state)
         return {
@@ -1102,16 +1238,14 @@ class MorningCoachPipeline:
             "input_bundle": self._slim_input_bundle(state.get("input_bundle") or {}),
             "current_state": self._slim_current_state(
                 state.get("current_state") or {},
-                fast_ready=fast_ready,
+                always_visible=True,
             ),
             "recent_state_history": self._slim_recent_history(
                 state.get("recent_state_history") or [],
                 fast_ready=fast_ready,
             ),
             "coach_readiness": {
-                "fast_ready": fast_ready,
                 "slow_ready": bool(readiness_src.get("slow_ready")),
-                "learning_mode": not fast_ready,
             },
             "behavior_profile": self._slim_behavior_profile(
                 state.get("behavior_profile") or {}
@@ -1126,17 +1260,20 @@ class MorningCoachPipeline:
         """Compact inputs for constraints builder."""
         bundle = state.get("input_bundle") or {}
         fast_ready = self._is_fast_ready(state)
+        trend_ready = False if fast_ready else self._is_trend_ready(state)
         energy_mode = self._effective_energy_mode(state)
         return {
             "overall_score": state["overall_score"],
             "energy_mode": energy_mode,
             "learning_mode": not fast_ready,
+            "trend_ready": trend_ready,
             "safety_override": self._safety_override_payload(state) or None,
             "user_goal": self._slim_user_goal(state.get("user_goal"), mode="constraints"),
             "signal_pack": self._build_constraint_signal_pack(bundle),
             "state_digest": self._build_constraints_state_digest(
                 state.get("current_state") or {},
                 fast_ready=fast_ready,
+                trend_ready=trend_ready,
             ),
             "behavior_profile": self._slim_behavior_profile(
                 state.get("behavior_profile") or {},
@@ -1177,6 +1314,7 @@ class MorningCoachPipeline:
         readiness: Optional[Dict[str, Any]],
         *,
         fast_ready: Optional[bool] = None,
+        trend_ready: bool = False,
     ) -> Dict[str, Any]:
         """Baseline flags + signal coverage (for agents that do not receive the bundle)."""
         readiness = readiness or {}
@@ -1185,6 +1323,7 @@ class MorningCoachPipeline:
             "fast_ready": ready,
             "slow_ready": bool(readiness.get("slow_ready")),
             "learning_mode": not ready,
+            "trend_ready": False if ready else trend_ready,
             "bundle_confidence": self._strip_goal_fields_from_confidence(
                 readiness.get("bundle_confidence")
                 if isinstance(readiness.get("bundle_confidence"), dict)
@@ -1451,9 +1590,9 @@ class MorningCoachPipeline:
                 state.get("coach_readiness")
             ),
             "budget_policy": {
-                "max_displayed_actions": 3,
-                "hard_cap": 4,
-                "min_valid": 3,
+                "max_displayed_actions": 4,
+                "hard_cap": 6,
+                "min_valid": 4,
             },
             "recent_action_history": self._slim_recent_action_history(
                 state.get("recent_action_history")
@@ -1480,6 +1619,7 @@ class MorningCoachPipeline:
         budget = state.get("budget_result") or {}
         display_actions = budget.get("display_actions") or []
         fast_ready = self._is_fast_ready(state)
+        trend_ready = False if fast_ready else self._is_trend_ready(state)
         safety = self._safety_override_payload(state)
         return {
             "user_name": state.get("user_name") or None,
@@ -1487,10 +1627,12 @@ class MorningCoachPipeline:
             "overall_score": state["overall_score"],
             "selected_domains": state.get("selected_domains") or [],
             "learning_mode": not fast_ready,
+            "trend_ready": trend_ready,
             "safety_override": safety or None,
             "coach_readiness": self._slim_coach_readiness_with_coverage(
                 state.get("coach_readiness"),
                 fast_ready=fast_ready,
+                trend_ready=trend_ready,
             ),
             "holistic_status_report": self._slim_holistic_status_report(
                 state.get("holistic_status_report")
@@ -1801,25 +1943,19 @@ class MorningCoachPipeline:
 
         started_at = datetime.utcnow()
         holistic_inputs = self._build_holistic_agent_inputs(state)
-        learning = (holistic_inputs.get("coach_readiness") or {}).get("learning_mode")
-        state_label = (
-            "Current auditable state (LEARNING MODE — no baselines/z/volatility):"
-            if learning
-            else "Current auditable state (baselines as last/baseline/z_fast; slopes/volatility slimmed):"
-        )
 
         user_prompt = f"""Overall score today: {holistic_inputs['overall_score']}
 
 Prepared daily input bundle (slimmed status signals; yesterday / last night):
 {json.dumps(holistic_inputs['input_bundle'], indent=2)}
 
-{state_label}
+Current auditable state (baselines as last/baseline/z_fast + n_valid per feature; slopes/volatility slimmed — see CONFIDENCE SCALING, nothing here is hidden, scale claim strength to n_valid yourself):
 {json.dumps(holistic_inputs['current_state'], indent=2)}
 
 Recent state history (most recent first; scores/deviations only when baselines ready):
 {json.dumps(holistic_inputs['recent_state_history'], indent=2)}
 
-Coach readiness (baseline stability; learning_mode gates baseline language):
+Coach readiness (behavior-profile / correlation-archetype clustering stability only — unrelated to the per-feature confidence on the auditable state above):
 {json.dumps(holistic_inputs['coach_readiness'], indent=2)}
 
 Behavior profile:
@@ -1959,7 +2095,7 @@ Do not mention goals or treat goals as missing."""
             }
 
         # Insert at front; drop last if at hard cap.
-        hard_cap = getattr(self.budget_enforcer, "hard_cap", 4)
+        hard_cap = getattr(self.budget_enforcer, "hard_cap", 6)
         display = [recovery_candidate] + [
             a for a in display
             if isinstance(a, dict) and a.get("action_id") != recovery_candidate.get("action_id")
@@ -2225,9 +2361,9 @@ Active patterns (code-detected multi-day facts — refer by day counts/values; n
             user_prompt += (
                 f"\nREGEN FEEDBACK (address these gaps this attempt):\n{regen_feedback}\n"
             )
-        user_prompt += """Generate 4-5 **varied, realistic** actions (real focus/work blocks need enough time — no token 10–15 min work sessions unless energy is low).
-Follow the rules: If selected and goal domains overlap, generate 3-4 actions for those domains.
- If different, generate at least 3 for selected domains and at least 1 (ideally 1-2) for the goal domain(s).
+        user_prompt += """Generate 5-6 **varied, realistic** actions (real focus/work blocks need enough time — no token 10–15 min work sessions unless energy is low).
+Follow the rules: If selected and goal domains overlap, generate 4-5 actions for those domains.
+ If different, generate at least 4 for selected domains and at least 1 (ideally 1-2) for the goal domain(s).
  State meal logging assumptions in `assumptions` when nutrition data is ambiguous.
  When high-severity active_patterns are present, include at least one action in the mapped pattern domain.
  **DO NOT include action_id - it will be generated automatically.**
@@ -2382,12 +2518,21 @@ Review for coherence, feasibility, safety, and domain/goal coverage rules. Accep
         user_name_line = (
             f"- User name: {user_name}" if user_name else "- User name: not available"
         )
-        learning_line = (
-            "- LEARNING MODE: do not mention baselines, z-scores, averages, or volatility; "
-            "speak from today's score + yesterday/last-night observations only."
-            if brief_inputs.get("learning_mode")
-            else ""
-        )
+        # Note: baseline language is no longer gated by this flat flag — the holistic report now
+        # scales its own baseline claims per feature (see CONFIDENCE SCALING in its prompt), so it
+        # may legitimately include full baseline language for some features even while this
+        # aggregate signal is true. This line only covers the word-length exception below, which is
+        # a genuinely separate, coarser judgment (is there enough shared history yet to trust a
+        # "story unchanged vs previous_morning_brief" comparison).
+        learning_line = ""
+        if brief_inputs.get("learning_mode"):
+            learning_line = (
+                "- EARLY DAYS (aggregate signal, not a per-feature baseline gate): there isn't yet "
+                "enough shared history to trust a 'story unchanged vs previous_morning_brief' "
+                "judgment, so always use the full 260-340 word target regardless of similarity. "
+                "This has no bearing on which baseline claims are safe to use — trust the holistic "
+                "report's own hedging for that (see BASELINE LANGUAGE in the system prompt)."
+            )
         safety = brief_inputs.get("safety_override") or {}
         safety_line = (
             f"- SAFETY OVERRIDE ACTIVE: {json.dumps(safety)}. "
@@ -2420,7 +2565,7 @@ Recent user action feedback (ratings/comments/completions from the last 7 days �
 Active patterns (code-detected multi-day facts — name real streaks by day count when present; never invent):
 {json.dumps(brief_inputs.get('active_patterns') or [], indent=2)}
 
-Write a personal morning note in Markdown. Length: 80–130 words if yesterday's brief covers the same core pattern; 180–240 words if the story changed. State your meal logging vs skipped assumption when nutrition was incomplete. Do not list today's actions (UI shows them separately).
+Write a personal morning note. Length: 180–240 words if yesterday's brief covers the same core pattern; 260–340 words if the story changed materially — use the room for real depth, not padding. {"Always use the full 260-340 word target — LEARNING MODE means there is not yet enough history to reliably judge 'story unchanged.' " if brief_inputs.get("learning_mode") else ""}Make it easy to read: short paragraphs with blank lines between them, bold on key numbers/takeaways, and (only if you have 3+ parallel numbers in one place) a short bullet list — see READABILITY / DESIGN in the system prompt. State your meal logging vs skipped assumption when nutrition was incomplete. Do not list today's actions (UI shows them separately).
 """
         
         response = self._call_llm(MORNING_BRIEF_COMPOSER_SYSTEM_PROMPT, user_prompt)
@@ -2847,27 +2992,27 @@ Write a personal morning note in Markdown. Length: 80–130 words if yesterday's
             overlap_domains = selected & goals if (selected and goals) else set()
             if overlap_domains:
                 in_overlap = sum(1 for d in accepted_domains if d in (selected | goals))
-                if in_overlap < 3:
+                if in_overlap < 4:
                     coverage_ok = False
                     coverage_note = (
-                        f"coverage unmet: need ≥3 accepted in selected/goal domains; got {in_overlap}"
+                        f"coverage unmet: need ≥4 accepted in selected/goal domains; got {in_overlap}"
                     )
             elif selected and goals and selected != goals:
                 in_selected = sum(1 for d in accepted_domains if d in selected)
                 in_goal = sum(1 for d in accepted_domains if d in goals)
-                if in_selected < 3 or in_goal < 1:
+                if in_selected < 4 or in_goal < 1:
                     coverage_ok = False
                     coverage_note = (
-                        f"coverage unmet: need ≥3 selected-domain and ≥1 goal-domain actions; "
+                        f"coverage unmet: need ≥4 selected-domain and ≥1 goal-domain actions; "
                         f"got selected={in_selected}, goal={in_goal}"
                     )
             elif selected:
                 in_selected = sum(1 for d in accepted_domains if d in selected)
-                if in_selected < 3 and len(accepted_ids) >= 3:
+                if in_selected < 4 and len(accepted_ids) >= 4:
                     # Soft: only flag when enough accepts but wrong domains
                     coverage_ok = False
                     coverage_note = (
-                        f"coverage unmet: need ≥3 selected-domain actions; got {in_selected}"
+                        f"coverage unmet: need ≥4 selected-domain actions; got {in_selected}"
                     )
 
         regen_required = bool(out.get("regen_required"))

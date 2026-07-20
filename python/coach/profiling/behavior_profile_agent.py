@@ -370,7 +370,7 @@ Return the behavior profile JSON only (cluster_profile_v2 schema)."""
                     f"`cluster_interpretations.{required}` must be an object"
                 )
             status = raw.get("status")
-            if status not in ("interpreted", "insufficient_data"):
+            if status not in ("interpreted", "observational", "insufficient_data"):
                 raise BehaviorProfileValidationError(
                     f"`cluster_interpretations.{required}.status` invalid"
                 )

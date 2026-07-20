@@ -10,14 +10,14 @@ Morning coach pipeline (langgraph / run_pipeline):
   COACH_LLM_MODEL=...   (optional override)
 
   Defaults: provider=openrouter (preserves existing pipeline behavior),
-            model=gpt-5.4-mini for openrouter, gpt-4o-mini for openai
+            model=gpt-5.4-mini for openrouter, gpt-4.1 for openai
 
 Behavior-profile clustering interpreter:
   BEHAVIOR_PROFILE_LLM_PROVIDER=openai|openrouter
   BEHAVIOR_PROFILE_LLM_MODEL=...   (optional override)
 
   Defaults: provider=openai,
-            model=gpt-4o-mini for openai, deepseek/deepseek-v3.2 for openrouter
+            model=gpt-4.1 for openai, deepseek/deepseek-v3.2 for openrouter
 """
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ from typing import Literal, Mapping, Optional
 LlmProvider = Literal["openai", "openrouter"]
 
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_OPENAI_COACH_MODEL = "gpt-4.1"
 DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v3.2"
 DEFAULT_COACH_OPENROUTER_MODEL = "gpt-5.4-mini"
 
@@ -118,7 +119,7 @@ def resolve_behavior_profile_llm_config() -> LlmClientConfig:
         provider_env="BEHAVIOR_PROFILE_LLM_PROVIDER",
         model_env="BEHAVIOR_PROFILE_LLM_MODEL",
         default_provider="openai",
-        openai_default_model=DEFAULT_OPENAI_MODEL,
+        openai_default_model=DEFAULT_OPENAI_COACH_MODEL,
         openrouter_default_model=DEFAULT_OPENROUTER_MODEL,
     )
 
@@ -129,6 +130,6 @@ def resolve_coach_pipeline_llm_config() -> LlmClientConfig:
         provider_env="COACH_LLM_PROVIDER",
         model_env="COACH_LLM_MODEL",
         default_provider="openrouter",
-        openai_default_model=DEFAULT_OPENAI_MODEL,
+        openai_default_model=DEFAULT_OPENAI_COACH_MODEL,
         openrouter_default_model=DEFAULT_COACH_OPENROUTER_MODEL,
     )

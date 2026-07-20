@@ -13,9 +13,9 @@ Hard constraints:
 - Be conservative and avoid medical advice. Do not diagnose, prescribe, or recommend supplements/medications.
 - If key info is missing (diet restrictions, injuries, schedule constraints), include it in created_from.missing_info_questions.
 - Budgets:
-  target_actions_per_day = 3
-  max_actions_per_day = 4
-  max_domains_per_day = 2
+  target_actions_per_day = 4
+  max_actions_per_day = 6
+  max_domains_per_day = 3
   max_message_words = 400
 - Always set medical_disclaimer_required = true.
 - Set goal_version = 1.
@@ -42,9 +42,9 @@ GoalSpec schema (must match exactly):
     "avoid_topics": string[]
   },
   "budgets": {
-    "target_actions_per_day": 3,
-    "max_actions_per_day": 4,
-    "max_domains_per_day": 2,
+    "target_actions_per_day": 4,
+    "max_actions_per_day": 6,
+    "max_domains_per_day": 3,
     "max_message_words": 400
   },
   "preferences": {
