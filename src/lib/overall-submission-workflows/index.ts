@@ -29,7 +29,9 @@ export type {
   RecomputeForwardParams,
   RecomputeForwardResult,
 } from "./recomputeForward";
-export { build_daily_input_bundle_v1 } from "./inputBundleV1";
+export { build_daily_input_bundle_v1, syncCoachJournalContextForSubmissionDate } from "./inputBundleV1";
 export type { BuildDailyInputBundleV1Result } from "./inputBundleV1";
+export { buildJournalContextAsOf } from "./journalSummary2";
+export type { JournalContextSnapshot } from "./journalSummary2";
 export { update_state, updateState } from "./state_engine";
 export type { UpdateStateParams, UpdateStateResult } from "./state_engine";

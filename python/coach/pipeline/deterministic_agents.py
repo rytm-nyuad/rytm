@@ -134,7 +134,7 @@ class FeatureAgent:
 class BudgetEnforcerAgent:
     """Budget Enforcer Agent - Applies display constraints deterministically"""
     
-    def __init__(self, target_actions: int = 3, hard_cap: int = 4):
+    def __init__(self, target_actions: int = 4, hard_cap: int = 6):
         self.target_actions = target_actions
         self.hard_cap = hard_cap
     
@@ -152,11 +152,11 @@ class BudgetEnforcerAgent:
         
         # Determine display count based on energy mode
         if energy_mode == 'low':
-            display_count = min(4, len(sorted_actions))
+            display_count = min(self.target_actions, len(sorted_actions))
         elif energy_mode == 'normal':
-            display_count = min(5, len(sorted_actions))
+            display_count = min(self.target_actions + 1, len(sorted_actions))
         else:  # high
-            display_count = min(5, len(sorted_actions))
+            display_count = min(self.hard_cap, len(sorted_actions))
         
         # Cap at hard limit
         display_count = min(display_count, self.hard_cap)
@@ -295,7 +295,7 @@ class PersistenceAgent:
 class RegenerationController:
     """Regeneration Controller - Manages regen loops"""
     
-    def __init__(self, max_regen: int = 2, min_valid_actions: int = 3):
+    def __init__(self, max_regen: int = 2, min_valid_actions: int = 4):
         self.max_regen = max_regen
         self.min_valid_actions = min_valid_actions
     

@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatLocalDate, getCanonicalTimeZone, type LocalDateString } from "@/lib/time";
+import {
+  buildJournalContextAsOf,
+  type JournalContextSnapshot,
+} from "./journalSummary2";
 import { withSupabaseRetry } from "./supabaseRetry";
 
 type FitbitSleepDailyRow = {
@@ -766,34 +770,6 @@ async function fetchMaybeSingle<T>(
   return (data as T | null) ?? null;
 }
 
-async function fetchUserJournalContext(
-  client: SupabaseClient,
-  userId: string
-): Promise<UserJournalContext2Row | null> {
-  const { data, error } = await withSupabaseRetry(
-    "read user_journal_context2",
-    () =>
-      client
-        .from("user_journal_context2")
-        .select(
-          "narrative_arc, open_commitments, recurring_topics, recent_day_summaries, as_of_date"
-        )
-        .eq("user_id", userId)
-        .maybeSingle()
-  );
-
-  if (error) {
-    // Table may not exist until enrichment SQL is applied.
-    console.error("Failed to read user_journal_context2 for bundle", {
-      userId,
-      error,
-    });
-    return null;
-  }
-
-  return (data as UserJournalContext2Row | null) ?? null;
-}
-
 function buildSleepBundle(sleep: FitbitSleepDailyRow | null, timezone: string) {
   const minutesAsleep = safeNumber(sleep?.minutes_asleep);
   const timeInBed = safeNumber(sleep?.time_in_bed);
@@ -980,9 +956,35 @@ async function fetchMealContext(
   };
 }
 
+function mapJournalContextSnapshotToBundleShape(
+  context: JournalContextSnapshot | null
+): UserJournalContext2Row | null {
+  if (!context) {
+    return null;
+  }
+
+  return {
+    as_of_date: context.as_of_date,
+    narrative_arc: context.narrative_arc,
+    open_commitments: context.open_commitments.map((commitment) => ({
+      description: commitment.description,
+      timeframe: commitment.timeframe,
+      when_text: commitment.when_text,
+      status: commitment.status,
+      confidence: clamp(safeNumber(commitment.confidence) ?? 0, 0, 1),
+    })),
+    recurring_topics: context.recurring_topics.map((topic) => ({
+      topic: topic.topic,
+      note: topic.note,
+      confidence: clamp(safeNumber(topic.confidence) ?? 0, 0, 1),
+    })),
+    recent_day_summaries: context.recent_day_summaries,
+  };
+}
+
 function buildJournalBundle(
   journal: JournalSummary2Row | null,
-  context: UserJournalContext2Row | null
+  context: JournalContextSnapshot | UserJournalContext2Row | null
 ) {
   return {
     narrative_summary: journal?.narrative_summary ?? null,
@@ -1063,7 +1065,6 @@ export async function build_daily_input_bundle_v1(
     checkin,
     checkinRelations,
     journal,
-    journalContext,
     overall,
   ] = await Promise.all([
     fetchMaybeSingle<FitbitSleepDailyRow>(client, "fitbit_sleep_daily", "app_user_id", user_id, "date", submissionDate),
@@ -1075,9 +1076,9 @@ export async function build_daily_input_bundle_v1(
     fetchMaybeSingle<DailyCheckinRow>(client, "daily_checkins", "user_id", user_id, "checkin_date", sourceDate),
     fetchMaybeSingle<DailyCheckinRelation2Row>(client, "daily_checkin_relation2", "user_id", user_id, "checkin_date", sourceDate),
     fetchMaybeSingle<JournalSummary2Row>(client, "journal_summary2", "user_id", user_id, "date", sourceDate),
-    fetchUserJournalContext(client, user_id),
     fetchMaybeSingle<DailyOverallRow>(client, "daily_overall", "user_id", user_id, "date", submissionDate, "overall_score"),
   ]);
+  const journalContext = await buildJournalContextAsOf(client, user_id, sourceDate);
   const proxyBaselineContext = await fetchProxyBaselineContext(client, user_id, submissionDate);
   const mealContext = await fetchMealContext(client, user_id, sourceDate, timezone);
 
@@ -1228,4 +1229,184 @@ export async function build_daily_input_bundle_v1(
     timezone,
     row: data as DailyInputBundleV12Row,
   };
+}
+
+function journalContextToBundleContext(context: JournalContextSnapshot) {
+  const mapped = mapJournalContextSnapshotToBundleShape(context);
+  return {
+    as_of_date: mapped?.as_of_date ?? context.as_of_date,
+    narrative_arc: mapped?.narrative_arc ?? context.narrative_arc ?? "",
+    open_commitments: mapped?.open_commitments ?? [],
+    recurring_topics: mapped?.recurring_topics ?? [],
+    recent_day_summaries: mapped?.recent_day_summaries ?? [],
+  };
+}
+
+/**
+ * Ensure stored coach artifacts use journal rolling context as-of sourceDate only.
+ * Patches daily_input_bundle_v12 and user_state_history2 episodic_memory before regen.
+ */
+export async function syncCoachJournalContextForSubmissionDate(
+  client: SupabaseClient,
+  userId: string,
+  submissionDate: LocalDateString,
+  sourceDate: LocalDateString
+): Promise<void> {
+  const context = await buildJournalContextAsOf(client, userId, sourceDate);
+  const contextShape = journalContextToBundleContext(context);
+
+  const { data: bundleRow, error: bundleError } = await withSupabaseRetry(
+    "read daily_input_bundle_v12 for journal context sync",
+    () =>
+      client
+        .from("daily_input_bundle_v12")
+        .select("bundle_json")
+        .eq("user_id", userId)
+        .eq("date", submissionDate)
+        .maybeSingle()
+  );
+
+  if (bundleError) {
+    throw new Error(
+      `Failed to read daily_input_bundle_v12 for journal context sync: ${bundleError.message}`
+    );
+  }
+
+  let narrativeSummary: string | null = null;
+  if (bundleRow?.bundle_json && typeof bundleRow.bundle_json === "object") {
+    const bundleJson = {
+      ...(bundleRow.bundle_json as Record<string, unknown>),
+    };
+    const journal =
+      bundleJson.journal && typeof bundleJson.journal === "object"
+        ? { ...(bundleJson.journal as Record<string, unknown>) }
+        : {};
+    narrativeSummary =
+      typeof journal.narrative_summary === "string"
+        ? journal.narrative_summary
+        : null;
+    journal.context = contextShape;
+    bundleJson.journal = journal;
+
+    const { error: updateError } = await withSupabaseRetry(
+      "update daily_input_bundle_v12 journal context",
+      () =>
+        client
+          .from("daily_input_bundle_v12")
+          .update({ bundle_json: bundleJson })
+          .eq("user_id", userId)
+          .eq("date", submissionDate)
+    );
+
+    if (updateError) {
+      throw new Error(
+        `Failed to update daily_input_bundle_v12 journal context: ${updateError.message}`
+      );
+    }
+  }
+
+  const { data: historyRow, error: historyError } = await withSupabaseRetry(
+    "read user_state_history2 for journal context sync",
+    () =>
+      client
+        .from("user_state_history2")
+        .select("state_snapshot_json")
+        .eq("user_id", userId)
+        .eq("date", submissionDate)
+        .maybeSingle()
+  );
+
+  if (historyError) {
+    throw new Error(
+      `Failed to read user_state_history2 for journal context sync: ${historyError.message}`
+    );
+  }
+
+  if (
+    historyRow?.state_snapshot_json &&
+    typeof historyRow.state_snapshot_json === "object"
+  ) {
+    const snapshot = {
+      ...(historyRow.state_snapshot_json as Record<string, unknown>),
+    };
+    const episodic =
+      snapshot.episodic_memory && typeof snapshot.episodic_memory === "object"
+        ? { ...(snapshot.episodic_memory as Record<string, unknown>) }
+        : {};
+
+    episodic.open_commitments = contextShape.open_commitments;
+    episodic.recurring_topics = contextShape.recurring_topics;
+    episodic.narrative_arc = contextShape.narrative_arc;
+    if (narrativeSummary !== null) {
+      episodic.narrative_summary = narrativeSummary;
+    }
+    snapshot.episodic_memory = episodic;
+
+    const { error: historyUpdateError } = await withSupabaseRetry(
+      "update user_state_history2 episodic journal context",
+      () =>
+        client
+          .from("user_state_history2")
+          .update({ state_snapshot_json: snapshot })
+          .eq("user_id", userId)
+          .eq("date", submissionDate)
+    );
+
+    if (historyUpdateError) {
+      throw new Error(
+        `Failed to update user_state_history2 episodic journal context: ${historyUpdateError.message}`
+      );
+    }
+  }
+
+  const { data: currentRow, error: currentError } = await withSupabaseRetry(
+    "read user_state_current2 for journal context sync",
+    () =>
+      client
+        .from("user_state_current2")
+        .select("as_of_date, state_json")
+        .eq("user_id", userId)
+        .maybeSingle()
+  );
+
+  if (currentError) {
+    throw new Error(
+      `Failed to read user_state_current2 for journal context sync: ${currentError.message}`
+    );
+  }
+
+  if (
+    currentRow?.as_of_date === submissionDate &&
+    currentRow.state_json &&
+    typeof currentRow.state_json === "object"
+  ) {
+    const stateJson = { ...(currentRow.state_json as Record<string, unknown>) };
+    const episodic =
+      stateJson.episodic_memory && typeof stateJson.episodic_memory === "object"
+        ? { ...(stateJson.episodic_memory as Record<string, unknown>) }
+        : {};
+
+    episodic.open_commitments = contextShape.open_commitments;
+    episodic.recurring_topics = contextShape.recurring_topics;
+    episodic.narrative_arc = contextShape.narrative_arc;
+    if (narrativeSummary !== null) {
+      episodic.narrative_summary = narrativeSummary;
+    }
+    stateJson.episodic_memory = episodic;
+
+    const { error: currentUpdateError } = await withSupabaseRetry(
+      "update user_state_current2 episodic journal context",
+      () =>
+        client
+          .from("user_state_current2")
+          .update({ state_json: stateJson })
+          .eq("user_id", userId)
+    );
+
+    if (currentUpdateError) {
+      throw new Error(
+        `Failed to update user_state_current2 episodic journal context: ${currentUpdateError.message}`
+      );
+    }
+  }
 }

@@ -83,6 +83,9 @@ class GatesFindingsTests(unittest.TestCase):
             assign_cluster_status(n_days=3, reportable_findings=[{}] * 5),
             "insufficient_data",
         )
+        # >=5 days but the "interpreted" bar isn't cleared (findings present, none
+        # independent_signal) -> "observational": real but explicitly hedged signal,
+        # not silently collapsed to insufficient_data.
         self.assertEqual(
             assign_cluster_status(
                 n_days=6,
@@ -91,6 +94,11 @@ class GatesFindingsTests(unittest.TestCase):
                     {"signal_class": "concurrent_selfreport"},
                 ],
             ),
+            "observational",
+        )
+        # >=5 days but zero reportable findings at all -> still insufficient_data.
+        self.assertEqual(
+            assign_cluster_status(n_days=6, reportable_findings=[]),
             "insufficient_data",
         )
         self.assertEqual(

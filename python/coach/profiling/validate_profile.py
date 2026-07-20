@@ -10,6 +10,12 @@ PROFILE_VERSION_V2 = "cluster_profile_v2"
 
 INSUFFICIENT_DATA_SENTENCE = "Too few days of this type to characterize reliably."
 
+# Required literal prefix for "observational" cluster text — a lower-confidence status
+# (>=5 days, at least one finding, but not enough for "interpreted"). The prefix is the
+# mechanical guardrail that keeps this content honestly hedged instead of read as a
+# confirmed pattern.
+OBSERVATIONAL_PREFIX = "Early signal, not yet a confirmed pattern: "
+
 OS_TIERS_DISCLOSURE = (
     "This user's morning scores do not separate into distinct tiers; "
     "clusters below describe co-occurring behavior patterns only."
@@ -109,6 +115,8 @@ def validate_profile_v2(
             ):
                 reasons.append(f"{key}_interpreted_text_empty")
             if isinstance(text, str) and text.strip():
+                if status == "observational" and not text.startswith(OBSERVATIONAL_PREFIX):
+                    reasons.append(f"{key}_observational_prefix_missing")
                 if CAUSAL_LANGUAGE.search(text):
                     reasons.append(f"{key}_causal_language")
                 allowed_features = {
