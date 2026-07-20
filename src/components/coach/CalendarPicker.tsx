@@ -19,17 +19,28 @@ function toDateStr(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
+/** Format a Date using local calendar parts (never toISOString — that shifts the day in UTC+ offsets). */
+function formatLocalDate(d: Date): string {
+  return toDateStr(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
 function parseDate(s: string) {
   const [y, m, d] = s.split("-").map(Number);
   return { year: y, month: m - 1, day: d };
 }
 
+function addDays(dateStr: string, delta: number): string {
+  const { year, month, day } = parseDate(dateStr);
+  const d = new Date(year, month, day);
+  d.setDate(d.getDate() + delta);
+  return formatLocalDate(d);
+}
+
 function formatLabel(dateStr: string, today: string): string {
   if (dateStr === today) return "Today";
-  const d = new Date(dateStr + "T00:00:00");
-  const yesterday = new Date(today + "T00:00:00");
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (dateStr === yesterday.toISOString().split("T")[0]) return "Yesterday";
+  if (dateStr === addDays(today, -1)) return "Yesterday";
+  const { year, month, day } = parseDate(dateStr);
+  const d = new Date(year, month, day);
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
@@ -68,9 +79,7 @@ export function CalendarPicker({ selectedDate, maxDate, onDateChange }: Calendar
   };
 
   const navigateDate = (dir: -1 | 1) => {
-    const d = new Date(selectedDate + "T00:00:00");
-    d.setDate(d.getDate() + dir);
-    const newDate = d.toISOString().split("T")[0];
+    const newDate = addDays(selectedDate, dir);
     if (newDate <= maxDate) {
       onDateChange(newDate);
     }
@@ -105,12 +114,14 @@ export function CalendarPicker({ selectedDate, maxDate, onDateChange }: Calendar
   }
 
   const isToday = selectedDate === maxDate;
+  const canGoForward = addDays(selectedDate, 1) <= maxDate;
 
   return (
     <div ref={ref} className="relative">
       {/* Compact date nav */}
       <div className="flex items-center gap-1">
         <button
+          type="button"
           onClick={() => navigateDate(-1)}
           className="p-1.5 rounded-lg dark:hover:bg-zinc-800 hover:bg-zinc-200 transition-colors"
           aria-label="Previous day"
@@ -119,6 +130,7 @@ export function CalendarPicker({ selectedDate, maxDate, onDateChange }: Calendar
         </button>
 
         <button
+          type="button"
           onClick={() => setOpen(!open)}
           className={`
             flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all
@@ -136,8 +148,9 @@ export function CalendarPicker({ selectedDate, maxDate, onDateChange }: Calendar
         </button>
 
         <button
+          type="button"
           onClick={() => navigateDate(1)}
-          disabled={isToday}
+          disabled={!canGoForward}
           className="p-1.5 rounded-lg dark:hover:bg-zinc-800 hover:bg-zinc-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Next day"
         >
@@ -151,6 +164,7 @@ export function CalendarPicker({ selectedDate, maxDate, onDateChange }: Calendar
           {/* Month/Year header */}
           <div className="flex items-center justify-between mb-3">
             <button
+              type="button"
               onClick={() => navigateMonth(-1)}
               className="p-1 rounded-md dark:hover:bg-zinc-800 hover:bg-zinc-100 transition-colors"
             >
@@ -160,6 +174,7 @@ export function CalendarPicker({ selectedDate, maxDate, onDateChange }: Calendar
               {MONTHS[viewMonth]} {viewYear}
             </span>
             <button
+              type="button"
               onClick={() => navigateMonth(1)}
               className="p-1 rounded-md dark:hover:bg-zinc-800 hover:bg-zinc-100 transition-colors"
             >
@@ -187,6 +202,7 @@ export function CalendarPicker({ selectedDate, maxDate, onDateChange }: Calendar
               return (
                 <button
                   key={i}
+                  type="button"
                   disabled={disabled}
                   onClick={() => {
                     onDateChange(dateStr);
@@ -220,6 +236,7 @@ export function CalendarPicker({ selectedDate, maxDate, onDateChange }: Calendar
           {/* Quick actions */}
           <div className="mt-2 pt-2 border-t dark:border-zinc-800 border-zinc-100 flex items-center justify-between">
             <button
+              type="button"
               onClick={() => {
                 onDateChange(maxDate);
                 setOpen(false);

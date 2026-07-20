@@ -9,6 +9,14 @@ import { runMorningPreparationForSubmissionDate } from '@/lib/overall-submission
 import { getCoachReadiness } from '@/lib/coach/readiness';
 import { refreshFitbitProfileTimezoneForUser } from '@/lib/fitbit';
 import { formatLocalDate, getCanonicalTimeZone, shiftLocalDate } from '@/lib/time';
+import {
+  getBehaviorProfileDueState,
+  hasRunningBehaviorProfileJob,
+} from '@/lib/coach/behavior-profile';
+import {
+  getCorrelationArchetypeDueState,
+  hasRunningCorrelationArchetypeJob,
+} from '@/lib/coach/correlation-archetype';
 
 export const dynamic = 'force-dynamic';
 
@@ -307,6 +315,9 @@ export async function POST(request: NextRequest) {
 
     if (ingestionError) throw ingestionError;
 
+    await maybeSpawnBehaviorProfileRefresh(supabaseAdmin, userId);
+    await maybeSpawnCorrelationArchetypeRefresh(supabaseAdmin, userId);
+
     // Run Python pipeline
     const result = await runPythonPipeline(userId, submissionDate, overallScore, ingestionRun.ingestion_run_id);
     await updateStateHistoryActions(
@@ -337,6 +348,89 @@ export async function POST(request: NextRequest) {
       { error: error.message || 'Failed to generate morning plan' },
       { status: 500 }
     );
+  }
+}
+
+function spawnBehaviorProfileRefresh(userId: string): void {
+  const scriptPath = path.join(process.cwd(), 'python', 'coach', 'run_behavior_profile_update.py');
+  const pythonBin = resolvePythonBin();
+  const child = spawn(pythonBin, [scriptPath, userId, 'morning_submission'], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+}
+
+async function maybeSpawnBehaviorProfileRefresh(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  userId: string
+): Promise<void> {
+  try {
+    const dueState = await getBehaviorProfileDueState(supabaseAdmin, userId);
+    if (!dueState.due) {
+      return;
+    }
+
+    const alreadyRunning = await hasRunningBehaviorProfileJob(supabaseAdmin, userId);
+    if (alreadyRunning) {
+      return;
+    }
+
+    spawnBehaviorProfileRefresh(userId);
+    console.log('[coach/morning-run] spawned behavior profile refresh', {
+      userId,
+      reason: dueState.reason,
+      featureDays: dueState.featureDays,
+    });
+  } catch (error) {
+    console.error('[coach/morning-run] behavior profile refresh check failed', {
+      userId,
+      error,
+    });
+  }
+}
+
+function spawnCorrelationArchetypeRefresh(userId: string): void {
+  const scriptPath = path.join(
+    process.cwd(),
+    'python',
+    'coach',
+    'run_correlation_archetype_update.py'
+  );
+  const pythonBin = resolvePythonBin();
+  const child = spawn(pythonBin, [scriptPath, userId, 'morning_submission'], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+}
+
+async function maybeSpawnCorrelationArchetypeRefresh(
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>,
+  userId: string
+): Promise<void> {
+  try {
+    const dueState = await getCorrelationArchetypeDueState(supabaseAdmin, userId);
+    if (!dueState.due) {
+      return;
+    }
+
+    const alreadyRunning = await hasRunningCorrelationArchetypeJob(supabaseAdmin, userId);
+    if (alreadyRunning) {
+      return;
+    }
+
+    spawnCorrelationArchetypeRefresh(userId);
+    console.log('[coach/morning-run] spawned correlation archetype refresh', {
+      userId,
+      reason: dueState.reason,
+      featureDays: dueState.featureDays,
+    });
+  } catch (error) {
+    console.error('[coach/morning-run] correlation archetype refresh check failed', {
+      userId,
+      error,
+    });
   }
 }
 

@@ -479,7 +479,7 @@ async function main() {
   );
   const supabaseAdmin = createSupabaseAdminClient();
   const promptVersion = readPythonConstant(
-    path.join(process.cwd(), "python", "coach", "prompts.py"),
+    path.join(process.cwd(), "python", "coach", "llm", "prompts.py"),
     "PROMPT_VERSION"
   );
   const candidateModel = readPythonConstant(

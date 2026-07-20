@@ -577,6 +577,7 @@ function buildResidualSignature(history: Array<{ values: FeatureValues }>) {
 
 function buildEpisodicMemory(history: Array<{ date: string; bundle: DailyInputBundleV1 }>) {
   const recent = history.slice(-CORRELATION_WINDOW_DAYS);
+  const latest = recent[recent.length - 1];
   const activeEventMap = new Map<
     string,
     {
@@ -648,6 +649,34 @@ function buildEpisodicMemory(history: Array<{ date: string; bundle: DailyInputBu
         count_14d: stressor.count_14d,
         confidence: roundTo(stressor.confidence_sum / stressor.count_14d) ?? 0,
       })),
+    open_commitments: (latest?.bundle.journal.context?.open_commitments ??
+      latest?.bundle.journal.commitments ??
+      [])
+      .filter(
+        (commitment) =>
+          commitment.status !== "done" &&
+          commitment.status !== "cancelled" &&
+          commitment.status !== "missed"
+      )
+      .slice(0, 8)
+      .map((commitment) => ({
+        description: commitment.description,
+        timeframe: commitment.timeframe,
+        when_text: commitment.when_text,
+        status: commitment.status,
+        confidence: roundTo(commitment.confidence) ?? 0,
+      })),
+    recurring_topics: (latest?.bundle.journal.context?.recurring_topics ??
+      latest?.bundle.journal.recurring_topics ??
+      [])
+      .slice(0, 8)
+      .map((topic) => ({
+        topic: topic.topic,
+        note: topic.note,
+        confidence: roundTo(topic.confidence) ?? 0,
+      })),
+    narrative_arc: latest?.bundle.journal.context?.narrative_arc ?? "",
+    narrative_summary: latest?.bundle.journal.narrative_summary ?? null,
   };
 }
 

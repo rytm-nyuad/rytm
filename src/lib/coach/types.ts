@@ -1,3 +1,15 @@
+/** 1–5 Likert rating for a coach action (matches rating_scale_v1 = likert_1_5). */
+export type ActionRatingValue = 1 | 2 | 3 | 4 | 5;
+
+export interface ActionUserRating {
+  rating_id?: string;
+  action_id: string;
+  rating_value_num: ActionRatingValue | null;
+  rating_value_text?: string | null;
+  comment?: string | null;
+  provided_at?: string | null;
+}
+
 export interface CoachAction {
   action_id: string;
   domain: string;
@@ -8,6 +20,10 @@ export interface CoachAction {
   when?: 'morning' | 'midday' | 'afternoon' | 'evening' | 'before_bed' | 'anytime';
   priority: number;
   rationale: string;
+  /** ISO timestamp when the user checked this action off in the coach UI. */
+  user_completed_at?: string | null;
+  /** Latest user rating/comment from action_user_ratings1, if any. */
+  user_rating?: ActionUserRating | null;
 }
 
 export interface MorningPlanResult {
@@ -39,4 +55,6 @@ export interface DailyPlan {
   updated_at?: string;
   selected_domains: string[];
   actions: CoachAction[];
+  overall_score?: number | null;
+  energy_mode?: string | null;
 }

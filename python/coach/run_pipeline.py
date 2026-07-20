@@ -2,12 +2,17 @@
 """
 LangGraph Pipeline Runner - Entry point for morning coach pipeline
 Usage: python run_pipeline.py <user_id> <for_date> <overall_score> <ingestion_run_id>
+
+LLM provider is selected via env:
+  COACH_LLM_PROVIDER=openai|openrouter
+  COACH_LLM_MODEL=... (optional)
 """
 import sys
 import json
 import os
 from supabase import create_client
-from langgraph_pipeline import MorningCoachPipeline
+from pipeline.langgraph_pipeline import MorningCoachPipeline
+from llm.llm_config import resolve_coach_pipeline_llm_config
 
 try:
     from dotenv import load_dotenv
@@ -31,16 +36,21 @@ def main():
     # Initialize Supabase client
     supabase_url = os.getenv('NEXT_PUBLIC_SUPABASE_URL')
     supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-    openrouter_key = os.getenv('OPENROUTER_API_KEY')
 
-    if not all([supabase_url, supabase_key, openrouter_key]):
-        print(json.dumps({'error': 'Missing environment variables'}))
+    if not all([supabase_url, supabase_key]):
+        print(json.dumps({'error': 'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY'}))
+        sys.exit(1)
+
+    try:
+        llm_config = resolve_coach_pipeline_llm_config()
+    except ValueError as e:
+        print(json.dumps({'error': str(e)}))
         sys.exit(1)
 
     client = create_client(supabase_url, supabase_key)
 
     # Create and run pipeline
-    pipeline = MorningCoachPipeline(client, openrouter_key)
+    pipeline = MorningCoachPipeline(client, llm_config=llm_config)
     
     try:
         result = pipeline.run(user_id, for_date, overall_score, ingestion_run_id)

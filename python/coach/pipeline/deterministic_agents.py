@@ -6,8 +6,8 @@ import os
 from datetime import datetime, date
 from typing import Dict, List, Any, Optional, Tuple
 from supabase import create_client, Client
-from data_fetcher import DataFetcher
-from feature_computer import FeatureComputer
+from data.data_fetcher import DataFetcher
+from data.feature_computer import FeatureComputer
 
 class IngestionAgent:
     """Ingestion & Validation Agent - Ensures data quality"""
@@ -213,6 +213,10 @@ class PersistenceAgent:
         # Insert plan actions
         valid_evaluation_modes = ['auto', 'user_rating', 'mixed']
         valid_effort_levels = ['low', 'medium', 'high']
+        valid_action_sources = {'generated', 'library', 'carry_forward'}
+        action_source_aliases = {
+            'safety_override': 'generated',
+        }
         effort_level_aliases = {
             'moderate': 'medium',
             'med': 'medium',
@@ -235,6 +239,16 @@ class PersistenceAgent:
                     file=__import__('sys').stderr
                 )
                 effort_level = 'medium'
+
+            raw_action_source = action.get('action_source', 'generated')
+            action_source = str(raw_action_source).strip().lower() if raw_action_source is not None else 'generated'
+            action_source = action_source_aliases.get(action_source, action_source)
+            if action_source not in valid_action_sources:
+                print(
+                    f"[WARNING] Invalid action_source: {raw_action_source}, defaulting to 'generated'",
+                    file=__import__('sys').stderr
+                )
+                action_source = 'generated'
             
             self.client.table('plan_actions1').insert({
                 'plan_id': plan_id,
@@ -242,7 +256,7 @@ class PersistenceAgent:
                 'user_id': user_id,
                 'for_date': for_date.isoformat(),
                 'action_id': action['action_id'],
-                'action_source': action.get('action_source', 'generated'),
+                'action_source': action_source,
                 'domain': action.get('domain'),
                 'priority': action.get('priority'),
                 'effort_level': effort_level,
@@ -286,11 +300,7 @@ class RegenerationController:
         self.min_valid_actions = min_valid_actions
     
     def should_regenerate(self, attempt: int, accepted_count: int, regen_required: bool) -> bool:
-        """Determine if regeneration is needed"""
+        """Regenerate whenever critic requires it, until max attempts are exhausted."""
         if attempt >= self.max_regen:
             return False
-        
-        if regen_required and accepted_count < self.min_valid_actions:
-            return True
-        
-        return False
+        return bool(regen_required)
