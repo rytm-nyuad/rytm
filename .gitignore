@@ -46,6 +46,7 @@ python/coach/*.pyc
 python/__pycache__/
 
 # Experiment run outputs (keep scripts + README)
+experiments/**/__pycache__/
 experiments/clustering_variants_result*.json
 experiments/clustering_variants_cross_user_analysis.*
 experiments/next_day_overall_score/clustering_variants_result*.json
