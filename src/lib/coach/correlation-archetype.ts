@@ -13,6 +13,14 @@ export type CorrelationArchetypeDueState = BehaviorProfileDueState & {
   latestArchetypeId?: string;
 };
 
+export type CorrelationArchetypeJobSnapshot = {
+  archetypeId: string;
+  status: string;
+  createdAt: string | null;
+  errorKind?: string | null;
+  rejectionReasons?: string[];
+};
+
 export async function getCorrelationArchetypeDueState(
   supabaseAdmin: SupabaseClient,
   userId: string,
@@ -134,4 +142,70 @@ export async function hasRunningCorrelationArchetypeJob(
   }
 
   return (data ?? []).length > 0;
+}
+
+export async function getLatestCorrelationArchetypeJob(
+  supabaseAdmin: SupabaseClient,
+  userId: string
+): Promise<CorrelationArchetypeJobSnapshot | null> {
+  const { data, error } = await supabaseAdmin
+    .from('user_correlation_archetypes1')
+    .select('archetype_id, status, created_at, error_json')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load latest correlation archetype job: ${error.message}`);
+  }
+  if (!data) return null;
+
+  const errorJson =
+    data.error_json && typeof data.error_json === 'object'
+      ? (data.error_json as Record<string, unknown>)
+      : null;
+  const rejectionReasons = Array.isArray(errorJson?.rejection_reasons)
+    ? (errorJson.rejection_reasons as unknown[]).map(String)
+    : [];
+
+  return {
+    archetypeId: data.archetype_id,
+    status: String(data.status || ''),
+    createdAt: data.created_at ?? null,
+    errorKind: errorJson?.kind ? String(errorJson.kind) : null,
+    rejectionReasons,
+  };
+}
+
+/** Analytics UI may force past refresh cadence; only hard-block on data / in-flight job. */
+export function canForceCorrelationRefresh(
+  dueState: CorrelationArchetypeDueState,
+  opts?: { alreadyRunning?: boolean }
+): boolean {
+  if (opts?.alreadyRunning) return false;
+  return dueState.reason !== 'insufficient_feature_days';
+}
+
+export function formatCorrelationDueMessage(
+  dueState: CorrelationArchetypeDueState,
+  opts?: { alreadyRunning?: boolean }
+): string {
+  if (opts?.alreadyRunning) {
+    return 'A correlation refresh is already running. Try again in a few minutes.';
+  }
+
+  switch (dueState.reason) {
+    case 'insufficient_feature_days':
+      return `Need at least ${dueState.minFeatureDays} days of tracked features before a correlation profile can run (you have ${dueState.featureDays}).`;
+    case 'not_due_yet':
+    case 'insufficient_new_feature_days':
+    case 'no_active_archetype':
+    case 'refresh_interval_elapsed_with_new_data':
+      return 'You can re-run the correlation pipeline from Analytics.';
+    default:
+      return dueState.due
+        ? 'Ready to run the correlation pipeline.'
+        : `Correlation refresh is blocked (${dueState.reason}).`;
+  }
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Brain, CalendarDays, Clock3, Layers } from 'lucide-react';
 import {
   confidenceFromArchetype,
@@ -14,6 +15,9 @@ type Props = {
   trustedEdgeCount?: number | null;
   createdAt?: string | null;
   profileVersion?: string | null;
+  /** Compact control rendered in the meta chip row */
+  action?: ReactNode;
+  footerNote?: ReactNode;
 };
 
 function firstSentences(text: string, max = 2): string {
@@ -29,6 +33,8 @@ export function ProfileHero({
   trustedEdgeCount,
   createdAt,
   profileVersion,
+  action,
+  footerNote,
 }: Props) {
   const confidence = confidenceFromArchetype({
     daysUsed,
@@ -58,7 +64,7 @@ export function ProfileHero({
               </h1>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex items-center rounded-lg px-3 py-1.5 text-[12px] font-medium dark:bg-zinc-800 bg-zinc-100 dark:text-zinc-200 text-zinc-700 ${confidence.tone}`}
               >
@@ -78,6 +84,7 @@ export function ProfileHero({
                 <Layers className="h-3.5 w-3.5" />
                 {versionLabel}
               </span>
+              {action}
             </div>
 
             {summary ? (
@@ -91,6 +98,12 @@ export function ProfileHero({
                   </p>
                 ) : null}
               </div>
+            ) : null}
+
+            {footerNote ? (
+              <p className="text-[12px] leading-relaxed dark:text-zinc-500 text-zinc-400">
+                {footerNote}
+              </p>
             ) : null}
           </div>
         </div>

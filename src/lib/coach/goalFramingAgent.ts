@@ -1,14 +1,53 @@
 import { OpenAI } from 'openai';
 import { GOAL_FRAMING_SYSTEM_PROMPT } from './goalFramingPrompt';
 
-const GOAL_FRAMING_MODEL =
-  process.env.GOAL_FRAMING_MODEL || 'openai/gpt-4.1-mini';
+const DEFAULT_OPENAI_GOAL_FRAMING_MODEL = 'gpt-4.1-mini';
+const DEFAULT_OPENROUTER_GOAL_FRAMING_MODEL = 'openai/gpt-4.1-mini';
 
-function getGoalFramingClient() {
-  const openRouterApiKey = process.env.OPENROUTER_API_KEY;
-  const openAiApiKey = process.env.OPENAI_API_KEY;
+type GoalFramingProvider = 'openai' | 'openrouter';
 
-  if (openRouterApiKey) {
+function resolveGoalFramingProvider(): GoalFramingProvider {
+  const raw = (process.env.GOAL_FRAMING_LLM_PROVIDER || '').trim().toLowerCase();
+  if (raw === 'openai' || raw === 'openrouter') {
+    return raw;
+  }
+  if (raw) {
+    throw new Error(
+      `Invalid GOAL_FRAMING_LLM_PROVIDER=${raw}. Expected 'openai' or 'openrouter'.`
+    );
+  }
+
+  // If unset: OpenAI when OPENAI_API_KEY exists, else OpenRouter.
+  if (process.env.OPENAI_API_KEY) {
+    return 'openai';
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    return 'openrouter';
+  }
+
+  throw new Error(
+    'Missing credentials for goal framing. Set GOAL_FRAMING_LLM_PROVIDER and the matching API key (OPENAI_API_KEY or OPENROUTER_API_KEY).'
+  );
+}
+
+function resolveGoalFramingModel(provider: GoalFramingProvider): string {
+  const override = (process.env.GOAL_FRAMING_MODEL || '').trim();
+  if (override) {
+    return override;
+  }
+  return provider === 'openrouter'
+    ? DEFAULT_OPENROUTER_GOAL_FRAMING_MODEL
+    : DEFAULT_OPENAI_GOAL_FRAMING_MODEL;
+}
+
+function getGoalFramingClient(provider: GoalFramingProvider) {
+  if (provider === 'openrouter') {
+    const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+    if (!openRouterApiKey) {
+      throw new Error(
+        'Missing OPENROUTER_API_KEY for goal framing (GOAL_FRAMING_LLM_PROVIDER=openrouter).'
+      );
+    }
     return new OpenAI({
       apiKey: openRouterApiKey,
       baseURL: 'https://openrouter.ai/api/v1',
@@ -22,19 +61,22 @@ function getGoalFramingClient() {
     });
   }
 
-  if (openAiApiKey) {
-    return new OpenAI({ apiKey: openAiApiKey });
+  const openAiApiKey = process.env.OPENAI_API_KEY;
+  if (!openAiApiKey) {
+    throw new Error(
+      'Missing OPENAI_API_KEY for goal framing (GOAL_FRAMING_LLM_PROVIDER=openai).'
+    );
   }
-
-  throw new Error(
-    'Missing credentials for goal framing. Set OPENROUTER_API_KEY or OPENAI_API_KEY.'
-  );
+  return new OpenAI({ apiKey: openAiApiKey });
 }
 
 export async function runGoalFramingAgent(interviewSummary: any) {
-  const client = getGoalFramingClient();
+  const provider = resolveGoalFramingProvider();
+  const model = resolveGoalFramingModel(provider);
+  const client = getGoalFramingClient(provider);
+
   const completion = await client.chat.completions.create({
-    model: GOAL_FRAMING_MODEL,
+    model,
     messages: [
       { role: 'system', content: GOAL_FRAMING_SYSTEM_PROMPT },
       {
@@ -51,7 +93,7 @@ export async function runGoalFramingAgent(interviewSummary: any) {
   try {
     const json = completion.choices[0].message.content;
     return JSON.parse(json!);
-  } catch (e) {
+  } catch {
     throw new Error('Goal framing agent did not return valid JSON');
   }
 }

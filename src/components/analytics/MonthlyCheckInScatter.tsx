@@ -66,14 +66,20 @@ function MonthlyScatter({
   const xAt = (day: number) =>
     PAD.left + ((Math.max(1, Math.min(monthDays, day)) - 1) / Math.max(monthDays - 1, 1)) * innerW;
   const yAt = (v: number) => PAD.top + innerH - (Math.min(100, Math.max(0, v)) / 100) * innerH;
-  const latest = points.length ? points[points.length - 1].value : null;
+  const average = points.length
+    ? points.reduce((sum, p) => sum + p.value, 0) / points.length
+    : null;
 
   return (
     <div className="rounded-2xl dark:bg-zinc-900 bg-white border dark:border-zinc-800 border-zinc-200 p-4">
       <div className="flex items-baseline justify-between gap-2 mb-2">
         <h3 className="text-sm font-semibold dark:text-zinc-100 text-zinc-900">{label}</h3>
-        <span className="text-xs font-semibold tabular-nums dark:text-zinc-100" style={{ color }}>
-          {latest !== null ? Math.round(latest) : '—'}
+        <span
+          className="text-xs font-semibold tabular-nums dark:text-zinc-100"
+          style={{ color }}
+          title="Month average"
+        >
+          {average !== null ? Math.round(average) : '—'}
         </span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={`${label} by day of month`}>

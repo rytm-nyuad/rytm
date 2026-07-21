@@ -192,6 +192,18 @@ JOURNAL_SUMMARY_LLM_PROVIDER=openai
 # JOURNAL_SUMMARY2_MODEL=gpt-4o-mini
 ```
 
+Goal framing (after the goal interview) uses the same pattern:
+
+```env
+GOAL_FRAMING_LLM_PROVIDER=openai
+# GOAL_FRAMING_MODEL=gpt-4.1-mini
+```
+
+| Variable | Values | Default model |
+|----------|--------|---------------|
+| `GOAL_FRAMING_LLM_PROVIDER` | `openai` \| `openrouter` | If unset: OpenAI when `OPENAI_API_KEY` is set, else OpenRouter |
+| `GOAL_FRAMING_MODEL` | e.g. `gpt-4.1-mini` or `openai/gpt-4.1-mini` | `gpt-4.1-mini` (OpenAI) / `openai/gpt-4.1-mini` (OpenRouter) |
+
 ### Journal context enrichment (apply once)
 
 Apply `supabase/journal_summary2_context_enrichment.sql` in the Supabase SQL editor. It:

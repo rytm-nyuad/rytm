@@ -242,7 +242,9 @@ Return the correlation archetype JSON only."""
             "summary",
             "what_heatmap_shows",
             "what_it_reflects",
+            "core_insight_basis",
             "core_insight",
+            "strength_basis",
             "strength",
             "primary_coaching_rule",
         ]
