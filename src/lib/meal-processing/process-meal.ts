@@ -83,43 +83,62 @@ export async function processMeal(
   }
 
   // ── 2. Idempotency check ──────────────────────────────────
+  // Only a genuinely completed run should be skipped. A row stuck at
+  // 'failed' / 'queued' / 'processing' (e.g. from a crashed or errored prior
+  // attempt) is not "already processed" — it must be retried, or it would be
+  // silently and permanently stuck.
   const { data: existingRun } = await supabase
     .from('meal_processing_runs')
-    .select('id')
+    .select('id, status')
     .eq('meal_id', mealId)
     .eq('pipeline_version', PIPELINE_VERSION)
     .maybeSingle();
 
-  if (existingRun) {
+  if (existingRun?.status === 'success') {
     return { success: true, run_id: existingRun.id, skipped: true };
   }
 
-  // ── 3. Insert queued run ──────────────────────────────────
+  // ── 3. Create or reset the run row ────────────────────────
   const inputModes: string[] = [];
   if (meal.description) inputModes.push('text');
   if (meal.photo_url) inputModes.push('image');
 
-  const { data: run, error: insertErr } = await supabase
-    .from('meal_processing_runs')
-    .insert({
-      meal_id: mealId,
-      user_id: meal.user_id,
-      pipeline_version: PIPELINE_VERSION,
-      status: 'queued',
-      input_modes: inputModes,
-    })
-    .select('id')
-    .single();
+  let runId: string;
 
-  if (insertErr || !run) {
-    // Unique constraint race condition — treat as already processed
-    if (insertErr?.code === '23505') {
-      return { success: true, run_id: null, skipped: true };
+  if (existingRun) {
+    // Retry in place — (meal_id, pipeline_version) is unique, so a fresh
+    // insert would just collide with this stale row.
+    const { error: resetErr } = await supabase
+      .from('meal_processing_runs')
+      .update({ status: 'queued', input_modes: inputModes, error: null })
+      .eq('id', existingRun.id);
+
+    if (resetErr) {
+      return { success: false, run_id: existingRun.id, skipped: false, error: `Reset run failed: ${resetErr.message}` };
     }
-    return { success: false, run_id: null, skipped: false, error: `Insert run failed: ${insertErr?.message}` };
-  }
+    runId = existingRun.id;
+  } else {
+    const { data: run, error: insertErr } = await supabase
+      .from('meal_processing_runs')
+      .insert({
+        meal_id: mealId,
+        user_id: meal.user_id,
+        pipeline_version: PIPELINE_VERSION,
+        status: 'queued',
+        input_modes: inputModes,
+      })
+      .select('id')
+      .single();
 
-  const runId = run.id;
+    if (insertErr || !run) {
+      // Unique constraint race condition — a concurrent call already claimed this meal.
+      if (insertErr?.code === '23505') {
+        return { success: true, run_id: null, skipped: true };
+      }
+      return { success: false, run_id: null, skipped: false, error: `Insert run failed: ${insertErr?.message}` };
+    }
+    runId = run.id;
+  }
 
   try {
     // Mark as processing

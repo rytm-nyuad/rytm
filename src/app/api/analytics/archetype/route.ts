@@ -7,6 +7,14 @@ import {
   type AnalyticsViz,
   type KeyCorrelation,
 } from '@/lib/analytics/format';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import {
+  canForceCorrelationRefresh,
+  formatCorrelationDueMessage,
+  getCorrelationArchetypeDueState,
+  getLatestCorrelationArchetypeJob,
+  hasRunningCorrelationArchetypeJob,
+} from '@/lib/coach/correlation-archetype';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,39 +78,49 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const [{ data: archetype, error: archetypeError }, { data: behaviorProfile }] =
-      await Promise.all([
-        supabase
-          .from('user_correlation_archetypes1')
-          .select(
-            [
-              'archetype_id',
-              'status',
-              'profile_version',
-              'archetype_title',
-              'summary',
-              'core_insight',
-              'strength',
-              'archetype_json',
-              'trusted_edges_json',
-              'days_used',
-              'created_at',
-            ].join(', ')
-          )
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from('user_behavior_profiles1')
-          .select('summary, primary_coaching_rule, created_at')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ]);
+    const supabaseAdmin = createSupabaseAdminClient();
+
+    const [
+      { data: archetype, error: archetypeError },
+      { data: behaviorProfile },
+      dueState,
+      latestJob,
+      alreadyRunning,
+    ] = await Promise.all([
+      supabase
+        .from('user_correlation_archetypes1')
+        .select(
+          [
+            'archetype_id',
+            'status',
+            'profile_version',
+            'archetype_title',
+            'summary',
+            'core_insight',
+            'strength',
+            'archetype_json',
+            'trusted_edges_json',
+            'days_used',
+            'created_at',
+          ].join(', ')
+        )
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('user_behavior_profiles1')
+        .select('summary, primary_coaching_rule, created_at')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      getCorrelationArchetypeDueState(supabaseAdmin, user.id),
+      getLatestCorrelationArchetypeJob(supabaseAdmin, user.id),
+      hasRunningCorrelationArchetypeJob(supabaseAdmin, user.id),
+    ]);
 
     if (archetypeError) {
       const message = archetypeError.message || '';
@@ -121,11 +139,21 @@ export async function GET() {
       throw new Error(archetypeError.message);
     }
 
+    const refresh = {
+      due: dueState.due,
+      canRun: canForceCorrelationRefresh(dueState, { alreadyRunning }),
+      reason: alreadyRunning ? 'already_running' : dueState.reason,
+      message: formatCorrelationDueMessage(dueState, { alreadyRunning }),
+      dueState,
+      latestJob,
+    };
+
     if (!archetype) {
       return NextResponse.json({
         archetype: null,
         behaviorProfile: behaviorProfile ?? null,
         unavailable: false,
+        refresh,
       });
     }
 
@@ -158,6 +186,7 @@ export async function GET() {
       },
       behaviorProfile: behaviorProfile ?? null,
       unavailable: false,
+      refresh,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load analytics';
